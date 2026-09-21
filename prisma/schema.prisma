@@ -58,22 +58,33 @@ enum ParentRelationship {
   OTHER
 }
 
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+  EXCUSED
+}
+
 model School {
-  id                 String              @id @default(uuid())
-  name               String
-  slug               String              @unique
-  status             SchoolStatus        @default(TRIAL)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  memberships        SchoolMembership[]
-  students           Student[]
-  parents            Parent[]
-  teachers           Teacher[]
-  academicSessions   AcademicSession[]
-  classes            Class[]
-  sections           Section[]
-  subjects           Subject[]
-  studentEnrollments StudentEnrollment[]
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
+  status              SchoolStatus         @default(TRIAL)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  memberships         SchoolMembership[]
+  students            Student[]
+  parents             Parent[]
+  teachers            Teacher[]
+  academicSessions    AcademicSession[]
+  classes             Class[]
+  sections            Section[]
+  subjects            Subject[]
+  studentEnrollments  StudentEnrollment[]
+  teacherAssignments  TeacherAssignment[]
+  attendanceRegisters AttendanceRegister[]
+  attendanceAuditLogs AttendanceAuditLog[]
 
   @@index([status])
   @@map("schools")
@@ -115,20 +126,21 @@ model SchoolMembership {
 }
 
 model Student {
-  id              String              @id @default(uuid())
-  schoolId        String
-  userId          String?
-  admissionNumber String
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
-  status          StudentStatus       @default(ACTIVE)
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  user            User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
-  parentStudents  ParentStudent[]
-  enrollments     StudentEnrollment[]
+  id                String              @id @default(uuid())
+  schoolId          String
+  userId            String?
+  admissionNumber   String
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  status            StudentStatus       @default(ACTIVE)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  school            School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user              User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parentStudents    ParentStudent[]
+  enrollments       StudentEnrollment[]
+  attendanceRecords AttendanceRecord[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId])
@@ -174,15 +186,16 @@ model ParentStudent {
 }
 
 model Teacher {
-  id         String        @id @default(uuid())
-  schoolId   String
-  userId     String
-  employeeId String?
-  status     TeacherStatus @default(ACTIVE)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  school     School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id          String              @id @default(uuid())
+  schoolId    String
+  userId      String
+  employeeId  String?
+  status      TeacherStatus       @default(ACTIVE)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  school      School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments TeacherAssignment[]
 
   @@unique([schoolId, userId])
   @@index([schoolId])
@@ -192,16 +205,18 @@ model Teacher {
 }
 
 model AcademicSession {
-  id          String                @id @default(uuid())
-  schoolId    String
-  name        String
-  startDate   DateTime
-  endDate     DateTime
-  status      AcademicSessionStatus @default(ACTIVE)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-  school      School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  enrollments StudentEnrollment[]
+  id                  String               @id @default(uuid())
+  schoolId            String
+  name                String
+  startDate           DateTime
+  endDate             DateTime
+  status              AcademicSessionStatus @default(ACTIVE)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  enrollments         StudentEnrollment[]
+  teacherAssignments  TeacherAssignment[]
+  attendanceRegisters AttendanceRegister[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -210,15 +225,17 @@ model AcademicSession {
 }
 
 model Class {
-  id           String              @id @default(uuid())
-  schoolId     String
-  name         String
-  displayOrder Int?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  sections     Section[]
-  enrollments  StudentEnrollment[]
+  id                  String               @id @default(uuid())
+  schoolId            String
+  name                String
+  displayOrder        Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections            Section[]
+  enrollments         StudentEnrollment[]
+  teacherAssignments  TeacherAssignment[]
+  attendanceRegisters AttendanceRegister[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -226,15 +243,17 @@ model Class {
 }
 
 model Section {
-  id          String              @id @default(uuid())
-  schoolId    String
-  classId     String
-  name        String
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  school      School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  class       Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
-  enrollments StudentEnrollment[]
+  id                  String               @id @default(uuid())
+  schoolId            String
+  classId             String
+  name                String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class               Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  enrollments         StudentEnrollment[]
+  teacherAssignments  TeacherAssignment[]
+  attendanceRegisters AttendanceRegister[]
 
   @@unique([classId, name])
   @@index([schoolId])
@@ -243,13 +262,15 @@ model Section {
 }
 
 model Subject {
-  id        String   @id @default(uuid())
-  schoolId  String
-  name      String
-  code      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id                  String               @id @default(uuid())
+  schoolId            String
+  name                String
+  code                String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacherAssignments  TeacherAssignment[]
+  attendanceRegisters AttendanceRegister[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -279,4 +300,92 @@ model StudentEnrollment {
   @@index([academicSessionId])
   @@index([classId, sectionId])
   @@map("student_enrollments")
+}
+
+model TeacherAssignment {
+  id                String          @id @default(uuid())
+  schoolId          String
+  teacherId         String
+  academicSessionId String
+  classId           String
+  sectionId         String
+  subjectId         String?
+  isClassTeacher    Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  school            School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher           Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  class             Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section           Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject           Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@unique([teacherId, academicSessionId, classId, sectionId, subjectId])
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([academicSessionId])
+  @@index([classId, sectionId])
+  @@map("teacher_assignments")
+}
+
+model AttendanceRegister {
+  id                String               @id @default(uuid())
+  schoolId          String
+  academicSessionId String
+  classId           String
+  sectionId         String
+  date              DateTime
+  subjectId         String?
+  timetableEntryId  String?
+  createdByUserId   String
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  school            School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession   AcademicSession      @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  class             Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section           Section              @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject           Subject?             @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  records           AttendanceRecord[]
+  auditLogs         AttendanceAuditLog[]
+
+  @@unique([schoolId, academicSessionId, classId, sectionId, date, subjectId])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([classId, sectionId])
+  @@index([date])
+  @@map("attendance_registers")
+}
+
+model AttendanceRecord {
+  id             String             @id @default(uuid())
+  registerId     String
+  studentId      String
+  status         AttendanceStatus   @default(PRESENT)
+  reason         String?
+  markedByUserId String
+  markedAt       DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  register       AttendanceRegister @relation(fields: [registerId], references: [id], onDelete: Cascade)
+  student        Student            @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([registerId, studentId])
+  @@index([registerId])
+  @@index([studentId])
+  @@map("attendance_records")
+}
+
+model AttendanceAuditLog {
+  id                String              @id @default(uuid())
+  schoolId          String
+  registerId        String?
+  action            String
+  performedByUserId String
+  details           String?
+  createdAt         DateTime            @default(now())
+  school            School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  register          AttendanceRegister? @relation(fields: [registerId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([registerId])
+  @@map("attendance_audit_logs")
 }

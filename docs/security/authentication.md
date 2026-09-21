@@ -1,48 +1,55 @@
-# Authentication Architecture
+# Authentication Architecture & Gateway Security
 
-The Authentication settings (`/school/settings/security/authentication`) and gateway routes (`/login`, `/invite/accept`, `/verify-email`) govern user authentication protocols and access boundaries.
-
----
-
-## 1. Authentication Mechanisms
-
-Rivo implements standards-compliant identity verification:
-
-1. **Email + Password**: Primary identity pair evaluated against cryptographically hashed secrets (e.g., Argon2id / bcrypt on backend API).
-2. **Email Verification**: Mandatory verification step validating that users control their registered email before granting account access.
-3. **Session Inactivity Timeout**: Automatically invalidates idle browser sessions after a configured duration (default: 30 minutes, range: 15-240 minutes).
-4. **Role Access Gates**: Toggles allowing administrators to selectively disable web application logins for specific roles (e.g., disable student login during system maintenance).
+The Authentication system (`apps/web/src/lib/auth/`), gateway routes (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/accept`), and route protection guards govern institutional security boundaries.
 
 ---
 
-## 2. Authentication Flow
+## 1. Authentication Lifecycle & States
+
+The application models session lifecycle across five explicit states:
 
 ```
-[User Submits Credentials]
-           │
-           ▼
-[Validate Input & Rate Limits]
-           │
-           ├─ Failure ──> [Increment Failed Attempt Counter & Show Error]
-           │
-           ▼ Success
-[MFA Challenge Required?]
-           │
-     ┌─────┴─────┐
-     ▼ Yes       ▼ No
-[Verify TOTP]    │
-     │           │
-     └─────┬─────┘
-           ▼
-[Issue Secure Session Cookie (HttpOnly, SameSite=Strict)]
-           │
-           ▼
-[Redirect to Scoped Dashboard (/school, /teacher, /student, /parent)]
+[Initial Mount] ──> [AUTHENTICATING]
+                         │
+        ┌────────────────┴────────────────┐
+        ▼                                 ▼
+ [AUTHENTICATED]                  [UNAUTHENTICATED]
+        │                                 │
+ [Role Check -> /school]          [Blocked -> /login]
 ```
+
+| Auth State | Description | Routing Impact |
+| :--- | :--- | :--- |
+| `UNKNOWN` | Session status uninitialized. | Renders credentials loading indicator. |
+| `AUTHENTICATING` | Actively communicating with backend verification endpoint. | Renders loading skeleton. |
+| `AUTHENTICATED` | Valid session token active; `user` profile populated. | Grants access to scoped institutional workspace. |
+| `UNAUTHENTICATED` | No active session or token invalidated. | Redirects `/school/*` routes to `/login?returnUrl=...`. |
+| `ERROR` | Network or service error verifying session. | Renders error card with retry action. |
 
 ---
 
-## 3. Frontend / Backend Boundary
+## 2. Protected Route Boundary (`AuthGuard`)
 
-> [!NOTE]
-> The Web Application manages client-side authentication states, route protection middleware (`middleware.ts`), login redirection, and token dispatch. Persistence, cookie issuance, and cryptographic hashing are executed by the centralized backend API.
+All `/school/*` routes are wrapped within `AuthGuard` in `src/app/(school)/school/layout.tsx`:
+
+1. **Unauthenticated Check**: If state transitions to `UNAUTHENTICATED`, the user is immediately redirected to `/login` with `returnUrl` query parameter preserved.
+2. **Role Authorization Check**: If authenticated, `user.roleType` is checked. Roles without school management access (e.g. `STUDENT`, `PARENT`) are redirected to `/access-denied`.
+3. **Session Verification Skeleton**: While verifying session tokens on cold load, a clean institutional indicator prevents layout flickering.
+
+---
+
+## 3. Security Principles & Data Rules
+
+- **Zero Mock Credentials**: No default admin accounts or fake login shortcuts exist in client runtime.
+- **No Client Credential Storage**: Passwords and raw secret tokens are never stored in localStorage, sessionStorage, Zustand stores, or client logs.
+- **Secure Cookie Integration**: Designed for HttpOnly, SameSite=Strict session cookie authentication with CORS credentials support (`credentials: 'include'`).
+- **Account Enumeration Protection**: `/forgot-password` returns generic success feedback regardless of email registration status.
+
+---
+
+## 4. Frontend / Backend Integration Boundary
+
+> [!IMPORTANT]
+> **Integration Contract**:
+> The Web Application provides full typed contracts in `IAuthService` and `AuthService` (`src/lib/auth/auth-service.ts`) targeting `/api/auth/login`, `/api/auth/signup/admin`, `/api/auth/me`, `/api/auth/logout`, `/api/auth/forgot-password`, and `/api/auth/reset-password`.
+> If backend services are not running or return network errors, the client gracefully surfaces connectivity alerts without faking successful authentication.

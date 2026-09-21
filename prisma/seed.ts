@@ -8,51 +8,63 @@ import {
   StudentStatus,
   TeacherStatus,
 } from '@prisma/client';
+import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 
+async function hashPassword(password: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(`${salt}:${derivedKey.toString('hex')}`);
+    });
+  });
+}
+
 async function main() {
-  console.log('🌱 Starting development database seed...');
+  console.log('🌱 Starting Rivo database seed...');
 
-  // Dev-only placeholder hash. Note: Never use real or production credentials.
-  const devPasswordHash = 'DEV_ONLY_INSECURE_HASH_REPLACE_WITH_BCRYPT_IN_AUTH_STEP';
+  // Standard secure password for testing
+  const defaultPassword = 'Password@123';
+  const hashedPassword = await hashPassword(defaultPassword);
 
-  // 1. Platform Owner (Super-Admin, platform-level)
+  // 1. Platform Owner
   const owner = await prisma.user.upsert({
     where: { email: 'owner@rivo.local' },
-    update: {},
+    update: { passwordHash: hashedPassword },
     create: {
       email: 'owner@rivo.local',
       firstName: 'Platform',
       lastName: 'Owner',
-      passwordHash: devPasswordHash,
+      passwordHash: hashedPassword,
       isPlatformOwner: true,
       isActive: true,
     },
   });
-  console.log(`✓ Seeded Platform Owner: ${owner.email} (${owner.id})`);
+  console.log(`✓ Seeded Platform Owner: ${owner.email}`);
 
-  // 2. Development School Tenant
+  // 2. School Tenant
   const school = await prisma.school.upsert({
     where: { slug: 'greenwood-academy' },
     update: {},
     create: {
-      name: 'Greenwood Academy',
+      name: 'Greenwood International School',
       slug: 'greenwood-academy',
       status: SchoolStatus.ACTIVE,
     },
   });
-  console.log(`✓ Seeded School: ${school.name} [slug: ${school.slug}] (${school.id})`);
+  console.log(`✓ Seeded School: ${school.name} (id: ${school.id})`);
 
   // 3. School Admin User & Membership
   const schoolAdmin = await prisma.user.upsert({
-    where: { email: 'admin@greenwood.rivo.local' },
-    update: {},
+    where: { email: 'admin@greenwood.edu' },
+    update: { passwordHash: hashedPassword },
     create: {
-      email: 'admin@greenwood.rivo.local',
+      email: 'admin@greenwood.edu',
       firstName: 'Alice',
-      lastName: 'Admin',
-      passwordHash: devPasswordHash,
+      lastName: 'Administrator',
+      passwordHash: hashedPassword,
       isPlatformOwner: false,
       isActive: true,
     },
@@ -65,179 +77,16 @@ async function main() {
         schoolId: school.id,
       },
     },
-    update: {},
+    update: { role: Role.SCHOOL_ADMIN },
     create: {
       userId: schoolAdmin.id,
       schoolId: school.id,
       role: Role.SCHOOL_ADMIN,
     },
   });
-  console.log(`✓ Seeded School Admin: ${schoolAdmin.email} for ${school.name}`);
+  console.log(`✓ Seeded School Admin: ${schoolAdmin.email} (Password: ${defaultPassword})`);
 
-  // 4. Teacher User, Membership & Teacher Record
-  const teacherUser = await prisma.user.upsert({
-    where: { email: 'teacher@greenwood.rivo.local' },
-    update: {},
-    create: {
-      email: 'teacher@greenwood.rivo.local',
-      firstName: 'Robert',
-      lastName: 'Teacher',
-      passwordHash: devPasswordHash,
-      isPlatformOwner: false,
-      isActive: true,
-    },
-  });
-
-  await prisma.schoolMembership.upsert({
-    where: {
-      userId_schoolId: {
-        userId: teacherUser.id,
-        schoolId: school.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: teacherUser.id,
-      schoolId: school.id,
-      role: Role.TEACHER,
-    },
-  });
-
-  const teacher = await prisma.teacher.upsert({
-    where: {
-      schoolId_userId: {
-        schoolId: school.id,
-        userId: teacherUser.id,
-      },
-    },
-    update: {},
-    create: {
-      schoolId: school.id,
-      userId: teacherUser.id,
-      employeeId: 'TCH-001',
-      status: TeacherStatus.ACTIVE,
-    },
-  });
-  console.log(`✓ Seeded Teacher Record: ${teacher.id} (Employee: ${teacher.employeeId})`);
-
-  // 5. Parent User, Membership & Parent Record
-  const parentUser = await prisma.user.upsert({
-    where: { email: 'parent@greenwood.rivo.local' },
-    update: {},
-    create: {
-      email: 'parent@greenwood.rivo.local',
-      firstName: 'David',
-      lastName: 'Doe',
-      passwordHash: devPasswordHash,
-      isPlatformOwner: false,
-      isActive: true,
-    },
-  });
-
-  await prisma.schoolMembership.upsert({
-    where: {
-      userId_schoolId: {
-        userId: parentUser.id,
-        schoolId: school.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: parentUser.id,
-      schoolId: school.id,
-      role: Role.PARENT,
-    },
-  });
-
-  const parentId = '00000000-0000-4000-a000-000000000001';
-  const parent = await prisma.parent.upsert({
-    where: { id: parentId },
-    update: {},
-    create: {
-      id: parentId,
-      schoolId: school.id,
-      userId: parentUser.id,
-      firstName: 'David',
-      lastName: 'Doe',
-      email: 'parent@greenwood.rivo.local',
-      phone: '+1-555-0199',
-    },
-  });
-  console.log(`✓ Seeded Parent Record: ${parent.firstName} ${parent.lastName} (${parent.id})`);
-
-  // 6. Two Students
-  const student1 = await prisma.student.upsert({
-    where: {
-      schoolId_admissionNumber: {
-        schoolId: school.id,
-        admissionNumber: 'ADM-2026-001',
-      },
-    },
-    update: {},
-    create: {
-      schoolId: school.id,
-      admissionNumber: 'ADM-2026-001',
-      firstName: 'Alex',
-      lastName: 'Doe',
-      dateOfBirth: new Date('2011-05-15'),
-      status: StudentStatus.ACTIVE,
-    },
-  });
-
-  const student2 = await prisma.student.upsert({
-    where: {
-      schoolId_admissionNumber: {
-        schoolId: school.id,
-        admissionNumber: 'ADM-2026-002',
-      },
-    },
-    update: {},
-    create: {
-      schoolId: school.id,
-      admissionNumber: 'ADM-2026-002',
-      firstName: 'Sam',
-      lastName: 'Doe',
-      dateOfBirth: new Date('2013-08-22'),
-      status: StudentStatus.ACTIVE,
-    },
-  });
-  console.log(`✓ Seeded Students: ${student1.firstName} (${student1.admissionNumber}), ${student2.firstName} (${student2.admissionNumber})`);
-
-  // 7. ParentStudent Relationships (Many-to-Many)
-  await prisma.parentStudent.upsert({
-    where: {
-      parentId_studentId: {
-        parentId: parent.id,
-        studentId: student1.id,
-      },
-    },
-    update: {},
-    create: {
-      parentId: parent.id,
-      studentId: student1.id,
-      relationshipType: ParentRelationship.FATHER,
-      isPrimaryContact: true,
-    },
-  });
-
-  await prisma.parentStudent.upsert({
-    where: {
-      parentId_studentId: {
-        parentId: parent.id,
-        studentId: student2.id,
-      },
-    },
-    update: {},
-    create: {
-      parentId: parent.id,
-      studentId: student2.id,
-      relationshipType: ParentRelationship.FATHER,
-      isPrimaryContact: true,
-    },
-  });
-  console.log(`✓ Linked Parent to Students via ParentStudent records`);
-
-  // 8. Academic Session
+  // 4. Academic Session
   const session = await prisma.academicSession.upsert({
     where: {
       schoolId_name: {
@@ -254,9 +103,9 @@ async function main() {
       status: AcademicSessionStatus.ACTIVE,
     },
   });
-  console.log(`✓ Seeded Academic Session: ${session.name} (${session.id})`);
+  console.log(`✓ Seeded Academic Session: ${session.name}`);
 
-  // 9. Class
+  // 5. Classes & Sections
   const class10 = await prisma.class.upsert({
     where: {
       schoolId_name: {
@@ -271,9 +120,7 @@ async function main() {
       displayOrder: 10,
     },
   });
-  console.log(`✓ Seeded Class: ${class10.name} (${class10.id})`);
 
-  // 10. Section
   const sectionA = await prisma.section.upsert({
     where: {
       classId_name: {
@@ -288,9 +135,23 @@ async function main() {
       name: 'A',
     },
   });
-  console.log(`✓ Seeded Section: ${sectionA.name} for ${class10.name} (${sectionA.id})`);
 
-  // 11. Subjects
+  const sectionB = await prisma.section.upsert({
+    where: {
+      classId_name: {
+        classId: class10.id,
+        name: 'B',
+      },
+    },
+    update: {},
+    create: {
+      schoolId: school.id,
+      classId: class10.id,
+      name: 'B',
+    },
+  });
+
+  // 6. Subjects
   const mathSubject = await prisma.subject.upsert({
     where: {
       schoolId_name: {
@@ -320,47 +181,137 @@ async function main() {
       code: 'SCI-10',
     },
   });
-  console.log(`✓ Seeded Subjects: ${mathSubject.name}, ${scienceSubject.name}`);
 
-  // 12. Student Enrollments
-  await prisma.studentEnrollment.upsert({
+  // 7. Teacher User, Profile, & Class Assignment
+  const teacherUser = await prisma.user.upsert({
+    where: { email: 'teacher@greenwood.edu' },
+    update: { passwordHash: hashedPassword },
+    create: {
+      email: 'teacher@greenwood.edu',
+      firstName: 'Robert',
+      lastName: 'Sharma',
+      passwordHash: hashedPassword,
+      isPlatformOwner: false,
+      isActive: true,
+    },
+  });
+
+  await prisma.schoolMembership.upsert({
     where: {
-      studentId_academicSessionId: {
-        studentId: student1.id,
-        academicSessionId: session.id,
+      userId_schoolId: {
+        userId: teacherUser.id,
+        schoolId: school.id,
+      },
+    },
+    update: { role: Role.TEACHER },
+    create: {
+      userId: teacherUser.id,
+      schoolId: school.id,
+      role: Role.TEACHER,
+    },
+  });
+
+  const teacher = await prisma.teacher.upsert({
+    where: {
+      schoolId_userId: {
+        schoolId: school.id,
+        userId: teacherUser.id,
       },
     },
     update: {},
     create: {
       schoolId: school.id,
-      studentId: student1.id,
-      academicSessionId: session.id,
-      classId: class10.id,
-      sectionId: sectionA.id,
-      status: EnrollmentStatus.ACTIVE,
+      userId: teacherUser.id,
+      employeeId: 'TCH-001',
+      status: TeacherStatus.ACTIVE,
     },
   });
 
-  await prisma.studentEnrollment.upsert({
+  // Assign Teacher to Class 10-A for Mathematics
+  await prisma.teacherAssignment.upsert({
     where: {
-      studentId_academicSessionId: {
-        studentId: student2.id,
+      teacherId_academicSessionId_classId_sectionId_subjectId: {
+        teacherId: teacher.id,
         academicSessionId: session.id,
+        classId: class10.id,
+        sectionId: sectionA.id,
+        subjectId: mathSubject.id,
       },
     },
-    update: {},
+    update: { isClassTeacher: true },
     create: {
       schoolId: school.id,
-      studentId: student2.id,
+      teacherId: teacher.id,
       academicSessionId: session.id,
       classId: class10.id,
       sectionId: sectionA.id,
-      status: EnrollmentStatus.ACTIVE,
+      subjectId: mathSubject.id,
+      isClassTeacher: true,
     },
   });
-  console.log(`✓ Seeded Student Enrollments for Session ${session.name}`);
+  console.log(`✓ Seeded Teacher: ${teacherUser.email} (Password: ${defaultPassword})`);
+  console.log(`  Assigned to: ${class10.name} - Section ${sectionA.name} (${mathSubject.name})`);
 
-  console.log('✅ Development seeding completed successfully and idempotently.');
+  // 8. Students in Class 10-A
+  const studentsData = [
+    { adm: 'ADM-2026-001', first: 'Aarav', last: 'Patel', dob: '2011-04-12' },
+    { adm: 'ADM-2026-002', first: 'Diya', last: 'Sharma', dob: '2011-08-19' },
+    { adm: 'ADM-2026-003', first: 'Ishaan', last: 'Verma', dob: '2011-02-05' },
+    { adm: 'ADM-2026-004', first: 'Ananya', last: 'Gupta', dob: '2011-11-23' },
+    { adm: 'ADM-2026-005', first: 'Rohan', last: 'Mehta', dob: '2011-06-30' },
+  ];
+
+  for (const s of studentsData) {
+    const student = await prisma.student.upsert({
+      where: {
+        schoolId_admissionNumber: {
+          schoolId: school.id,
+          admissionNumber: s.adm,
+        },
+      },
+      update: {},
+      create: {
+        schoolId: school.id,
+        admissionNumber: s.adm,
+        firstName: s.first,
+        lastName: s.last,
+        dateOfBirth: new Date(s.dob),
+        status: StudentStatus.ACTIVE,
+      },
+    });
+
+    await prisma.studentEnrollment.upsert({
+      where: {
+        studentId_academicSessionId: {
+          studentId: student.id,
+          academicSessionId: session.id,
+        },
+      },
+      update: {},
+      create: {
+        schoolId: school.id,
+        studentId: student.id,
+        academicSessionId: session.id,
+        classId: class10.id,
+        sectionId: sectionA.id,
+        status: EnrollmentStatus.ACTIVE,
+      },
+    });
+  }
+  console.log(`✓ Seeded ${studentsData.length} students enrolled in ${class10.name}-${sectionA.name}`);
+
+  console.log('\n=========================================');
+  console.log('✅ SEEDING COMPLETE - LOGIN CREDENTIALS:');
+  console.log('=========================================');
+  console.log(`1. School Admin:`);
+  console.log(`   Email:    admin@greenwood.edu`);
+  console.log(`   Password: ${defaultPassword}`);
+  console.log(`   Role:     SCHOOL_ADMIN -> /school`);
+  console.log(`\n2. Teacher:`);
+  console.log(`   Email:    teacher@greenwood.edu`);
+  console.log(`   Password: ${defaultPassword}`);
+  console.log(`   Role:     TEACHER -> /teacher/dashboard`);
+  console.log('=========================================\n');
 }
 
 main()

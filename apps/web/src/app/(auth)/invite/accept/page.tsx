@@ -1,15 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
-import { GraduationCap, ShieldCheck, Lock, User, ArrowRight, AlertTriangle } from 'lucide-react';
+import { GraduationCap, ShieldCheck, Lock, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 function InviteAcceptContent() {

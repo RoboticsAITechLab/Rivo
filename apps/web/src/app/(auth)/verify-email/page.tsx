@@ -51,7 +51,7 @@ export default function VerifyEmailPage() {
               Click the link inside the confirmation email to verify your ownership and activate your school portal permissions.
             </p>
             <div className="p-3 bg-muted/20 rounded-md border border-border/40 text-[11px]">
-              Didn't receive the email? Check your spam folder or request a new verification token below.
+              Didn&apos;t receive the email? Check your spam folder or request a new verification token below.
             </div>
           </CardContent>
 
