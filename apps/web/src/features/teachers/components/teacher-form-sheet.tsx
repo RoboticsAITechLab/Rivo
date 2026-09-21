@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { FormSection } from '@/components/ui/form-section';
-import { Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { EmploymentType } from '@/features/shared/types';
 import { useSchoolStore } from '@/shared/mock-store/school-store';
@@ -110,6 +110,8 @@ function TeacherFormWizard({
   const [bloodGroup, setBloodGroup] = React.useState(teacherToEdit?.personal.bloodGroup || 'O+');
   const [phone, setPhone] = React.useState(teacherToEdit?.personal.phone || '');
   const [email, setEmail] = React.useState(teacherToEdit?.personal.email || '');
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
 
   // Employment
   const [employeeId, setEmployeeId] = React.useState(
@@ -234,6 +236,7 @@ function TeacherFormWizard({
         firstName,
         lastName,
         email,
+        password,
         phone,
         dateOfBirth: dob,
       },
@@ -249,9 +252,20 @@ function TeacherFormWizard({
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
-      if (validationErrors.firstName || validationErrors.lastName || validationErrors.email || validationErrors.phone) {
+      if (
+        validationErrors.firstName ||
+        validationErrors.lastName ||
+        validationErrors.email ||
+        validationErrors.password ||
+        validationErrors.phone
+      ) {
         setStep(1);
-      } else if (validationErrors.employeeId || validationErrors.department || validationErrors.designation || validationErrors.joiningDate) {
+      } else if (
+        validationErrors.employeeId ||
+        validationErrors.department ||
+        validationErrors.designation ||
+        validationErrors.joiningDate
+      ) {
         setStep(2);
       }
       return;
@@ -272,6 +286,7 @@ function TeacherFormWizard({
         bloodGroup,
         phone,
         email,
+        password,
       },
       employment: {
         employeeId,
@@ -428,7 +443,7 @@ function TeacherFormWizard({
                     className="text-xs font-mono"
                   />
                 </FormField>
-                <FormField label="Official / Personal Email" required error={safeErrors.email}>
+                <FormField label="Official / Login Email" required error={safeErrors.email}>
                   <Input
                     type="email"
                     value={email}
@@ -436,6 +451,38 @@ function TeacherFormWizard({
                     placeholder="rahul.sharma@rivoschool.edu"
                     className="text-xs font-mono"
                   />
+                </FormField>
+              </div>
+
+              {/* Login Password Configuration for Teacher Account */}
+              <div className="mt-3 p-3.5 rounded-lg border border-primary/20 bg-primary/5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">Teacher Portal Login Credentials</span>
+                </div>
+                <FormField
+                  label={teacherToEdit ? 'New Password (Leave blank to keep current)' : 'Account Login Password'}
+                  required={!teacherToEdit}
+                  error={safeErrors.password}
+                  description="This password will be used by the teacher along with their email to log into this school's portal."
+                >
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={teacherToEdit ? '••••••••' : 'Enter strong password (min 6 chars)'}
+                      className="text-xs font-mono pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
                 </FormField>
               </div>
             </FormSection>

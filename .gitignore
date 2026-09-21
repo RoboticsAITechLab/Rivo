@@ -17,6 +17,8 @@ build/
 out/
 .next/
 *.tsbuildinfo
+src/generated/
+**/src/generated/
 
 # Logs
 logs/

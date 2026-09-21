@@ -158,7 +158,7 @@ export function useTeachers() {
     setSelectedIds([]);
   };
 
-  const handleSaveTeacher = (teacher: TeacherDetail) => {
+  const handleSaveTeacher = async (teacher: TeacherDetail) => {
     const exists = store.teachers.some((t) => t.id === teacher.id);
     const assignments = teacher.assignments.map((a) => ({
       id: a.id,
@@ -167,6 +167,30 @@ export function useTeachers() {
       subjectId: a.subjectId || 'sub-mat-101',
       periodsPerWeek: a.periodsPerWeek,
     }));
+
+    // If new teacher, also persist real login credentials via /api/teachers
+    if (!exists) {
+      try {
+        await fetch('/api/teachers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: teacher.personal.firstName,
+            lastName: teacher.personal.lastName,
+            email: teacher.personal.email,
+            password: teacher.personal.password || 'Password@123',
+            employeeId: teacher.employment.employeeId,
+            phone: teacher.personal.phone,
+            department: teacher.employment.department,
+            designation: teacher.employment.designation,
+            qualification: teacher.employment.qualification,
+            assignments,
+          }),
+        });
+      } catch (err) {
+        console.error('Error posting teacher account to database:', err);
+      }
+    }
 
     if (exists) {
       schoolStore.updateTeacher({

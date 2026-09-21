@@ -67,86 +67,122 @@ enum AttendanceStatus {
 }
 
 model School {
-  id                  String               @id @default(uuid())
-  name                String
-  slug                String               @unique
-  status              SchoolStatus         @default(TRIAL)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  memberships         SchoolMembership[]
-  students            Student[]
-  parents             Parent[]
-  teachers            Teacher[]
-  academicSessions    AcademicSession[]
-  classes             Class[]
-  sections            Section[]
-  subjects            Subject[]
-  studentEnrollments  StudentEnrollment[]
-  teacherAssignments  TeacherAssignment[]
-  attendanceRegisters AttendanceRegister[]
-  attendanceAuditLogs AttendanceAuditLog[]
+  id                      String                   @id @default(uuid())
+  name                    String
+  slug                    String                   @unique
+  status                  SchoolStatus             @default(TRIAL)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  memberships             SchoolMembership[]
+  campuses                Campus[]
+  students                Student[]
+  parents                 Parent[]
+  teachers                Teacher[]
+  academicSessions        AcademicSession[]
+  classes                 Class[]
+  sections                Section[]
+  subjects                Subject[]
+  studentEnrollments      StudentEnrollment[]
+  teacherAssignments      TeacherAssignment[]
+  attendanceRegisters     AttendanceRegister[]
+  attendanceAuditLogs     AttendanceAuditLog[]
+  customRoles             CustomRole[]
+  userPermissionOverrides UserPermissionOverride[]
+  timetableSlots          TimetableSlot[]
+  examTerms               ExamTerm[]
 
   @@index([status])
   @@map("schools")
 }
 
 model User {
-  id              String             @id @default(uuid())
-  email           String             @unique
-  passwordHash    String
-  firstName       String
-  lastName        String
-  isActive        Boolean            @default(true)
-  isPlatformOwner Boolean            @default(false)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  memberships     SchoolMembership[]
-  teachers        Teacher[]
-  students        Student[]
-  parents         Parent[]
+  id                      String                   @id @default(uuid())
+  email                   String                   @unique
+  passwordHash            String
+  firstName               String
+  lastName                String
+  isActive                Boolean                  @default(true)
+  isPlatformOwner         Boolean                  @default(false)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  memberships             SchoolMembership[]
+  teachers                Teacher[]
+  students                Student[]
+  parents                 Parent[]
+  userPermissionOverrides UserPermissionOverride[]
 
   @@map("users")
 }
 
 model SchoolMembership {
-  id        String   @id @default(uuid())
-  userId    String
-  schoolId  String
-  role      Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id           String      @id @default(uuid())
+  userId       String
+  schoolId     String
+  role         Role
+  customRoleId String?     @map("custom_role_id")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school       School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  customRole   CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
 
   @@unique([userId, schoolId])
   @@index([schoolId])
   @@index([userId])
   @@index([role])
+  @@index([customRoleId])
   @@map("school_memberships")
 }
 
 model Student {
   id                String              @id @default(uuid())
   schoolId          String
+  campusId          String?             @map("campus_id")
   userId            String?
   admissionNumber   String
   firstName         String
   lastName          String
+  gender            String?
   dateOfBirth       DateTime?
+  bloodGroup        String?             @map("blood_group")
+  stream            String?
+  house             String?
+  phone             String?
+  email             String?
+  address           String?
   status            StudentStatus       @default(ACTIVE)
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   school            School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campus            Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
   user              User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   parentStudents    ParentStudent[]
   enrollments       StudentEnrollment[]
   attendanceRecords AttendanceRecord[]
+  documents         StudentDocument[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId])
+  @@index([campusId])
   @@index([userId])
   @@index([schoolId, status])
   @@map("students")
+}
+
+model StudentDocument {
+  id           String   @id @default(uuid())
+  studentId    String   @map("student_id")
+  documentType String   @map("document_type") // BIRTH_CERTIFICATE, PREVIOUS_MARKSHEET, TRANSFER_CERTIFICATE, etc.
+  title        String
+  fileUrl      String   @map("file_url")
+  fileName     String?  @map("file_name")
+  fileSize     String?  @map("file_size")
+  status       String   @default("VERIFIED") // PENDING, VERIFIED, REJECTED
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_documents")
 }
 
 model Parent {
@@ -186,19 +222,27 @@ model ParentStudent {
 }
 
 model Teacher {
-  id          String              @id @default(uuid())
-  schoolId    String
-  userId      String
-  employeeId  String?
-  status      TeacherStatus       @default(ACTIVE)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  school      School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  assignments TeacherAssignment[]
+  id             String              @id @default(uuid())
+  schoolId       String
+  campusId       String?             @map("campus_id")
+  userId         String
+  employeeId     String?
+  phone          String?
+  department     String?
+  designation    String?
+  qualification  String?
+  status         TeacherStatus       @default(ACTIVE)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  school         School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campus         Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments    TeacherAssignment[]
+  timetableSlots TimetableSlot[]
 
   @@unique([schoolId, userId])
   @@index([schoolId])
+  @@index([campusId])
   @@index([userId])
   @@index([schoolId, status])
   @@map("teachers")
@@ -217,6 +261,8 @@ model AcademicSession {
   enrollments         StudentEnrollment[]
   teacherAssignments  TeacherAssignment[]
   attendanceRegisters AttendanceRegister[]
+  timetableSlots      TimetableSlot[]
+  examTerms           ExamTerm[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -236,6 +282,8 @@ model Class {
   enrollments         StudentEnrollment[]
   teacherAssignments  TeacherAssignment[]
   attendanceRegisters AttendanceRegister[]
+  timetableSlots      TimetableSlot[]
+  examSchedules       ExamSchedule[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -254,6 +302,8 @@ model Section {
   enrollments         StudentEnrollment[]
   teacherAssignments  TeacherAssignment[]
   attendanceRegisters AttendanceRegister[]
+  timetableSlots      TimetableSlot[]
+  examSchedules       ExamSchedule[]
 
   @@unique([classId, name])
   @@index([schoolId])
@@ -271,6 +321,8 @@ model Subject {
   school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   teacherAssignments  TeacherAssignment[]
   attendanceRegisters AttendanceRegister[]
+  timetableSlots      TimetableSlot[]
+  examPapers          ExamPaper[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -388,4 +440,215 @@ model AttendanceAuditLog {
   @@index([schoolId])
   @@index([registerId])
   @@map("attendance_audit_logs")
+}
+
+// ==========================================
+// CAMPUS MODEL
+// ==========================================
+
+model Campus {
+  id        String    @id @default(uuid())
+  schoolId  String    @map("school_id")
+  name      String
+  code      String?
+  address   String?
+  city      String?
+  state     String?
+  phone     String?
+  email     String?
+  isMain    Boolean   @default(false) @map("is_main")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students  Student[]
+  teachers  Teacher[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+  @@map("campuses")
+}
+
+// ==========================================
+// GRANULAR PERMISSION SYSTEM
+// ==========================================
+
+enum PermissionScope {
+  SCHOOL
+  CAMPUS
+  ASSIGNED
+  OWN
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. "attendance.view", "school_timetable.edit", "exam_timetable.view"
+  module      String   // e.g. "attendance", "school_timetable", "exam_timetable", "students", "teachers"
+  action      String   // e.g. "view", "create", "edit", "delete", "take", "publish"
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+  userPermissions UserPermissionOverride[]
+
+  @@map("permissions")
+}
+
+model CustomRole {
+  id          String   @id @default(uuid())
+  schoolId    String   @map("school_id")
+  name        String   // e.g. "Department Head", "Timetable Coordinator", "Senior Teacher"
+  code        String   // e.g. "TIMETABLE_COORD", "SENIOR_TEACHER"
+  baseRole    Role     @map("base_role")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  memberships     SchoolMembership[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@map("custom_roles")
+}
+
+model RolePermission {
+  id           String          @id @default(uuid())
+  roleId       String          @map("role_id")
+  permissionId String          @map("permission_id")
+  scope        PermissionScope @default(ASSIGNED)
+
+  role       CustomRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermissionOverride {
+  id           String          @id @default(uuid())
+  schoolId     String          @map("school_id")
+  userId       String          @map("user_id")
+  permissionId String          @map("permission_id")
+  isGranted    Boolean         @default(true) @map("is_granted")
+  scope        PermissionScope @default(ASSIGNED)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  school     School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([permissionId])
+  @@map("user_permission_overrides")
+}
+
+// ==========================================
+// SCHOOL DAILY TIMETABLE (NORMAL)
+// ==========================================
+
+model TimetableSlot {
+  id                String          @id @default(uuid())
+  schoolId          String          @map("school_id")
+  academicSessionId String          @map("academic_session_id")
+  classId           String          @map("class_id")
+  sectionId         String          @map("section_id")
+  subjectId         String          @map("subject_id")
+  teacherId         String          @map("teacher_id")
+  dayOfWeek         String          @map("day_of_week") // MONDAY, TUESDAY, WEDNESDAY, etc.
+  periodNumber      Int             @map("period_number")
+  startTime         String          @map("start_time") // e.g. "08:30"
+  endTime           String          @map("end_time") // e.g. "09:15"
+  roomNumber        String?         @map("room_number")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  class           Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section         Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher         Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([academicSessionId, classId, sectionId, dayOfWeek, periodNumber])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([teacherId, dayOfWeek])
+  @@index([classId, sectionId, dayOfWeek])
+  @@map("timetable_slots")
+}
+
+// ==========================================
+// FORMAL EXAM TIMETABLE (SEPARATE SYSTEM)
+// ==========================================
+
+model ExamTerm {
+  id                String          @id @default(uuid())
+  schoolId          String          @map("school_id")
+  academicSessionId String          @map("academic_session_id")
+  name              String          // e.g. "Mid-Term Examination 2026", "Annual Final Exam 2027"
+  code              String?
+  startDate         DateTime        @map("start_date")
+  endDate           DateTime        @map("end_date")
+  isPublished       Boolean         @default(false) @map("is_published")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  papers          ExamPaper[]
+
+  @@unique([schoolId, academicSessionId, name])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@map("exam_terms")
+}
+
+model ExamPaper {
+  id           String         @id @default(uuid())
+  examTermId   String         @map("exam_term_id")
+  subjectId    String         @map("subject_id")
+  name         String         // e.g. "Mathematics Paper 1"
+  maxMarks     Float          @default(100) @map("max_marks")
+  passingMarks Float          @default(35) @map("passing_marks")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  examTerm  ExamTerm       @relation(fields: [examTermId], references: [id], onDelete: Cascade)
+  subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schedules ExamSchedule[]
+
+  @@index([examTermId])
+  @@index([subjectId])
+  @@map("exam_papers")
+}
+
+model ExamSchedule {
+  id         String    @id @default(uuid())
+  paperId    String    @map("paper_id")
+  classId    String    @map("class_id")
+  sectionId  String    @map("section_id")
+  examDate   DateTime  @map("exam_date")
+  startTime  String    @map("start_time") // e.g. "09:00"
+  endTime    String    @map("end_time") // e.g. "12:00"
+  roomNumber String?   @map("room_number")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  paper   ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  class   Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([paperId, classId, sectionId])
+  @@index([paperId])
+  @@index([classId, sectionId])
+  @@index([examDate])
+  @@map("exam_schedules")
 }

@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Edit3, Eye, UserCheck, ShieldAlert } from 'lucide-react';
+import { MoreHorizontal, Edit3, Eye, UserCheck, ShieldAlert, Shield } from 'lucide-react';
 
 interface TeacherTableProps {
   teachers: TeacherDetail[];
@@ -184,6 +184,12 @@ export function TeacherTable({
             <DropdownMenuItem onClick={() => onEditTeacher(row)}>
               <Edit3 className="h-3.5 w-3.5 mr-2" />
               Edit Information
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href={`/school/teachers/${row.id}/permissions`} className="flex items-center w-full cursor-pointer">
+                <Shield className="h-3.5 w-3.5 mr-2 text-primary" />
+                Manage Permissions
+              </a>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onChangeStatus(row)}>
               <UserCheck className="h-3.5 w-3.5 mr-2" />

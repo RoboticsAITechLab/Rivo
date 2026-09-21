@@ -5,6 +5,7 @@ export interface TeacherValidationErrors {
   lastName?: string;
   employeeId?: string;
   email?: string;
+  password?: string;
   phone?: string;
   department?: string;
   designation?: string;
@@ -20,6 +21,7 @@ export function validateTeacherForm(
       email: string;
       phone: string;
       dateOfBirth: string;
+      password?: string;
     };
     employment: {
       employeeId: string;
@@ -41,6 +43,15 @@ export function validateTeacherForm(
   // Last Name
   if (!formData.personal.lastName.trim()) {
     errors.lastName = 'Last name is required.';
+  }
+
+  // Password (required for new teacher accounts, minimum 6 characters)
+  if (!currentTeacherId) {
+    if (!formData.personal.password || !formData.personal.password.trim()) {
+      errors.password = 'Login password is required for new teacher account.';
+    } else if (formData.personal.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long.';
+    }
   }
 
   // Employee ID
