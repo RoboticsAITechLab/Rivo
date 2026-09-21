@@ -53,7 +53,7 @@ export function Sidebar({
       </div>
 
       {/* Navigation Links */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-4">
         {APP_NAV_GROUPS.map((group) => (
           <div key={group.group} className="space-y-1">
             {!collapsed ? (

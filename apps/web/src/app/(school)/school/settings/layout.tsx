@@ -9,11 +9,11 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-full max-w-[1536px] mx-auto space-y-6 pb-12">
-      {/* 1. Global Settings Control Center Header & Search (Section 2, 4, 15) */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/50 pb-5">
-          <div className="space-y-1">
+    <div className="w-full max-w-[1536px] mx-auto flex flex-col lg:h-[calc(100vh-7.5rem)] overflow-hidden space-y-4">
+      {/* 1. Global Settings Control Center Header & Search (Fixed at top, doesn't scroll) */}
+      <div className="space-y-3 shrink-0 pb-3 border-b border-border/50">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="space-y-0.5">
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                 Settings
@@ -37,10 +37,16 @@ export default function SettingsLayout({
         </div>
       </div>
 
-      {/* 2. Unified Workspace Grid (Section 2 & 8: 260px Nav + flex-1 Content) */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+      {/* 2. Unified Workspace Grid (Independent columns: sidebar stays fixed, content scrolls) */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6 items-stretch overflow-hidden">
+        {/* Settings Navigation: fixed in place, independent scroll if content overflows, never moves with main page */}
         <SettingsNav />
-        <main className="flex-1 min-w-0 w-full" id="settings-content">
+
+        {/* Settings Content: independent scroll, overscroll-contain */}
+        <main
+          className="flex-1 min-w-0 w-full lg:h-full lg:overflow-y-auto lg:overscroll-contain pr-1 pb-10"
+          id="settings-content"
+        >
           {children}
         </main>
       </div>

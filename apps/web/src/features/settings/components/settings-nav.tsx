@@ -33,9 +33,9 @@ export function SettingsNav() {
   return (
     <>
       {/* ========================================================= */}
-      {/* 1. DESKTOP WORKSPACE SIDEBAR (260px, Viewport-aware scroll) */}
+      {/* 1. DESKTOP WORKSPACE SIDEBAR (260px, Independent scroll)  */}
       {/* ========================================================= */}
-      <aside className="hidden lg:block w-[260px] shrink-0 sticky top-20 max-h-[calc(100vh-6.5rem)] overflow-y-auto pr-1">
+      <aside className="hidden lg:block w-[260px] shrink-0 h-full overflow-y-auto overscroll-contain pr-2 border-r border-border/40">
         <nav className="space-y-5 pb-8" aria-label="Settings Navigation">
           {SETTINGS_NAVIGATION_GROUPS.map((group) => (
             <div key={group.category} className="space-y-1">
