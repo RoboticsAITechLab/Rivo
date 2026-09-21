@@ -2,6 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { GraduationCap, ShieldCheck, Building2, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { RivoLogo } from '@/components/ui/rivo-logo';
 
 export const metadata = {
   title: 'Authentication — Rivo School Digital Ecosystem',
@@ -22,11 +23,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="relative z-10 space-y-3">
           <Link
             href="/"
-            className="inline-flex items-center gap-2.5 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-lg p-1"
+            className="inline-flex items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded-lg p-1"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/20">
-              <GraduationCap className="h-6 w-6" />
-            </div>
+            <RivoLogo variant="icon" size="md" className="shadow-lg shadow-emerald-950/40" />
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold tracking-tight text-white font-mono">
                 RIVO
@@ -93,10 +92,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-6 md:p-8 xl:p-12 relative">
         {/* Mobile / Tablet Header */}
         <div className="lg:hidden w-full max-w-md mb-6 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white shadow-sm">
-              <GraduationCap className="h-5 w-5 text-emerald-400" />
-            </div>
+          <Link href="/" className="flex items-center gap-2.5">
+            <RivoLogo variant="icon" size="sm" />
             <span className="text-xl font-bold tracking-tight text-slate-900 font-mono">
               RIVO
             </span>

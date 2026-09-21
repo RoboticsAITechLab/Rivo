@@ -8,6 +8,7 @@ import { TEACHER_NAVIGATION } from '@/config/teacher-navigation';
 import { NavIcon } from '@/components/navigation/nav-icon';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-context';
+import { RivoLogo } from '@/components/ui/rivo-logo';
 
 export function TeacherSidebar({
   collapsed,
@@ -35,17 +36,19 @@ export function TeacherSidebar({
             collapsed && 'justify-center w-full'
           )}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-700 text-white shadow-xs">
-            <GraduationCap className="h-6 w-6" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col overflow-hidden">
-              <span className="font-bold text-base tracking-tight text-foreground leading-tight">
-                RIVO
-              </span>
-              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 truncate">
-                {user?.schoolName || 'Faculty Portal'}
-              </span>
+          {collapsed ? (
+            <RivoLogo variant="icon" size="sm" />
+          ) : (
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <RivoLogo variant="icon" size="sm" />
+              <div className="flex flex-col overflow-hidden">
+                <span className="font-bold text-base tracking-tight text-foreground leading-tight">
+                  RIVO
+                </span>
+                <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 truncate">
+                  {user?.schoolName || 'Faculty Portal'}
+                </span>
+              </div>
             </div>
           )}
         </Link>
@@ -64,18 +67,27 @@ export function TeacherSidebar({
               key={item.href}
               href={item.href}
               className={cn(
-                'group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 select-none',
                 isActive
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 font-semibold shadow-2xs dark:bg-emerald-950/40'
+                  : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
                 collapsed && 'justify-center px-0 h-10 w-10 mx-auto'
               )}
             >
+              {isActive && (
+                <span
+                  className={cn(
+                    'absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-emerald-600',
+                    collapsed && 'left-0.5 w-0.75 top-2 bottom-2'
+                  )}
+                  aria-hidden="true"
+                />
+              )}
               <NavIcon
                 name={item.iconName}
                 className={cn(
-                  'h-4 w-4 shrink-0 transition-transform group-hover:scale-105',
-                  isActive ? 'text-white' : 'text-muted-foreground group-hover:text-foreground'
+                  'h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-150',
+                  isActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground group-hover:text-foreground'
                 )}
               />
               {!collapsed && <span className="truncate flex-1">{item.title}</span>}

@@ -23,7 +23,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-5',
+        'flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/70 pb-5',
         className,
       )}
       {...props}
@@ -31,7 +31,7 @@ export function PageHeader({
       <div className="space-y-1">
         <div className="flex items-center gap-3">
           {Icon && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-2xs border border-primary/15">
               <Icon className="h-5 w-5" />
             </div>
           )}

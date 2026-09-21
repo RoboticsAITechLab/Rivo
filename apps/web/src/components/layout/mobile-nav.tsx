@@ -14,6 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { RivoLogo } from '@/components/ui/rivo-logo';
 import { cn } from '@/lib/utils';
 
 export function MobileNav({
@@ -30,14 +31,12 @@ export function MobileNav({
       <SheetContent side="left" className="w-[280px] p-0">
         <SheetHeader className="p-4 border-b">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-              <GraduationCap className="h-6 w-6" />
-            </div>
-            <div>
-              <SheetTitle className="text-base font-bold tracking-tight text-foreground">
+            <RivoLogo variant="icon" size="sm" />
+            <div className="flex flex-col overflow-hidden">
+              <SheetTitle className="text-base font-bold tracking-tight text-foreground leading-tight">
                 RIVO
               </SheetTitle>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground truncate">
                 {mockCurrentUser.schoolName}
               </div>
             </div>
@@ -62,12 +61,18 @@ export function MobileNav({
                       href={item.href}
                       onClick={() => onOpenChange(false)}
                       className={cn(
-                        'flex min-h-[42px] items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                        'group relative flex min-h-[42px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all select-none',
                         isActive
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          ? 'bg-primary/10 text-primary font-semibold shadow-2xs dark:bg-primary/15'
+                          : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
                       )}
                     >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary"
+                          aria-hidden="true"
+                        />
+                      )}
                       <div className="flex items-center gap-3">
                         <NavIcon name={item.iconName} className="h-4 w-4 shrink-0" />
                         <span>{item.title}</span>

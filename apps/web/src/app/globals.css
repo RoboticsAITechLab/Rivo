@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: 0 0% 100%;
+  --background: 210 20% 98%;
   --foreground: 222.2 84% 4.9%;
+
+  --surface: 0 0% 100%;
+  --surface-subtle: 210 25% 97%;
+  --surface-elevated: 0 0% 100%;
+  --surface-accent: 214 90% 98%;
 
   --card: 0 0% 100%;
   --card-foreground: 222.2 84% 4.9%;
@@ -13,13 +18,13 @@
   --primary: 224 76% 48%;
   --primary-foreground: 210 40% 98%;
 
-  --secondary: 210 40% 96.1%;
+  --secondary: 210 25% 94%;
   --secondary-foreground: 222.2 47.4% 11.2%;
 
-  --muted: 210 40% 96.1%;
+  --muted: 210 25% 95%;
   --muted-foreground: 215.4 16.3% 46.9%;
 
-  --accent: 210 40% 96.1%;
+  --accent: 210 30% 95%;
   --accent-foreground: 222.2 47.4% 11.2%;
 
   --destructive: 0 84.2% 60.2%;
@@ -34,8 +39,9 @@
   --info: 199 89% 48%;
   --info-foreground: 210 40% 98%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
+  --border: 214.3 25% 90%;
+  --border-subtle: 214.3 25% 94%;
+  --input: 214.3 25% 90%;
   --ring: 224 76% 48%;
 
   --radius: 0.5rem;
@@ -44,6 +50,11 @@
 .dark {
   --background: 224 71% 4%;
   --foreground: 210 40% 98%;
+
+  --surface: 224 71% 6%;
+  --surface-subtle: 224 50% 8%;
+  --surface-elevated: 224 45% 10%;
+  --surface-accent: 224 60% 12%;
 
   --card: 224 71% 6%;
   --card-foreground: 210 40% 98%;
@@ -76,6 +87,7 @@
   --info-foreground: 210 40% 98%;
 
   --border: 217.2 32.6% 17.5%;
+  --border-subtle: 217.2 32.6% 13%;
   --input: 217.2 32.6% 17.5%;
   --ring: 217.2 91.2% 59.8%;
 }
@@ -83,6 +95,11 @@
 @theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
+
+  --color-surface: hsl(var(--surface));
+  --color-surface-subtle: hsl(var(--surface-subtle));
+  --color-surface-elevated: hsl(var(--surface-elevated));
+  --color-surface-accent: hsl(var(--surface-accent));
 
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
@@ -115,6 +132,7 @@
   --color-info-foreground: hsl(var(--info-foreground));
 
   --color-border: hsl(var(--border));
+  --color-border-subtle: hsl(var(--border-subtle));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 

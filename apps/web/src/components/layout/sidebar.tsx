@@ -9,6 +9,7 @@ import { APP_NAV_GROUPS } from '@/config/navigation';
 import { NavIcon } from '@/components/navigation/nav-icon';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
+import { RivoLogo } from '@/components/ui/rivo-logo';
 import { cn } from '@/lib/utils';
 
 export function Sidebar({
@@ -36,17 +37,19 @@ export function Sidebar({
             collapsed && 'justify-center w-full',
           )}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-            <GraduationCap className="h-6 w-6" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col overflow-hidden">
-              <span className="font-bold text-base tracking-tight text-foreground leading-tight">
-                RIVO
-              </span>
-              <span className="text-[11px] font-medium text-muted-foreground truncate">
-                {mockCurrentUser.schoolName}
-              </span>
+          {collapsed ? (
+            <RivoLogo variant="icon" size="sm" />
+          ) : (
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <RivoLogo variant="icon" size="sm" />
+              <div className="flex flex-col overflow-hidden">
+                <span className="font-bold text-base tracking-tight text-foreground leading-tight">
+                  RIVO
+                </span>
+                <span className="text-[11px] font-medium text-muted-foreground truncate">
+                  {mockCurrentUser.schoolName}
+                </span>
+              </div>
             </div>
           )}
         </Link>
@@ -74,19 +77,28 @@ export function Sidebar({
                   <Link
                     href={item.href}
                     className={cn(
-                      'group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary select-none',
                       isActive
-                        ? 'bg-primary text-primary-foreground shadow-xs'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                        ? 'bg-primary/10 text-primary font-semibold shadow-2xs dark:bg-primary/15'
+                        : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground',
                       collapsed && 'justify-center px-0 h-10 w-10 mx-auto',
                     )}
                   >
+                    {isActive && (
+                      <span
+                        className={cn(
+                          'absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary',
+                          collapsed && 'left-0.5 w-0.75 top-2 bottom-2'
+                        )}
+                        aria-hidden="true"
+                      />
+                    )}
                     <NavIcon
                       name={item.iconName}
                       className={cn(
-                        'h-4 w-4 shrink-0 transition-transform group-hover:scale-105',
+                        'h-4 w-4 shrink-0 transition-transform group-hover:scale-110 duration-150',
                         isActive
-                          ? 'text-primary-foreground'
+                          ? 'text-primary'
                           : 'text-muted-foreground group-hover:text-foreground',
                       )}
                     />
@@ -95,10 +107,10 @@ export function Sidebar({
                         <span className="truncate flex-1">{item.title}</span>
                         {item.badge && (
                           <Badge
-                            variant={isActive ? 'secondary' : 'outline'}
+                            variant={isActive ? 'default' : 'outline'}
                             className={cn(
                               'text-[10px] px-1.5 py-0 h-4.5',
-                              isActive && 'bg-primary-foreground/20 text-primary-foreground border-transparent',
+                              isActive && 'bg-primary text-primary-foreground border-transparent',
                             )}
                           >
                             {item.badge}

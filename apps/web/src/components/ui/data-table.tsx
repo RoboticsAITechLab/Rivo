@@ -85,16 +85,16 @@ export function DataTable<TData extends object>({
   return (
     <div
       className={cn(
-        'w-full overflow-hidden rounded-lg border bg-card shadow-2xs',
+        'w-full overflow-hidden rounded-xl border border-border/80 bg-card shadow-2xs',
         className,
       )}
     >
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm border-collapse">
           <thead>
-            <tr className="border-b bg-muted/50 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
+            <tr className="border-b border-border/70 bg-surface-subtle/80 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
               {isSelectable && (
-                <th scope="col" className="w-10 px-3.5 py-3 text-center">
+                <th scope="col" className="w-10 px-3.5 py-3.5 text-center">
                   <input
                     type="checkbox"
                     checked={isAllSelected}

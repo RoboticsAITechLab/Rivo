@@ -81,11 +81,11 @@ export function TopNav({
         <button
           type="button"
           onClick={onOpenCommandSearch}
-          className="flex h-9 items-center gap-2 rounded-md border border-input bg-background/60 px-3 text-xs text-muted-foreground shadow-2xs transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-60"
+          className="group flex h-9 items-center gap-2 rounded-lg border border-border/80 bg-surface-subtle/60 hover:bg-card px-3 text-xs text-muted-foreground shadow-2xs transition-all hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary select-none cursor-pointer sm:w-64"
         >
-          <Search className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left truncate">Search resources...</span>
-          <kbd className="pointer-events-none hidden rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-block">
+          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
+          <span className="flex-1 text-left truncate">Search resources, students, roster...</span>
+          <kbd className="pointer-events-none hidden rounded border border-border/70 bg-card px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground shadow-2xs group-hover:border-border sm:inline-block">
             ⌘K
           </kbd>
         </button>
@@ -93,11 +93,11 @@ export function TopNav({
         {/* Notifications Button */}
         <Link
           href="/school/notifications"
-          className="relative flex h-9 w-9 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-border/80 bg-card text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label="View notifications"
         >
           <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
+          <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
         </Link>
 
         {/* User Account Navigation */}
