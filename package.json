@@ -12,8 +12,14 @@
     "dev:web": "npm run dev --workspace=web",
     "dev:api": "npm run start:dev --workspace=api",
     "db:seed": "prisma db seed",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:validate": "prisma validate",
+    "lint": "npm run lint --workspace=web",
+    "build": "npm run build --workspace=web",
     "test:auth": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/auth-matrix.test.ts",
-    "test": "npm run test:auth"
+    "test:id": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/id-generator.test.ts",
+    "test": "npm run test:auth && npm run test:id"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -30,3 +36,4 @@
     "resend": "^6.28.1"
   }
 }
+

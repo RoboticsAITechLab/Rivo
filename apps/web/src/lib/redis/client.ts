@@ -4,7 +4,10 @@ let redisInstance: Redis | null = null;
 let isConnected = false;
 
 export function isProductionMode(): boolean {
-  return process.env.AUTH_INFRA_MODE === 'production' || process.env.NODE_ENV === 'production';
+  if (process.env.AUTH_INFRA_MODE) {
+    return process.env.AUTH_INFRA_MODE === 'production';
+  }
+  return process.env.NODE_ENV === 'production';
 }
 
 export function getRedisClient(): Redis | null {

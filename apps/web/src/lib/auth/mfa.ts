@@ -14,6 +14,9 @@ function getEncryptionKey(): Buffer {
     // Hash key to ensure exact 32 bytes for aes-256
     return crypto.createHash('sha256').update(envKey.trim()).digest();
   }
+  if (process.env.AUTH_INFRA_MODE === 'production' || process.env.NODE_ENV === 'production') {
+    throw new Error('[SECURITY] MFA_ENCRYPTION_KEY must be configured in production with at least 32 characters');
+  }
   return crypto.createHash('sha256').update(DEFAULT_FALLBACK_KEY).digest();
 }
 
