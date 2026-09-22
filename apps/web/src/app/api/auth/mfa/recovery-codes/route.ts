@@ -5,6 +5,37 @@ import { verifyPassword } from '@/lib/auth/crypto';
 import { generateRecoveryCodes } from '@/lib/auth/mfa';
 import { logSecurityAudit } from '@/lib/auth/audit';
 
+// GET /api/auth/mfa/recovery-codes - Get remaining unused recovery codes count
+export async function GET(req: NextRequest) {
+  try {
+    const auth = await requireAuth(req);
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
+    const mfa = await prisma.userMfa.findUnique({
+      where: { userId: auth.userId },
+      select: { enabled: true },
+    });
+
+    if (!mfa || !mfa.enabled) {
+      return NextResponse.json({ enabled: false, remainingCodesCount: 0 });
+    }
+
+    const remainingCodesCount = await prisma.mfaRecoveryCode.count({
+      where: { userId: auth.userId, usedAt: null },
+    });
+
+    return NextResponse.json({
+      enabled: true,
+      remainingCodesCount,
+    });
+  } catch (error) {
+    console.error('Error fetching recovery codes count:', error);
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // POST /api/auth/mfa/recovery-codes - Regenerate fresh recovery codes (requires password confirmation)
 export async function POST(req: NextRequest) {
   try {

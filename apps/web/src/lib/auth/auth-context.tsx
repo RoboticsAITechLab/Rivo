@@ -18,6 +18,11 @@ interface AuthContextValue {
   user: AuthUser | null;
   authState: AuthState;
   login: (credentials: LoginCredentials) => Promise<AuthResult>;
+  verifyMfaChallenge: (
+    challengeToken: string,
+    code: string,
+    isRecoveryCode?: boolean
+  ) => Promise<AuthResult>;
   signup: (payload: AdminSignupPayload) => Promise<AuthResult>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
@@ -61,6 +66,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (credentials: LoginCredentials): Promise<AuthResult> => {
     setAuthState('AUTHENTICATING');
     const result = await authService.login(credentials);
+
+    if (result.success && result.user) {
+      setUser(result.user);
+      setAuthState('AUTHENTICATED');
+    } else {
+      setUser(null);
+      setAuthState('UNAUTHENTICATED');
+    }
+
+    return result;
+  };
+
+  const verifyMfaChallenge = async (
+    challengeToken: string,
+    code: string,
+    isRecoveryCode = false
+  ): Promise<AuthResult> => {
+    setAuthState('AUTHENTICATING');
+    const result = await authService.verifyMfaChallenge(challengeToken, code, isRecoveryCode);
 
     if (result.success && result.user) {
       setUser(result.user);
@@ -122,11 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const forgotPassword = (payload: ForgotPasswordPayload) => {
+  const forgotPassword = async (
+    payload: ForgotPasswordPayload
+  ): Promise<ForgotPasswordResult> => {
     return authService.forgotPassword(payload);
   };
 
-  const resetPassword = (payload: ResetPasswordPayload) => {
+  const resetPassword = async (
+    payload: ResetPasswordPayload
+  ): Promise<ResetPasswordResult> => {
     return authService.resetPassword(payload);
   };
 
@@ -136,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         authState,
         login,
+        verifyMfaChallenge,
         signup,
         logout,
         logoutAll,

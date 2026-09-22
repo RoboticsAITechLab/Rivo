@@ -72,6 +72,8 @@ export interface AuthResult {
   error?: string;
   errorCode?: AuthErrorCode;
   requiresEmailVerification?: boolean;
+  mfaRequired?: boolean;
+  mfaChallengeToken?: string;
 }
 
 export interface ForgotPasswordPayload {
@@ -104,6 +106,7 @@ export interface ResetPasswordResult {
 
 export interface IAuthService {
   login(credentials: LoginCredentials): Promise<AuthResult>;
+  verifyMfaChallenge(challengeToken: string, code: string, isRecoveryCode?: boolean): Promise<AuthResult>;
   signup(payload: AdminSignupPayload): Promise<AuthResult>;
   logout(): Promise<void>;
   getCurrentUser(): Promise<AuthUser | null>;

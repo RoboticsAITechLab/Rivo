@@ -81,6 +81,15 @@ export class AuthService implements IAuthService {
       }
 
       const data = await response.json();
+
+      if (data.mfaRequired) {
+        return {
+          success: true,
+          mfaRequired: true,
+          mfaChallengeToken: data.mfaChallengeToken,
+        };
+      }
+
       return {
         success: true,
         user: data.user,
@@ -90,6 +99,55 @@ export class AuthService implements IAuthService {
       return {
         success: false,
         error: 'Unable to connect. Please try again.',
+        errorCode: 'NETWORK_ERROR',
+      };
+    }
+  }
+
+  public async verifyMfaChallenge(
+    challengeToken: string,
+    code: string,
+    isRecoveryCode = false
+  ): Promise<AuthResult> {
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/mfa/challenge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          challengeToken,
+          code: code.trim(),
+          isRecoveryCode,
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMsg = 'Invalid verification code. Please try again.';
+        try {
+          const errData = await response.json();
+          if (errData?.message) errorMsg = errData.message;
+        } catch {
+          // fallback
+        }
+
+        return {
+          success: false,
+          error: errorMsg,
+          errorCode: 'INVALID_CREDENTIALS',
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        user: data.user,
+      };
+    } catch {
+      return {
+        success: false,
+        error: 'Unable to connect to MFA verification service.',
         errorCode: 'NETWORK_ERROR',
       };
     }
