@@ -13,8 +13,22 @@ enum Role {
   ADMIN
   SCHOOL_ADMIN
   TEACHER
+  STAFF
   STUDENT
   PARENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DISABLED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 enum SchoolStatus {
@@ -91,6 +105,9 @@ model School {
   userPermissionOverrides UserPermissionOverride[]
   timetableSlots          TimetableSlot[]
   examTerms               ExamTerm[]
+  sessions                Session[]
+  staffInvitations        StaffInvitation[]
+  securityAuditLogs       SecurityAuditLog[]
 
   @@index([status])
   @@map("schools")
@@ -102,6 +119,10 @@ model User {
   passwordHash            String
   firstName               String
   lastName                String
+  phone                   String?
+  status                  UserStatus               @default(ACTIVE)
+  emailVerifiedAt         DateTime?                @map("email_verified_at")
+  lastLoginAt             DateTime?                @map("last_login_at")
   isActive                Boolean                  @default(true)
   isPlatformOwner         Boolean                  @default(false)
   createdAt               DateTime                 @default(now())
@@ -111,24 +132,33 @@ model User {
   students                Student[]
   parents                 Parent[]
   userPermissionOverrides UserPermissionOverride[]
+  sessions                Session[]
+  invitationsCreated      StaffInvitation[]        @relation("InvitedByUser")
+  passwordResetTokens     PasswordResetToken[]
+  securityAuditLogs       SecurityAuditLog[]
+  mfa                     UserMfa?
+  mfaRecoveryCodes        MfaRecoveryCode[]
+  mfaChallenges           MfaChallenge[]
 
   @@map("users")
 }
 
 model SchoolMembership {
-  id           String      @id @default(uuid())
+  id           String           @id @default(uuid())
   userId       String
   schoolId     String
   role         Role
-  customRoleId String?     @map("custom_role_id")
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school       School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  customRole   CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  customRoleId String?          @map("custom_role_id")
+  status       MembershipStatus @default(ACTIVE)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school       School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  customRole   CustomRole?      @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
 
   @@unique([userId, schoolId])
   @@index([schoolId])
+  @@index([schoolId, status])
   @@index([userId])
   @@index([role])
   @@index([customRoleId])
@@ -507,8 +537,9 @@ model CustomRole {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  rolePermissions RolePermission[]
-  memberships     SchoolMembership[]
+  rolePermissions  RolePermission[]
+  memberships      SchoolMembership[]
+  staffInvitations StaffInvitation[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -653,3 +684,135 @@ model ExamSchedule {
   @@index([examDate])
   @@map("exam_schedules")
 }
+
+// ==========================================
+// AUTHENTICATION & SECURITY MODELS
+// ==========================================
+
+model Session {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  schoolId   String    @map("school_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([schoolId])
+  @@index([tokenHash])
+  @@map("sessions")
+}
+
+model StaffInvitation {
+  id           String    @id @default(uuid())
+  schoolId     String    @map("school_id")
+  email        String
+  role         Role      @default(TEACHER)
+  customRoleId String?   @map("custom_role_id")
+  campusId     String?   @map("campus_id")
+  department   String?
+  designation  String?
+  invitedById  String    @map("invited_by_id")
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  acceptedAt   DateTime? @map("accepted_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  invitedBy  User        @relation("InvitedByUser", fields: [invitedById], references: [id], onDelete: Restrict)
+  customRole CustomRole? @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([email])
+  @@index([tokenHash])
+  @@map("staff_invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+model SecurityAuditLog {
+  id        String   @id @default(uuid())
+  schoolId  String?  @map("school_id")
+  userId    String?  @map("user_id")
+  event     String   // LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_ALL, etc.
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  details   String?  // Sanitized JSON metadata
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  school School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([userId])
+  @@index([event])
+  @@map("security_audit_logs")
+}
+
+model UserMfa {
+  id              String    @id @default(uuid())
+  userId          String    @unique @map("user_id")
+  type            String    @default("TOTP")
+  secretEncrypted String    @map("secret_encrypted")
+  enabled         Boolean   @default(false)
+  verifiedAt      DateTime? @map("verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_mfa")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([codeHash])
+  @@map("mfa_recovery_codes")
+}
+
+model MfaChallenge {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  challengeHash String    @unique @map("challenge_hash")
+  expiresAt     DateTime  @map("expires_at")
+  attemptCount  Int       @default(0) @map("attempt_count")
+  consumedAt    DateTime? @map("consumed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([challengeHash])
+  @@index([expiresAt])
+  @@map("mfa_challenges")
+}
+

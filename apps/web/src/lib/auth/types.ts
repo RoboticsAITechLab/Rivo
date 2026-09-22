@@ -10,6 +10,7 @@ export type UserRoleType =
   | 'ADMIN'
   | 'SCHOOL_ADMIN'
   | 'TEACHER'
+  | 'STAFF'
   | 'STUDENT'
   | 'PARENT';
 

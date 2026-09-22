@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
+import { requireAuth } from '@/lib/auth/authorize';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    if (session.role !== 'TEACHER' && session.role !== 'SCHOOL_ADMIN' && session.role !== 'ADMIN') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    const auth = await requireAuth(req, { roles: ['TEACHER', 'SCHOOL_ADMIN', 'ADMIN', 'OWNER'] });
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     const teacher = await prisma.teacher.findFirst({
       where: {
-        userId: session.userId,
-        schoolId: session.schoolId,
+        userId: auth.userId,
+        schoolId: auth.schoolId,
         status: 'ACTIVE',
       },
       include: {
@@ -46,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     const todayRegisters = await prisma.attendanceRegister.findMany({
       where: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         classId: { in: classIds },
         sectionId: { in: sectionIds },
         date: today,
@@ -61,7 +57,7 @@ export async function GET(req: NextRequest) {
     // Count enrolled students across assigned classes
     const totalAssignedStudents = await prisma.studentEnrollment.count({
       where: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         classId: { in: classIds },
         sectionId: { in: sectionIds },
         status: 'ACTIVE',

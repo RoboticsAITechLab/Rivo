@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
-import { authorizeResource } from '@/lib/auth/authorize';
+import { requireAuth } from '@/lib/auth/authorize';
 
 // GET /api/timetable/exam - Get formal examination terms and date-sheets
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'exam_timetable.view',
-    });
-
+    const auth = await requireAuth(req, { permission: 'exam_timetable.view' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const { searchParams } = new URL(req.url);
@@ -26,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     const examTerms = await prisma.examTerm.findMany({
       where: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         ...(termId ? { id: termId } : {}),
       },
       orderBy: { startDate: 'desc' },
@@ -56,26 +45,23 @@ export async function GET(req: NextRequest) {
 // POST /api/timetable/exam - Create formal exam term or date-sheet
 export async function POST(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'exam_timetable.create',
-    });
-
+    const auth = await requireAuth(req, { permission: 'exam_timetable.create' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const body = await req.json();
     const { name, code, startDate, endDate, isPublished } = body;
 
+    if (!name || !startDate || !endDate) {
+      return NextResponse.json(
+        { message: 'Name, startDate, and endDate are required.' },
+        { status: 400 }
+      );
+    }
+
     const activeSession = await prisma.academicSession.findFirst({
-      where: { schoolId: session.schoolId, status: 'ACTIVE' },
+      where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
 
     if (!activeSession) {
@@ -84,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     const term = await prisma.examTerm.create({
       data: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         academicSessionId: activeSession.id,
         name,
         code: code || null,

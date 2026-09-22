@@ -211,6 +211,20 @@ export class AuthService implements IAuthService {
     }
   }
 
+  public async logoutAll(): Promise<void> {
+    try {
+      await fetch(`${this.apiBaseUrl}/logout-all`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+    } catch {
+      // Best-effort logout-all notification
+    }
+  }
+
   public async forgotPassword(payload: ForgotPasswordPayload): Promise<ForgotPasswordResult> {
     try {
       const response = await fetch(`${this.apiBaseUrl}/forgot-password`, {

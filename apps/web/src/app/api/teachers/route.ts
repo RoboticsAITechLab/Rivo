@@ -1,37 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
-import { authorizeResource } from '@/lib/auth/authorize';
-import { hashPassword } from '@/lib/auth/crypto';
+import { prisma, Prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth/authorize';
+import { generateSecureToken, hashPassword, hashToken, validatePasswordPolicy } from '@/lib/auth/crypto';
+import { sendStaffInvitationEmail } from '@/lib/email/email-service';
 
 // GET /api/teachers - List all teachers with assignments and subjects
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'teachers.view',
-    });
-
+    const auth = await requireAuth(req, { permission: 'teachers.view' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim() || '';
     const status = searchParams.get('status');
 
-    const where: any = {
-      schoolId: session.schoolId,
+    const where: Prisma.TeacherWhereInput = {
+      schoolId: auth.schoolId,
     };
 
     if (status && status !== 'ALL') {
-      where.status = status;
+      where.status = status as Prisma.TeacherWhereInput['status'];
     }
 
     if (search) {
@@ -110,19 +100,9 @@ export async function GET(req: NextRequest) {
 // POST /api/teachers - Create new teacher user and faculty profile
 export async function POST(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'teachers.create',
-    });
-
+    const auth = await requireAuth(req, { permission: 'teachers.create' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const body = await req.json();
@@ -147,23 +127,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const defaultPassword = password || 'Password@123';
-    const hashedPassword = await hashPassword(defaultPassword);
+    const trimmedEmail = String(email).trim().toLowerCase();
+
+    // If password provided, validate password policy
+    let rawPassword = password;
+    let isInvited = false;
+
+    if (rawPassword) {
+      const passwordValidation = validatePasswordPolicy(rawPassword);
+      if (!passwordValidation.isValid) {
+        return NextResponse.json(
+          {
+            message: passwordValidation.errors[0] || 'Password does not meet complexity requirements.',
+            errors: passwordValidation.errors,
+          },
+          { status: 422 }
+        );
+      }
+    } else {
+      // If no password provided, generate a secure random temporary password and mark as INVITED
+      rawPassword = generateSecureToken(16);
+      isInvited = true;
+    }
+
+    const hashedPassword = await hashPassword(rawPassword);
 
     const activeSession = await prisma.academicSession.findFirst({
-      where: { schoolId: session.schoolId, status: 'ACTIVE' },
+      where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
+
+    let inviteToken: string | null = null;
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create or link user
-      let user = await tx.user.findUnique({ where: { email } });
+      let user = await tx.user.findUnique({ where: { email: trimmedEmail } });
       if (!user) {
         user = await tx.user.create({
           data: {
-            email,
-            firstName,
-            lastName,
+            email: trimmedEmail,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
             passwordHash: hashedPassword,
+            status: isInvited ? 'INVITED' : 'ACTIVE',
             isActive: true,
           },
         });
@@ -174,14 +179,15 @@ export async function POST(req: NextRequest) {
         where: {
           userId_schoolId: {
             userId: user.id,
-            schoolId: session.schoolId,
+            schoolId: auth.schoolId,
           },
         },
-        update: { role: 'TEACHER' },
+        update: { role: 'TEACHER', status: 'ACTIVE' },
         create: {
           userId: user.id,
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           role: 'TEACHER',
+          status: 'ACTIVE',
         },
       });
 
@@ -189,7 +195,7 @@ export async function POST(req: NextRequest) {
       const teacher = await tx.teacher.upsert({
         where: {
           schoolId_userId: {
-            schoolId: session.schoolId,
+            schoolId: auth.schoolId,
             userId: user.id,
           },
         },
@@ -202,7 +208,7 @@ export async function POST(req: NextRequest) {
           campusId: campusId || null,
         },
         create: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           userId: user.id,
           employeeId: employeeId || null,
           phone: phone || null,
@@ -230,7 +236,7 @@ export async function POST(req: NextRequest) {
               },
               update: { isClassTeacher: !!a.isClassTeacher },
               create: {
-                schoolId: session.schoolId,
+                schoolId: auth.schoolId,
                 teacherId: teacher.id,
                 academicSessionId: activeSession.id,
                 classId: a.classId,
@@ -243,17 +249,55 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 5. If invited, create an invitation record with token
+      if (isInvited) {
+        inviteToken = generateSecureToken(32);
+        await tx.staffInvitation.create({
+          data: {
+            schoolId: auth.schoolId,
+            email: trimmedEmail,
+            role: 'TEACHER',
+            campusId: campusId || null,
+            department: department || null,
+            designation: designation || null,
+            invitedById: auth.userId,
+            tokenHash: hashToken(inviteToken),
+            expiresAt: new Date(Date.now() + 7 * 86400 * 1000),
+          },
+        });
+      }
+
       return teacher;
     });
 
+    if (inviteToken) {
+      const school = await prisma.school.findUnique({
+        where: { id: auth.schoolId },
+        select: { name: true },
+      });
+      const appUrl = process.env.APP_URL || 'http://localhost:3000';
+      const inviteUrl = `${appUrl}/invite/accept?token=${inviteToken}`;
+      await sendStaffInvitationEmail({
+        to: trimmedEmail,
+        schoolName: school?.name || 'Rivo School',
+        role: 'TEACHER',
+        inviteUrl,
+        schoolId: auth.schoolId,
+        invitedById: auth.userId,
+        ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip',
+        userAgent: req.headers.get('user-agent') || 'unknown-ua',
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Teacher created successfully.',
+      message: 'Teacher record created successfully.',
       teacher: result,
+      ...(inviteToken ? { inviteToken, inviteUrl: `/invite/accept?token=${inviteToken}` } : {}),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in POST /api/teachers:', error);
-    if (error.code === 'P2002') {
+    if ((error as { code?: string })?.code === 'P2002') {
       return NextResponse.json(
         { message: 'A teacher with this employee ID or email already exists.' },
         { status: 409 }

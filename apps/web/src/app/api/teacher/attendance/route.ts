@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
+import { requireAuth } from '@/lib/auth/authorize';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get('classId');
     const sectionId = searchParams.get('sectionId');
@@ -18,36 +13,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: 'classId and sectionId are required' }, { status: 400 });
     }
 
-    // Security check: If role is TEACHER, verify assignment
-    if (session.role === 'TEACHER') {
-      const teacher = await prisma.teacher.findFirst({
-        where: { userId: session.userId, schoolId: session.schoolId },
-      });
-      if (!teacher) {
-        return NextResponse.json({ message: 'Teacher record not found' }, { status: 403 });
-      }
+    const auth = await requireAuth(req, {
+      permission: 'attendance.view',
+      resource: { classId, sectionId },
+    });
 
-      const isAssigned = await prisma.teacherAssignment.findFirst({
-        where: {
-          schoolId: session.schoolId,
-          teacherId: teacher.id,
-          classId: classId,
-          sectionId: sectionId,
-        },
-      });
-
-      if (!isAssigned) {
-        return NextResponse.json(
-          { message: 'You are not authorized to access this class or section.' },
-          { status: 403 }
-        );
-      }
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     // 1. Fetch active enrolled students for class + section
     const enrollments = await prisma.studentEnrollment.findMany({
       where: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         classId: classId,
         sectionId: sectionId,
         status: 'ACTIVE',
@@ -70,7 +48,7 @@ export async function GET(req: NextRequest) {
 
       register = await prisma.attendanceRegister.findFirst({
         where: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           classId: classId,
           sectionId: sectionId,
           date: targetDate,
@@ -110,11 +88,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
     const body = await req.json();
     const { classId, sectionId, date, records } = body;
 
@@ -122,35 +95,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Missing required attendance fields' }, { status: 400 });
     }
 
-    // Security check: teacher assignment
-    if (session.role === 'TEACHER') {
-      const teacher = await prisma.teacher.findFirst({
-        where: { userId: session.userId, schoolId: session.schoolId },
-      });
-      if (!teacher) {
-        return NextResponse.json({ message: 'Teacher record not found' }, { status: 403 });
-      }
+    const auth = await requireAuth(req, {
+      permission: 'attendance.take',
+      resource: { classId, sectionId },
+    });
 
-      const isAssigned = await prisma.teacherAssignment.findFirst({
-        where: {
-          schoolId: session.schoolId,
-          teacherId: teacher.id,
-          classId: classId,
-          sectionId: sectionId,
-        },
-      });
-
-      if (!isAssigned) {
-        return NextResponse.json(
-          { message: 'You are not authorized to submit attendance for this class.' },
-          { status: 403 }
-        );
-      }
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     // Active session lookup
     const activeSession = await prisma.academicSession.findFirst({
-      where: { schoolId: session.schoolId, status: 'ACTIVE' },
+      where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
 
     if (!activeSession) {
@@ -160,37 +116,41 @@ export async function POST(req: NextRequest) {
     const attendanceDate = new Date(date);
     attendanceDate.setHours(0, 0, 0, 0);
 
-    // Upsert AttendanceRegister
-    const register = await prisma.attendanceRegister.upsert({
+    // Find or create AttendanceRegister
+    let register = await prisma.attendanceRegister.findFirst({
       where: {
-        schoolId_academicSessionId_classId_sectionId_date_subjectId: {
-          schoolId: session.schoolId,
-          academicSessionId: activeSession.id,
-          classId: classId,
-          sectionId: sectionId,
-          date: attendanceDate,
-          subjectId: null as any,
-        },
-      },
-      update: {
-        updatedAt: new Date(),
-      },
-      create: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         academicSessionId: activeSession.id,
         classId: classId,
         sectionId: sectionId,
         date: attendanceDate,
-        createdByUserId: session.userId,
       },
     });
+
+    if (!register) {
+      register = await prisma.attendanceRegister.create({
+        data: {
+          schoolId: auth.schoolId,
+          academicSessionId: activeSession.id,
+          classId: classId,
+          sectionId: sectionId,
+          date: attendanceDate,
+          createdByUserId: auth.userId,
+        },
+      });
+    } else {
+      register = await prisma.attendanceRegister.update({
+        where: { id: register.id },
+        data: { updatedAt: new Date() },
+      });
+    }
 
     // Upsert each student record
     for (const rec of records) {
       // Verify student belongs to this school
       const enrolled = await prisma.studentEnrollment.findFirst({
         where: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           studentId: rec.studentId,
           classId: classId,
           sectionId: sectionId,
@@ -209,7 +169,7 @@ export async function POST(req: NextRequest) {
         update: {
           status: rec.status,
           reason: rec.reason || null,
-          markedByUserId: session.userId,
+          markedByUserId: auth.userId,
           markedAt: new Date(),
         },
         create: {
@@ -217,7 +177,7 @@ export async function POST(req: NextRequest) {
           studentId: rec.studentId,
           status: rec.status,
           reason: rec.reason || null,
-          markedByUserId: session.userId,
+          markedByUserId: auth.userId,
         },
       });
     }
@@ -225,10 +185,10 @@ export async function POST(req: NextRequest) {
     // Audit Log
     await prisma.attendanceAuditLog.create({
       data: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         registerId: register.id,
         action: 'UPDATED',
-        performedByUserId: session.userId,
+        performedByUserId: auth.userId,
         details: JSON.stringify({
           classId,
           sectionId,

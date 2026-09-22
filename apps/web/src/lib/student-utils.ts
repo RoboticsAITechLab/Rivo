@@ -3,54 +3,54 @@ import { StudentDetail, StudentGuardian } from '@/types/student';
 /**
  * Builds a valid StudentDetail record from form inputs with empty/default fields for new admissions
  */
-export function buildStudentDetail(input: any): StudentDetail {
-  const id = input.id || `std-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const firstName = input.firstName || '';
-  const lastName = input.lastName || '';
-  const name = input.name || `${firstName} ${lastName}`.trim() || 'Unnamed Student';
-  const admissionNumber = input.admissionNumber || `ADM-${Math.floor(1000 + Math.random() * 9000)}`;
-  const dateOfBirth = input.dateOfBirth || input.dob || '';
-  const gender = input.gender || 'Male';
-  const className = input.className || '';
-  const section = input.section || '';
+export function buildStudentDetail(input: Record<string, unknown>): StudentDetail {
+  const id = (input.id as string) || `std-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const firstName = (input.firstName as string) || '';
+  const lastName = (input.lastName as string) || '';
+  const name = (input.name as string) || `${firstName} ${lastName}`.trim() || 'Unnamed Student';
+  const admissionNumber = (input.admissionNumber as string) || `ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+  const dateOfBirth = (input.dateOfBirth as string) || (input.dob as string) || '';
+  const gender = (input.gender as 'Male' | 'Female' | 'Other') || 'Male';
+  const className = (input.className as string) || '';
+  const section = (input.section as string) || '';
   const rollNumber = input.rollNumber ? String(input.rollNumber) : '';
-  const academicSession = input.academicSession || '2026-2027';
-  const status = input.status || 'ACTIVE';
-  const email = input.email || '';
-  const phone = input.phone || '';
+  const academicSession = (input.academicSession as string) || '2026-2027';
+  const status = (input.status as StudentDetail['status']) || 'ACTIVE';
+  const email = (input.email as string) || '';
+  const phone = (input.phone as string) || '';
 
-  const address = input.address || {
-    street: input.street || '',
-    addressLine2: input.addressLine2,
-    city: input.city || '',
-    district: input.district,
-    state: input.state || '',
-    country: input.country || 'India',
-    postalCode: input.postalCode || '',
+  const address = (input.address as StudentDetail['address']) || {
+    street: (input.street as string) || '',
+    addressLine2: input.addressLine2 as string | undefined,
+    city: (input.city as string) || '',
+    district: input.district as string | undefined,
+    state: (input.state as string) || '',
+    country: (input.country as string) || 'India',
+    postalCode: (input.postalCode as string) || '',
   };
 
-  const primaryGuardian: StudentGuardian = input.primaryGuardian || {
+  const primaryGuardian: StudentGuardian = (input.primaryGuardian as StudentGuardian) || {
     id: `grd-${Date.now()}-1`,
-    name: input.guardianName?.replace(/\s*\([^)]*\)/, '') || '',
-    relationship: (input.guardianRelation as any) || 'Father',
-    phone: input.guardianPhone || '',
-    email: input.guardianEmail || undefined,
-    occupation: input.guardianOccupation || '',
+    name: (input.guardianName as string)?.replace(/\s*\([^)]*\)/, '') || '',
+    relationship: (input.guardianRelation as StudentGuardian['relationship']) || 'Father',
+    phone: (input.guardianPhone as string) || '',
+    email: (input.guardianEmail as string) || undefined,
+    occupation: (input.guardianOccupation as string) || '',
     isPrimary: true,
     isEmergencyContact: true,
     allowSchoolCommunication: true,
   };
 
-  const secondaryGuardian: StudentGuardian | undefined = input.secondaryGuardian || (input.secGuardianName ? {
+  const secondaryGuardian: StudentGuardian | undefined = (input.secondaryGuardian as StudentGuardian) || (input.secGuardianName ? {
     id: `grd-${Date.now()}-2`,
-    name: input.secGuardianName,
-    relationship: (input.secGuardianRelation as any) || 'Mother',
-    phone: input.secGuardianPhone || '',
+    name: input.secGuardianName as string,
+    relationship: (input.secGuardianRelation as StudentGuardian['relationship']) || 'Mother',
+    phone: (input.secGuardianPhone as string) || '',
     isPrimary: false,
     isEmergencyContact: true,
   } : undefined);
 
-  const guardians: StudentGuardian[] = input.guardians || [
+  const guardians: StudentGuardian[] = (input.guardians as StudentGuardian[]) || [
     primaryGuardian,
     ...(secondaryGuardian ? [secondaryGuardian] : []),
   ];
@@ -58,12 +58,12 @@ export function buildStudentDetail(input: any): StudentDetail {
   return {
     id,
     admissionNumber,
-    photoUrl: input.photoUrl,
+    photoUrl: input.photoUrl as string | undefined,
     firstName,
-    middleName: input.middleName,
+    middleName: input.middleName as string | undefined,
     lastName,
     name,
-    displayName: input.displayName || name,
+    displayName: (input.displayName as string) || name,
     className,
     section,
     rollNumber,
@@ -71,39 +71,39 @@ export function buildStudentDetail(input: any): StudentDetail {
     status,
     gender,
     dateOfBirth,
-    nationality: input.nationality || 'Indian',
-    motherTongue: input.motherTongue || 'English',
-    studentType: input.studentType || 'REGULAR',
-    admissionType: input.admissionType || 'FIRST_TIME',
-    previousSchool: input.previousSchool,
-    previousClass: input.previousClass,
-    identifiers: input.identifiers || {
+    nationality: (input.nationality as string) || 'Indian',
+    motherTongue: (input.motherTongue as string) || 'English',
+    studentType: (input.studentType as string) || 'REGULAR',
+    admissionType: (input.admissionType as StudentDetail['admissionType']) || 'FIRST_TIME',
+    previousSchool: input.previousSchool as string | undefined,
+    previousClass: input.previousClass as string | undefined,
+    identifiers: (input.identifiers as StudentDetail['identifiers']) || {
       studentId: admissionNumber,
-      apaarId: input.apaarId,
-      nationalId: input.nationalId,
+      apaarId: input.apaarId as string | undefined,
+      nationalId: input.nationalId as string | undefined,
     },
     email,
     phone,
-    bloodGroup: input.bloodGroup || 'B+',
+    bloodGroup: (input.bloodGroup as string) || 'B+',
     address,
-    permanentAddressSameAsCurrent: input.permanentAddressSameAsCurrent ?? true,
-    permanentAddress: input.permanentAddress,
+    permanentAddressSameAsCurrent: input.permanentAddressSameAsCurrent !== false,
+    permanentAddress: input.permanentAddress as StudentDetail['permanentAddress'],
     guardians,
     primaryGuardian,
     secondaryGuardian,
-    guardianName: input.guardianName || `${primaryGuardian.name} (${primaryGuardian.relationship})`,
-    guardianPhone: input.guardianPhone || primaryGuardian.phone,
-    enrollmentDate: input.enrollmentDate || input.enrollDate || new Date().toISOString().split('T')[0],
-    currentTeacher: input.currentTeacher || input.teacher || '',
-    currentCampus: input.currentCampus || '',
-    documents: input.documents || [],
-    health: input.health || {
-      bloodGroup: input.bloodGroup || 'B+',
+    guardianName: (input.guardianName as string) || `${primaryGuardian.name} (${primaryGuardian.relationship})`,
+    guardianPhone: (input.guardianPhone as string) || primaryGuardian.phone,
+    enrollmentDate: (input.enrollmentDate as string) || (input.enrollDate as string) || new Date().toISOString().split('T')[0],
+    currentTeacher: (input.currentTeacher as string) || (input.teacher as string) || '',
+    currentCampus: (input.currentCampus as string) || '',
+    documents: (input.documents as StudentDetail['documents']) || [],
+    health: (input.health as StudentDetail['health']) || {
+      bloodGroup: (input.bloodGroup as string) || 'B+',
     },
-    transport: input.transport || {
+    transport: (input.transport as StudentDetail['transport']) || {
       usesSchoolTransport: false,
     },
-    communication: input.communication || {
+    communication: (input.communication as StudentDetail['communication']) || {
       preferredLanguage: 'English',
       parentCommunication: {
         announcements: true,
@@ -112,10 +112,10 @@ export function buildStudentDetail(input: any): StudentDetail {
         results: true,
       },
     },
-    customFields: input.customFields,
-    houseId: input.houseId || null,
-    draftProgress: input.draftProgress,
-    lastSavedAt: input.lastSavedAt,
+    customFields: input.customFields as Record<string, unknown> | undefined,
+    houseId: (input.houseId as string) || null,
+    draftProgress: input.draftProgress as number | undefined,
+    lastSavedAt: input.lastSavedAt as string | undefined,
     attendancePercentage: 0,
     attendanceSummary: {
       overallPercentage: 0,

@@ -43,6 +43,54 @@ export async function verifyPassword(password: string, storedHash: string): Prom
 }
 
 /**
+ * Generates a cryptographically secure random token (hex-encoded).
+ */
+export function generateSecureToken(bytes = 32): string {
+  return crypto.randomBytes(bytes).toString('hex');
+}
+
+/**
+ * Computes a SHA-256 hash of a raw token for secure database storage/lookup.
+ */
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Validates password complexity:
+ * - Minimum 8 characters
+ * - At least one uppercase letter
+ * - At least one lowercase letter
+ * - At least one digit
+ * - At least one special symbol
+ */
+export function validatePasswordPolicy(password: string): {
+  isValid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  if (!password || password.length < 8) {
+    errors.push('Password must be at least 8 characters long.');
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter.');
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter.');
+  }
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number.');
+  }
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
+    errors.push('Password must contain at least one special character.');
+  }
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
  * Generates an HMAC-SHA256 signed session token for secure cookie authentication.
  */
 const DEFAULT_SECRET = process.env.JWT_SECRET || 'rivo-institutional-auth-secret-production-2026';

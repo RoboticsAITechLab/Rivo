@@ -196,10 +196,116 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: 'Enter marks and scores for students in assigned subjects',
   },
   {
+    code: 'results.edit_marks',
+    module: 'results',
+    action: 'edit_marks',
+    name: 'Edit Marks',
+    description: 'Modify entered marks and grades before publication',
+  },
+  {
     code: 'results.publish',
     module: 'results',
     action: 'publish',
     name: 'Publish Results',
     description: 'Publish exam results to parents and students',
+  },
+
+  // Users Management
+  {
+    code: 'users.view',
+    module: 'users',
+    action: 'view',
+    name: 'View Users',
+    description: 'View school users directory and account details',
+  },
+  {
+    code: 'users.create',
+    module: 'users',
+    action: 'create',
+    name: 'Create Users',
+    description: 'Provision or invite new school users',
+  },
+  {
+    code: 'users.edit',
+    module: 'users',
+    action: 'edit',
+    name: 'Edit Users',
+    description: 'Update user profiles, contacts, and account status',
+  },
+  {
+    code: 'users.disable',
+    module: 'users',
+    action: 'disable',
+    name: 'Disable Users',
+    description: 'Suspend or disable school user accounts',
+  },
+
+  // Roles Management
+  {
+    code: 'roles.view',
+    module: 'roles',
+    action: 'view',
+    name: 'View Roles',
+    description: 'View system and custom roles within the school',
+  },
+  {
+    code: 'roles.create',
+    module: 'roles',
+    action: 'create',
+    name: 'Create Custom Roles',
+    description: 'Define new custom roles and baseline permissions',
+  },
+  {
+    code: 'roles.edit',
+    module: 'roles',
+    action: 'edit',
+    name: 'Edit Custom Roles',
+    description: 'Update custom role descriptions and capability mappings',
+  },
+  {
+    code: 'roles.delete',
+    module: 'roles',
+    action: 'delete',
+    name: 'Delete Custom Roles',
+    description: 'Remove custom roles from the school directory',
+  },
+
+  // Permissions Management
+  {
+    code: 'permissions.view',
+    module: 'permissions',
+    action: 'view',
+    name: 'View Permissions',
+    description: 'View permission matrix and overrides',
+  },
+  {
+    code: 'permissions.manage',
+    module: 'permissions',
+    action: 'manage',
+    name: 'Manage Permissions',
+    description: 'Configure role-permission mappings and individual overrides',
+  },
+
+  // Invitations
+  {
+    code: 'invitations.create',
+    module: 'invitations',
+    action: 'create',
+    name: 'Send Invitations',
+    description: 'Issue invitations to new faculty and staff members',
+  },
+  {
+    code: 'invitations.view',
+    module: 'invitations',
+    action: 'view',
+    name: 'View Invitations',
+    description: 'Review pending, accepted, and expired staff invitations',
+  },
+  {
+    code: 'invitations.revoke',
+    module: 'invitations',
+    action: 'revoke',
+    name: 'Revoke Invitations',
+    description: 'Cancel pending staff invitations',
   },
 ];

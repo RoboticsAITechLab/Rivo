@@ -20,6 +20,7 @@ interface AuthContextValue {
   login: (credentials: LoginCredentials) => Promise<AuthResult>;
   signup: (payload: AdminSignupPayload) => Promise<AuthResult>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   refreshSession: () => Promise<void>;
   forgotPassword: (payload: ForgotPasswordPayload) => Promise<ForgotPasswordResult>;
   resetPassword: (payload: ResetPasswordPayload) => Promise<ResetPasswordResult>;
@@ -96,6 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const logoutAll = async (): Promise<void> => {
+    try {
+      await authService.logoutAll();
+    } finally {
+      setUser(null);
+      setAuthState('UNAUTHENTICATED');
+    }
+  };
+
   const refreshSession = async (): Promise<void> => {
     try {
       const refreshedUser = await authService.refreshSession();
@@ -128,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         signup,
         logout,
+        logoutAll,
         refreshSession,
         forgotPassword,
         resetPassword,

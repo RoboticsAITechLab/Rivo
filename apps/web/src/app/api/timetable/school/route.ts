@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
-import { authorizeResource } from '@/lib/auth/authorize';
+import { prisma, Prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth/authorize';
 
 // GET /api/timetable/school - Get weekly class or teacher schedule
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get('classId');
     const sectionId = searchParams.get('sectionId');
     const teacherId = searchParams.get('teacherId');
 
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'school_timetable.view',
+    const auth = await requireAuth(req, {
+      permission: 'school_timetable.view',
       resource: {
         classId: classId || undefined,
         sectionId: sectionId || undefined,
@@ -27,11 +19,11 @@ export async function GET(req: NextRequest) {
     });
 
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
-    const where: any = {
-      schoolId: session.schoolId,
+    const where: Prisma.TimetableSlotWhereInput = {
+      schoolId: auth.schoolId,
     };
 
     if (classId && classId !== 'ALL') where.classId = classId;
@@ -77,11 +69,6 @@ export async function GET(req: NextRequest) {
 // POST /api/timetable/school - Create/Update weekly schedule slot
 export async function POST(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
     const body = await req.json();
     const {
       classId,
@@ -95,19 +82,17 @@ export async function POST(req: NextRequest) {
       roomNumber,
     } = body;
 
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'school_timetable.create',
+    const auth = await requireAuth(req, {
+      permission: 'school_timetable.create',
       resource: { classId, sectionId, subjectId },
     });
 
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const activeSession = await prisma.academicSession.findFirst({
-      where: { schoolId: session.schoolId, status: 'ACTIVE' },
+      where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
 
     if (!activeSession) {
@@ -132,7 +117,7 @@ export async function POST(req: NextRequest) {
         roomNumber,
       },
       create: {
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
         academicSessionId: activeSession.id,
         classId,
         sectionId,

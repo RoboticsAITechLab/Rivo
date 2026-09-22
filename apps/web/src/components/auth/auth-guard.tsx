@@ -24,7 +24,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
         user.roleType === 'SCHOOL_ADMIN' ||
         user.roleType === 'ADMIN' ||
         user.roleType === 'OWNER' ||
-        user.roleType === 'TEACHER';
+        user.roleType === 'TEACHER' ||
+        user.roleType === 'STAFF';
 
       if (!isAllowed) {
         router.replace('/access-denied');

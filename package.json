@@ -8,7 +8,12 @@
     "packages/*"
   ],
   "scripts": {
-    "db:seed": "prisma db seed"
+    "dev": "npm run dev --workspace=web",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:api": "npm run start:dev --workspace=api",
+    "db:seed": "prisma db seed",
+    "test:auth": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/auth-matrix.test.ts",
+    "test": "npm run test:auth"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -18,6 +23,10 @@
     "tsx": "^4.23.13"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "^6.19.3",
+    "ioredis": "^6.0.0",
+    "otpauth": "^9.5.2",
+    "qrcode": "^1.5.4",
+    "resend": "^6.28.1"
   }
 }

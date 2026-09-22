@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
+import { requireAuth } from '@/lib/auth/authorize';
 import { SYSTEM_PERMISSIONS } from '@/lib/auth/permissions-catalog';
 
 // GET /api/teachers/[id]/permissions - Get teacher details and all effective permissions
@@ -9,19 +9,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    if (session.role !== 'OWNER' && session.role !== 'ADMIN' && session.role !== 'SCHOOL_ADMIN') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    const auth = await requireAuth(req, { roles: ['OWNER', 'ADMIN', 'SCHOOL_ADMIN'] });
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     const { id: teacherId } = await params;
 
     const teacher = await prisma.teacher.findFirst({
-      where: { id: teacherId, schoolId: session.schoolId },
+      where: { id: teacherId, schoolId: auth.schoolId },
       include: {
         user: true,
         campus: true,
@@ -43,7 +39,7 @@ export async function GET(
     const overrides = await prisma.userPermissionOverride.findMany({
       where: {
         userId: teacher.userId,
-        schoolId: session.schoolId,
+        schoolId: auth.schoolId,
       },
       include: { permission: true },
     });
@@ -113,13 +109,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    if (session.role !== 'OWNER' && session.role !== 'ADMIN' && session.role !== 'SCHOOL_ADMIN') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    const auth = await requireAuth(req, { roles: ['OWNER', 'ADMIN', 'SCHOOL_ADMIN'] });
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     const { id: teacherId } = await params;
@@ -131,7 +123,7 @@ export async function POST(
     }
 
     const teacher = await prisma.teacher.findFirst({
-      where: { id: teacherId, schoolId: session.schoolId },
+      where: { id: teacherId, schoolId: auth.schoolId },
       include: { user: true },
     });
 
@@ -159,7 +151,7 @@ export async function POST(
           scope: item.scope || 'ASSIGNED',
         },
         create: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           userId: teacher.userId,
           permissionId: perm.id,
           isGranted: !!item.granted,

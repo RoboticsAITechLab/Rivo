@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getAuthSession } from '@/lib/auth/session';
-import { authorizeResource } from '@/lib/auth/authorize';
+import { prisma, Prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth/authorize';
 
 // GET /api/students - List, search, filter, and paginate students
 export async function GET(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    // Authorize students.view
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'students.view',
-    });
-
+    const auth = await requireAuth(req, { permission: 'students.view' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const { searchParams } = new URL(req.url);
@@ -32,12 +20,12 @@ export async function GET(req: NextRequest) {
     const skip = (page - 1) * pageSize;
 
     // Build Prisma where clause with strict tenant isolation
-    const where: any = {
-      schoolId: session.schoolId,
+    const where: Prisma.StudentWhereInput = {
+      schoolId: auth.schoolId,
     };
 
     if (status && status !== 'ALL') {
-      where.status = status;
+      where.status = status as Prisma.StudentWhereInput['status'];
     }
 
     if (search) {
@@ -62,7 +50,7 @@ export async function GET(req: NextRequest) {
     // Scoped restriction for teachers with ASSIGNED scope
     if (auth.scope === 'ASSIGNED') {
       const teacher = await prisma.teacher.findFirst({
-        where: { userId: session.userId, schoolId: session.schoolId },
+        where: { userId: auth.userId, schoolId: auth.schoolId },
         include: { assignments: true },
       });
 
@@ -158,20 +146,9 @@ export async function GET(req: NextRequest) {
 // POST /api/students - Admit new student with enrollment and guardian records
 export async function POST(req: NextRequest) {
   try {
-    const session = getAuthSession(req);
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthenticated' }, { status: 401 });
-    }
-
-    // Authorize students.create
-    const auth = await authorizeResource({
-      userId: session.userId,
-      schoolId: session.schoolId,
-      permissionCode: 'students.create',
-    });
-
+    const auth = await requireAuth(req, { permission: 'students.create' });
     if (!auth.authorized) {
-      return NextResponse.json({ message: auth.reason || 'Forbidden' }, { status: 403 });
+      return auth.response;
     }
 
     const body = await req.json();
@@ -202,7 +179,7 @@ export async function POST(req: NextRequest) {
 
     // Active session lookup
     const activeSession = await prisma.academicSession.findFirst({
-      where: { schoolId: session.schoolId, status: 'ACTIVE' },
+      where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
 
     if (!activeSession) {
@@ -217,7 +194,7 @@ export async function POST(req: NextRequest) {
       // 1. Create Student
       const student = await tx.student.create({
         data: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           campusId: campusId || null,
           admissionNumber,
           firstName,
@@ -237,7 +214,7 @@ export async function POST(req: NextRequest) {
       // 2. Create Student Enrollment
       await tx.studentEnrollment.create({
         data: {
-          schoolId: session.schoolId,
+          schoolId: auth.schoolId,
           studentId: student.id,
           academicSessionId: activeSession.id,
           classId,
@@ -250,7 +227,7 @@ export async function POST(req: NextRequest) {
       if (guardian && guardian.firstName) {
         const parent = await tx.parent.create({
           data: {
-            schoolId: session.schoolId,
+            schoolId: auth.schoolId,
             firstName: guardian.firstName,
             lastName: guardian.lastName || '',
             phone: guardian.phone || null,
@@ -276,9 +253,9 @@ export async function POST(req: NextRequest) {
       message: 'Student admitted successfully.',
       student: newStudent,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in POST /api/students:', error);
-    if (error.code === 'P2002') {
+    if ((error as { code?: string })?.code === 'P2002') {
       return NextResponse.json(
         { message: 'A student with this admission number already exists in this school.' },
         { status: 409 }
