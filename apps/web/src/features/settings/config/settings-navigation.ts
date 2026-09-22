@@ -87,6 +87,15 @@ export const SETTINGS_NAVIGATION_GROUPS: SettingsCategoryGroup[] = [
         category: 'GENERAL',
         keywords: ['branding', 'logo', 'seal', 'signature', 'crest', 'watermark', 'theme'],
       },
+      {
+        id: 'id-system',
+        title: 'ID System & Formats',
+        href: '/school/settings/id-system',
+        icon: Hash,
+        description: 'Auto-generation rules, prefixes and number sequences for Students, Teachers and Staff',
+        category: 'GENERAL',
+        keywords: ['id', 'student id', 'teacher id', 'employee id', 'admission number', 'format', 'prefix', 'sequence', 'auto id'],
+      },
     ],
   },
   {

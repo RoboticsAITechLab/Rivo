@@ -54,17 +54,16 @@ export function validateTeacherForm(
     }
   }
 
-  // Employee ID
-  if (!formData.employment.employeeId.trim()) {
-    errors.employeeId = 'Employee ID is required.';
-  } else {
+  // Employee ID (optional / AUTO for system-generated sequence)
+  const empId = formData.employment.employeeId?.trim();
+  if (empId && empId.toUpperCase() !== 'AUTO') {
     const isDuplicate = existingTeachers.some(
       (t) =>
-        t.employment.employeeId.toLowerCase() === formData.employment.employeeId.toLowerCase().trim() &&
+        t.employment.employeeId.toLowerCase() === empId.toLowerCase() &&
         t.id !== currentTeacherId,
     );
     if (isDuplicate) {
-      errors.employeeId = `Employee ID "${formData.employment.employeeId}" is already assigned to another educator.`;
+      errors.employeeId = `Employee ID "${empId}" is already assigned to another educator.`;
     }
   }
 

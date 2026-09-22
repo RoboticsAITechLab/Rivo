@@ -123,6 +123,20 @@ export async function POST(req: NextRequest) {
       // 4. If TEACHER, upsert Teacher record
       let teacherProfile = null;
       if (invitation.role === 'TEACHER') {
+        const existingTeacher = await tx.teacher.findFirst({
+          where: {
+            schoolId: invitation.schoolId,
+            userId: user.id,
+          },
+          select: { employeeId: true },
+        });
+
+        let assignedEmployeeId = existingTeacher?.employeeId;
+        if (!assignedEmployeeId) {
+          const { generateNextTeacherId } = await import('@/lib/id-generator');
+          assignedEmployeeId = await generateNextTeacherId(invitation.schoolId, tx);
+        }
+
         teacherProfile = await tx.teacher.upsert({
           where: {
             schoolId_userId: {
@@ -134,6 +148,7 @@ export async function POST(req: NextRequest) {
             campusId: invitation.campusId,
             department: invitation.department,
             designation: invitation.designation,
+            employeeId: assignedEmployeeId,
             status: 'ACTIVE',
           },
           create: {
@@ -142,6 +157,7 @@ export async function POST(req: NextRequest) {
             campusId: invitation.campusId,
             department: invitation.department,
             designation: invitation.designation,
+            employeeId: assignedEmployeeId,
             status: 'ACTIVE',
           },
         });

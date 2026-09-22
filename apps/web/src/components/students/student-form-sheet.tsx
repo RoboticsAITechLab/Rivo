@@ -57,7 +57,7 @@ function getInitialFormData(studentToEdit?: StudentDetail | null) {
     className: 'Class 10',
     section: 'A',
     rollNumber: '15',
-    admissionNumber: 'ADM-2090',
+    admissionNumber: 'AUTO',
     guardianName: '',
     guardianRelation: 'Father' as 'Father' | 'Mother' | 'Legal Guardian',
     guardianPhone: '+91 98',
@@ -102,7 +102,7 @@ export function StudentFormSheet({
 
     if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.admissionNumber.trim()) newErrors.admissionNumber = 'Admission number is required';
+    // Admission number is auto-generated if left empty or 'AUTO'
     if (!formData.guardianName.trim()) newErrors.guardianName = 'Guardian name is required';
 
     if (Object.keys(newErrors).length > 0) {
@@ -389,10 +389,13 @@ export function StudentFormSheet({
                 <Input
                   id="adm"
                   value={formData.admissionNumber}
-                  onChange={(e) => handleChange('admissionNumber', e.target.value)}
-                  placeholder="ADM-2046"
-                  className="font-mono"
+                  onChange={(e) => handleChange('admissionNumber', e.target.value.toUpperCase())}
+                  placeholder="AUTO (system-generated) or manual code"
+                  className="font-mono uppercase"
                 />
+                <span className="text-[10px] text-muted-foreground mt-1 block">
+                  Keep as &apos;AUTO&apos; for system-generated ID, or specify manual number.
+                </span>
               </FormField>
             </div>
           </FormSection>

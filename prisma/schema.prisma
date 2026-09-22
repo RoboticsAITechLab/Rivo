@@ -107,6 +107,8 @@ model School {
   sessions                Session[]
   staffInvitations        StaffInvitation[]
   securityAuditLogs       SecurityAuditLog[]
+  idSequences             IdSequence[]
+  idFormatConfig          IdFormatConfig?
 
   @@index([status])
   @@map("schools")
@@ -813,5 +815,38 @@ model MfaChallenge {
   @@index([challengeHash])
   @@index([expiresAt])
   @@map("mfa_challenges")
+}
+
+model IdSequence {
+  id         String   @id @default(uuid())
+  schoolId   String   @map("school_id")
+  entityType String   @map("entity_type")
+  year       Int?
+  lastNumber Int      @default(0) @map("last_number")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, entityType, year])
+  @@index([schoolId])
+  @@map("id_sequences")
+}
+
+model IdFormatConfig {
+  id             String   @id @default(uuid())
+  schoolId       String   @unique @map("school_id")
+  studentPrefix  String   @default("STD") @map("student_prefix")
+  teacherPrefix  String   @default("TCH") @map("teacher_prefix")
+  staffPrefix    String   @default("STF") @map("staff_prefix")
+  includeYear    Boolean  @default(true) @map("include_year")
+  studentPadding Int      @default(4) @map("student_padding")
+  teacherPadding Int      @default(4) @map("teacher_padding")
+  staffPadding   Int      @default(4) @map("staff_padding")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("id_format_configs")
 }
 

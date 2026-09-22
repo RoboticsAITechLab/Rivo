@@ -192,6 +192,20 @@ export async function POST(req: NextRequest) {
       });
 
       // 3. Teacher Profile
+      let finalEmployeeId = employeeId?.trim();
+      if (!finalEmployeeId || finalEmployeeId.toUpperCase() === 'AUTO') {
+        const existingTeacher = await tx.teacher.findFirst({
+          where: { schoolId: auth.schoolId, userId: user.id },
+          select: { employeeId: true },
+        });
+        if (existingTeacher?.employeeId) {
+          finalEmployeeId = existingTeacher.employeeId;
+        } else {
+          const { generateNextTeacherId } = await import('@/lib/id-generator');
+          finalEmployeeId = await generateNextTeacherId(auth.schoolId, tx);
+        }
+      }
+
       const teacher = await tx.teacher.upsert({
         where: {
           schoolId_userId: {
@@ -200,7 +214,7 @@ export async function POST(req: NextRequest) {
           },
         },
         update: {
-          employeeId: employeeId || null,
+          employeeId: finalEmployeeId || null,
           phone: phone || null,
           department: department || null,
           designation: designation || null,
@@ -210,7 +224,7 @@ export async function POST(req: NextRequest) {
         create: {
           schoolId: auth.schoolId,
           userId: user.id,
-          employeeId: employeeId || null,
+          employeeId: finalEmployeeId || null,
           phone: phone || null,
           department: department || null,
           designation: designation || null,

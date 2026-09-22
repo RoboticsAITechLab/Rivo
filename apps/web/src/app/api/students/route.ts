@@ -170,9 +170,9 @@ export async function POST(req: NextRequest) {
       guardian,
     } = body;
 
-    if (!admissionNumber || !firstName || !lastName || !classId || !sectionId) {
+    if (!firstName || !lastName || !classId || !sectionId) {
       return NextResponse.json(
-        { message: 'admissionNumber, firstName, lastName, classId, and sectionId are required.' },
+        { message: 'firstName, lastName, classId, and sectionId are required.' },
         { status: 400 }
       );
     }
@@ -191,12 +191,30 @@ export async function POST(req: NextRequest) {
 
     // Perform atomic transaction
     const newStudent = await prisma.$transaction(async (tx) => {
+      // Resolve admission number (auto-generated if missing or 'AUTO', or manual override)
+      let finalAdmissionNumber = admissionNumber?.trim();
+      if (!finalAdmissionNumber || finalAdmissionNumber.toUpperCase() === 'AUTO') {
+        const { generateNextStudentId } = await import('@/lib/id-generator');
+        finalAdmissionNumber = await generateNextStudentId(auth.schoolId, { tx });
+      } else {
+        // Verify manual admission number uniqueness in this school
+        const existing = await tx.student.findFirst({
+          where: {
+            schoolId: auth.schoolId,
+            admissionNumber: finalAdmissionNumber,
+          },
+        });
+        if (existing) {
+          throw new Error(`Admission Number "${finalAdmissionNumber}" already exists.`);
+        }
+      }
+
       // 1. Create Student
       const student = await tx.student.create({
         data: {
           schoolId: auth.schoolId,
           campusId: campusId || null,
-          admissionNumber,
+          admissionNumber: finalAdmissionNumber,
           firstName,
           lastName,
           gender: gender || null,
@@ -260,6 +278,9 @@ export async function POST(req: NextRequest) {
         { message: 'A student with this admission number already exists in this school.' },
         { status: 409 }
       );
+    }
+    if (error instanceof Error && error.message.includes('Admission Number')) {
+      return NextResponse.json({ message: error.message }, { status: 400 });
     }
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }

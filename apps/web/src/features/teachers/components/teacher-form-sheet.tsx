@@ -115,7 +115,7 @@ function TeacherFormWizard({
 
   // Employment
   const [employeeId, setEmployeeId] = React.useState(
-    teacherToEdit?.employment.employeeId || `TCH-${String(existingTeachers.length + 1).padStart(3, '0')}`
+    teacherToEdit?.employment.employeeId || 'AUTO'
   );
   const [joiningDate, setJoiningDate] = React.useState(
     teacherToEdit?.employment.joiningDate || new Date().toISOString().split('T')[0]
@@ -497,11 +497,17 @@ function TeacherFormWizard({
                 <FormField label="Employee ID / Staff Code" required error={safeErrors.employeeId}>
                   <Input
                     value={employeeId}
-                    onChange={(e) => setEmployeeId(e.target.value)}
+                    onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
+                    placeholder="AUTO (system-generated) or manual code"
                     readOnly={Boolean(teacherToEdit)}
                     disabled={Boolean(teacherToEdit)}
-                    className="bg-muted/40 text-xs font-mono"
+                    className="bg-muted/40 text-xs font-mono uppercase"
                   />
+                  {!teacherToEdit && (
+                    <span className="text-[10px] text-muted-foreground mt-1 block">
+                      Leave as &apos;AUTO&apos; for system-generated ID, or enter custom code.
+                    </span>
+                  )}
                 </FormField>
                 <FormField label="Date of Joining" required error={safeErrors.joiningDate}>
                   <Input
