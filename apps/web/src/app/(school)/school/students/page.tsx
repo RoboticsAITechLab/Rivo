@@ -9,10 +9,8 @@ import {
   MoreVertical,
   Download,
   RotateCcw,
-  AlertCircle,
   Sliders,
 } from 'lucide-react';
-import { initialMockStudents } from '@/data/mock-students';
 import { initialMockHouses } from '@/data/mock-houses';
 import {
   initialCustomFields,
@@ -21,7 +19,6 @@ import {
 } from '@/data/mock-custom-fields';
 import { StudentDetail, StudentFilterState, StudentStatus } from '@/types/student';
 import { SchoolHouse } from '@/types/house';
-import { schoolStore } from '@/shared/mock-store/school-store';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
@@ -47,7 +44,6 @@ import { HouseManagement } from '@/components/students/houses/house-management';
 import { StudentStatusDialog } from '@/components/students/student-status-dialog';
 import { StudentArchiveDialog } from '@/components/students/student-archive-dialog';
 import { StudentImportSheet } from '@/components/students/student-import-sheet';
-import { cn } from '@/lib/utils';
 
 const defaultFilters: StudentFilterState = {
   searchQuery: '',
@@ -60,11 +56,61 @@ const defaultFilters: StudentFilterState = {
   attendanceRange: 'ALL',
 };
 
+// Map backend API student object to frontend StudentDetail view model
+function mapApiStudentToDetail(s: any): StudentDetail {
+  return {
+    id: s.id,
+    admissionNumber: s.admissionNumber || '',
+    name: s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim() || 'Student',
+    firstName: s.firstName || '',
+    lastName: s.lastName || '',
+    gender: (s.gender as any) || 'OTHER',
+    dateOfBirth: s.dateOfBirth || '',
+    bloodGroup: s.bloodGroup || '',
+    status: (s.status as StudentStatus) || 'ACTIVE',
+    className: s.className || 'General',
+    section: s.sectionName || 'A',
+    rollNumber: s.rollNumber || '01',
+    academicSession: s.sessionName || '2026-2027',
+    houseId: s.house || null,
+    stream: s.stream || null,
+    guardianName: s.guardianName || 'Parent / Guardian',
+    guardianPhone: s.guardianPhone || '',
+    primaryGuardian: {
+      id: `g-${s.id}`,
+      name: s.guardianName || 'Parent / Guardian',
+      relationship: 'Father',
+      phone: s.guardianPhone || '',
+    },
+    guardians: s.guardianName
+      ? [
+          {
+            id: `g-${s.id}`,
+            name: s.guardianName,
+            relationship: 'Father',
+            phone: s.guardianPhone || '',
+          },
+        ]
+      : [],
+    email: s.email || '',
+    phone: s.phone || '',
+    address: typeof s.address === 'object' ? s.address : { line1: s.address || '' },
+    attendancePercentage: 92,
+    activityTimeline: [],
+    documents: [],
+    photoUrl: undefined,
+  };
+}
+
 function StudentsPageContent() {
   const { toast } = useToast();
 
-  // Primary mock dataset state
-  const [students, setStudents] = React.useState<StudentDetail[]>(initialMockStudents);
+  // Real database-backed student state
+  const [students, setStudents] = React.useState<StudentDetail[]>([]);
+  const [totalStudents, setTotalStudents] = React.useState(0);
+  const [totalPages, setTotalPages] = React.useState(1);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   // Navigation view mode & configuration state
   const [viewMode, setViewMode] = React.useState<'directory' | 'config'>('directory');
@@ -101,9 +147,49 @@ function StudentsPageContent() {
 
   const [isImportOpen, setIsImportOpen] = React.useState(false);
 
-  // Simulated loading & error states
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [simulatedError, setSimulatedError] = React.useState(false);
+  // Fetch real students from API
+  const fetchStudents = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(pageSize),
+      });
+
+      if (filters.searchQuery.trim()) {
+        params.set('search', filters.searchQuery.trim());
+      }
+      if (filters.status && filters.status !== 'ALL') {
+        params.set('status', filters.status);
+      }
+      if (filters.className && filters.className !== 'ALL') {
+        params.set('classId', filters.className);
+      }
+      if (filters.section && filters.section !== 'ALL') {
+        params.set('sectionId', filters.section);
+      }
+
+      const res = await fetch(`/api/students?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load student roster (${res.status})`);
+      }
+      const data = await res.json();
+      const mapped = (data.students || []).map(mapApiStudentToDetail);
+      setStudents(mapped);
+      setTotalStudents(data.pagination?.total ?? mapped.length);
+      setTotalPages(data.pagination?.totalPages ?? 1);
+    } catch (err: unknown) {
+      console.error('Error fetching students:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect to students service');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, pageSize, filters.searchQuery, filters.status, filters.className, filters.section]);
+
+  React.useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
 
   // Filter change handler
   const handleFilterChange = <K extends keyof StudentFilterState>(
@@ -119,79 +205,6 @@ function StudentsPageContent() {
     setCurrentPage(1);
   };
 
-  // Client-side filtering
-  const filteredStudents = React.useMemo(() => {
-    return students.filter((student) => {
-      // 1. Search Query (Name, Admission No, Email, Guardian)
-      if (filters.searchQuery.trim() !== '') {
-        const query = filters.searchQuery.toLowerCase().trim();
-        const matchesName = student.name.toLowerCase().includes(query);
-        const matchesAdmission = student.admissionNumber.toLowerCase().includes(query);
-        const matchesEmail = student.email.toLowerCase().includes(query);
-        const matchesGuardian =
-          student.guardianName.toLowerCase().includes(query) ||
-          student.primaryGuardian.name.toLowerCase().includes(query);
-
-        if (!matchesName && !matchesAdmission && !matchesEmail && !matchesGuardian) {
-          return false;
-        }
-      }
-
-      // 2. Academic Session
-      if (filters.academicSession !== 'ALL' && student.academicSession !== filters.academicSession) {
-        return false;
-      }
-
-      // 3. Class
-      if (filters.className !== 'ALL' && student.className !== filters.className) {
-        return false;
-      }
-
-      // 4. Section
-      if (filters.section !== 'ALL' && student.section !== filters.section) {
-        return false;
-      }
-
-      // 5. Status
-      if (filters.status !== 'ALL' && student.status !== filters.status) {
-        return false;
-      }
-
-      // 6. House Filter
-      if (filters.houseId && filters.houseId !== 'ALL') {
-        if (filters.houseId === 'NONE') {
-          if (student.houseId) return false;
-        } else {
-          if (student.houseId !== filters.houseId) return false;
-        }
-      }
-
-      // 7. Gender
-      if (filters.gender !== 'ALL' && student.gender !== filters.gender) {
-        return false;
-      }
-
-      // 8. Attendance Range
-      if (filters.attendanceRange !== 'ALL') {
-        if (filters.attendanceRange === 'HIGH' && student.attendancePercentage < 90) return false;
-        if (
-          filters.attendanceRange === 'MEDIUM' &&
-          (student.attendancePercentage < 80 || student.attendancePercentage >= 90)
-        )
-          return false;
-        if (filters.attendanceRange === 'LOW' && student.attendancePercentage >= 80) return false;
-      }
-
-      return true;
-    });
-  }, [students, filters]);
-
-  // Paginated students slice
-  const paginatedStudents = React.useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredStudents.slice(startIndex, startIndex + pageSize);
-  }, [filteredStudents, currentPage, pageSize]);
-
   // Bulk selection helpers
   const handleSelectRow = (id: string) => {
     setSelectedIds((prev) =>
@@ -200,7 +213,7 @@ function StudentsPageContent() {
   };
 
   const handleSelectAll = () => {
-    const currentPageIds = paginatedStudents.map((s) => s.id);
+    const currentPageIds = students.map((s) => s.id);
     const allSelected = currentPageIds.every((id) => selectedIds.includes(id));
     if (allSelected) {
       setSelectedIds((prev) => prev.filter((id) => !currentPageIds.includes(id)));
@@ -231,83 +244,45 @@ function StudentsPageContent() {
     setIsFormOpen(true);
   };
 
-  const handleSaveStudent = (studentData: StudentDetail) => {
-    setStudents((prev) => {
-      const exists = prev.some((s) => s.id === studentData.id);
-      if (exists) {
-        return prev.map((s) => (s.id === studentData.id ? studentData : s));
+  const handleSaveStudent = async (studentData: StudentDetail) => {
+    try {
+      const isEdit = Boolean(studentToEdit?.id);
+      const url = isEdit ? `/api/students/${studentToEdit!.id}` : '/api/students';
+      const method = isEdit ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admissionNumber: studentData.admissionNumber,
+          firstName: studentData.firstName || studentData.name.split(' ')[0] || 'Student',
+          lastName: studentData.lastName || studentData.name.split(' ').slice(1).join(' ') || '',
+          gender: studentData.gender,
+          dateOfBirth: studentData.dateOfBirth,
+          bloodGroup: studentData.bloodGroup,
+          status: studentData.status,
+          email: studentData.email,
+          phone: studentData.phone,
+          address: typeof studentData.address === 'string' ? studentData.address : studentData.address?.line1,
+          className: studentData.className,
+          sectionName: studentData.section,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || 'Failed to save student record');
       }
-      return [studentData, ...prev];
-    });
 
-    // Also update detail sheet if open
-    if (selectedStudent?.id === studentData.id) {
-      setSelectedStudent(studentData);
+      setIsFormOpen(false);
+      toast(
+        isEdit ? 'Student Record Updated' : 'New Student Registered',
+        `${studentData.name} has been synchronized with the database roster.`
+      );
+      fetchStudents();
+    } catch (err: unknown) {
+      toast('Operation Failed', err instanceof Error ? err.message : 'Could not save student');
     }
-
-    // Sync to central relational mock store
-    const store = schoolStore.getSnapshot();
-    const matchedClass = store.classes.find((c) => c.className === studentData.className);
-    const classId = matchedClass?.id || 'cls-10';
-    const matchedSection = matchedClass?.sections.find((s) => s.name === studentData.section);
-    const sectionId = matchedSection?.id || 'sec-10-a';
-
-    const existsInStore = store.students.some((s) => s.id === studentData.id);
-    if (existsInStore) {
-      schoolStore.updateStudent({
-        id: studentData.id,
-        admissionNumber: studentData.admissionNumber,
-        academicSessionId: store.activeSessionId,
-        classId,
-        sectionId,
-        houseId: studentData.houseId || null,
-        name: studentData.name,
-        firstName: studentData.firstName,
-        middleName: studentData.middleName,
-        lastName: studentData.lastName,
-        gender: studentData.gender,
-        dateOfBirth: studentData.dateOfBirth,
-        bloodGroup: studentData.bloodGroup,
-        status: studentData.status,
-        email: studentData.email,
-        phone: studentData.phone,
-        address: { ...studentData.address },
-        guardians: studentData.guardians ? [...studentData.guardians] : [],
-        attendancePercentage: studentData.attendancePercentage,
-        photoUrl: studentData.photoUrl,
-        lastSavedAt: new Date().toISOString(),
-      });
-    } else {
-      schoolStore.createStudent({
-        id: studentData.id,
-        admissionNumber: studentData.admissionNumber,
-        academicSessionId: store.activeSessionId,
-        classId,
-        sectionId,
-        houseId: studentData.houseId || null,
-        name: studentData.name,
-        firstName: studentData.firstName,
-        middleName: studentData.middleName,
-        lastName: studentData.lastName,
-        gender: studentData.gender,
-        dateOfBirth: studentData.dateOfBirth,
-        bloodGroup: studentData.bloodGroup,
-        status: studentData.status,
-        email: studentData.email,
-        phone: studentData.phone,
-        address: { ...studentData.address },
-        guardians: studentData.guardians ? [...studentData.guardians] : [],
-        attendancePercentage: studentData.attendancePercentage,
-        photoUrl: studentData.photoUrl,
-        lastSavedAt: new Date().toISOString(),
-      });
-    }
-
-    setIsFormOpen(false);
-    toast(
-      studentToEdit ? 'Student Record Updated' : 'New Student Registered',
-      `${studentData.name} (${studentData.admissionNumber}) has been updated in the academic roster.`,
-    );
   };
 
   // Status Change
@@ -316,77 +291,36 @@ function StudentsPageContent() {
     setIsStatusOpen(true);
   };
 
-  const handleConfirmStatusChange = (
+  const handleConfirmStatusChange = async (
     studentId: string,
     newStatus: StudentStatus,
-    reason: string,
+    _reason: string,
   ) => {
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id === studentId) {
-          const updatedTimeline = [
-            {
-              id: `act-${Date.now()}`,
-              action: `Status Changed to ${newStatus}`,
-              description: reason || `Administrative status transition executed.`,
-              timestamp: 'Just now',
-              category: 'STATUS' as const,
-            },
-            ...s.activityTimeline,
-          ];
-          return { ...s, status: newStatus, activityTimeline: updatedTimeline };
-        }
-        return s;
-      }),
-    );
-
-    if (selectedStudent?.id === studentId) {
-      setSelectedStudent((prev) => (prev ? { ...prev, status: newStatus } : null));
+    try {
+      const res = await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update student status');
+      }
+      toast('Student Status Updated', `Student status has been marked as ${newStatus}.`);
+      setIsStatusOpen(false);
+      fetchStudents();
+    } catch (err: unknown) {
+      toast('Status Update Failed', err instanceof Error ? err.message : 'Error updating status');
     }
-
-    toast(
-      'Student Status Updated',
-      `Student status has been marked as ${newStatus}.`,
-    );
   };
 
   // Student House Allocation Change
   const handleUpdateStudentHouse = (studentId: string, newHouseId: string | null) => {
     setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id === studentId) {
-          const houseObj = houses.find((h) => h.id === newHouseId);
-          const houseLabel = houseObj ? houseObj.name : 'Not assigned';
-          const updatedTimeline = [
-            {
-              id: `act-${Date.now()}`,
-              action: `House Allocation Changed`,
-              description: `Assigned to ${houseLabel}.`,
-              timestamp: 'Just now',
-              category: 'ENROLLMENT' as const,
-            },
-            ...s.activityTimeline,
-          ];
-          return { ...s, houseId: newHouseId, activityTimeline: updatedTimeline };
-        }
-        return s;
-      }),
+      prev.map((s) => (s.id === studentId ? { ...s, houseId: newHouseId } : s)),
     );
-
-    if (selectedStudent?.id === studentId) {
-      setSelectedStudent((prev) => (prev ? { ...prev, houseId: newHouseId } : null));
-    }
-
-    const targetHouse = houses.find((h) => h.id === newHouseId);
-    toast(
-      'House Allocation Updated',
-      targetHouse
-        ? `Student assigned to ${targetHouse.name}.`
-        : 'Student house assignment cleared.',
-    );
+    toast('House Allocation Updated', 'Student house assignment updated.');
   };
 
-  // Switch to directory filtered by house (from HouseManagement view)
   const handleViewStudentsByHouse = (houseId: string) => {
     setViewMode('directory');
     setFilters({
@@ -397,16 +331,22 @@ function StudentsPageContent() {
   };
 
   // Bulk Status Change
-  const handleBulkChangeStatus = () => {
+  const handleBulkChangeStatus = async () => {
     if (selectedIds.length === 0) return;
-    setStudents((prev) =>
-      prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: 'ACTIVE' } : s)),
-    );
-    toast(
-      'Bulk Status Updated',
-      `${selectedIds.length} students updated to Active status.`,
-    );
-    setSelectedIds([]);
+    try {
+      for (const id of selectedIds) {
+        await fetch(`/api/students/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'ACTIVE' }),
+        });
+      }
+      toast('Bulk Status Updated', `${selectedIds.length} students updated to Active status.`);
+      setSelectedIds([]);
+      fetchStudents();
+    } catch (err: unknown) {
+      toast('Bulk Action Failed', err instanceof Error ? err.message : 'Failed to update students');
+    }
   };
 
   // Archive Flow
@@ -422,59 +362,31 @@ function StudentsPageContent() {
     setIsArchiveOpen(true);
   };
 
-  const handleConfirmArchive = () => {
-    if (isBulkArchiveMode) {
-      const count = selectedIds.length;
-      setStudents((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
-      setSelectedIds([]);
-      toast('Students Archived', `${count} student records moved to archive storage.`);
-    } else if (archiveStudent) {
-      setStudents((prev) => prev.filter((s) => s.id !== archiveStudent.id));
-      schoolStore.archiveStudent(archiveStudent.id);
-      if (selectedStudent?.id === archiveStudent.id) {
-        setIsDetailOpen(false);
-        setSelectedStudent(null);
+  const handleConfirmArchive = async () => {
+    try {
+      if (isBulkArchiveMode) {
+        const count = selectedIds.length;
+        for (const id of selectedIds) {
+          await fetch(`/api/students/${id}`, { method: 'DELETE' });
+        }
+        setSelectedIds([]);
+        toast('Students Archived', `${count} student records archived.`);
+      } else if (archiveStudent) {
+        await fetch(`/api/students/${archiveStudent.id}`, { method: 'DELETE' });
+        toast('Student Archived', `${archiveStudent.name} moved to archive.`);
       }
-      toast(
-        'Student Archived',
-        `${archiveStudent.name} (${archiveStudent.admissionNumber}) has been moved to archive.`,
-      );
+      setIsArchiveOpen(false);
+      fetchStudents();
+    } catch (err: unknown) {
+      toast('Archive Failed', err instanceof Error ? err.message : 'Could not archive student');
     }
   };
 
-  // Bulk Export Mock
   const handleBulkExport = () => {
     toast(
       'Export File Generated',
-      `Export generated for ${selectedIds.length} selected students (.xlsx).`,
+      `Export generated for ${selectedIds.length > 0 ? selectedIds.length : totalStudents} students.`,
     );
-  };
-
-  // Import Ingest
-  const handleImportComplete = (newStudents: StudentDetail[]) => {
-    setStudents((prev) => [...newStudents, ...prev]);
-    toast(
-      'Import Successful',
-      `${newStudents.length} student records ingested into institution directory.`,
-    );
-  };
-
-  // Reset to initial mock dataset
-  const handleResetData = () => {
-    setStudents(initialMockStudents);
-    setHouses(initialMockHouses);
-    setSelectedIds([]);
-    setFilters(defaultFilters);
-    toast('Data Reset', 'Student directory and houses reset to baseline mock dataset.');
-  };
-
-  // Simulate loading delay
-  const handleSimulateLoading = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      toast('Roster Refreshed', 'Student directory data synchronised.');
-    }, 600);
   };
 
   return (
@@ -484,9 +396,19 @@ function StudentsPageContent() {
         title="Students"
         description="Manage student records, admission intake, and institutional compliance."
         icon={GraduationCap}
-        badge={`${students.length.toLocaleString()} students`}
+        badge={`${totalStudents.toLocaleString()} students`}
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={fetchStudents}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -518,26 +440,20 @@ function StudentsPageContent() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleSimulateLoading}>
-                  <RefreshCw className="h-3.5 w-3.5 mr-2" />
-                  Refresh Roster
-                </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() =>
-                    toast('Directory Exported', 'Full student directory exported as CSV.')
-                  }
+                  onClick={() => setViewMode(viewMode === 'directory' ? 'config' : 'directory')}
                 >
-                  <Download className="h-3.5 w-3.5 mr-2" />
-                  Export Entire Directory
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSimulatedError(!simulatedError)}>
-                  <AlertCircle className="h-3.5 w-3.5 mr-2" />
-                  {simulatedError ? 'Dismiss Error Simulation' : 'Simulate Error State'}
+                  <Sliders className="h-4 w-4 mr-2" />
+                  {viewMode === 'directory' ? 'Custom Fields & Rules' : 'Student Directory'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleResetData}>
-                  <RotateCcw className="h-3.5 w-3.5 mr-2" />
-                  Reset Mock Data
+                <DropdownMenuItem onClick={fetchStudents}>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Sync Live Roster
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleBulkExport}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Roster
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -545,86 +461,21 @@ function StudentsPageContent() {
         }
       />
 
-      {/* Navigation View Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/80 pb-3 mb-5">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setViewMode('directory')}
-            className={cn(
-              'px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer',
-              viewMode === 'directory'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            Student Directory ({students.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('config')}
-            className={cn(
-              'px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5',
-              viewMode === 'config'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            School Intake &amp; Field Configuration
-          </button>
-        </div>
-
-        {viewMode === 'config' && (
-          <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setConfigSubtab('fields')}
-              className={cn(
-                'px-3 py-1 text-xs rounded-lg transition-all cursor-pointer',
-                configSubtab === 'fields'
-                  ? 'bg-background text-foreground shadow-xs font-bold'
-                  : 'text-muted-foreground hover:text-foreground font-medium'
-              )}
-            >
-              Custom Fields ({customFields.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfigSubtab('policies')}
-              className={cn(
-                'px-3 py-1 text-xs rounded-lg transition-all cursor-pointer',
-                configSubtab === 'policies'
-                  ? 'bg-background text-foreground shadow-xs font-bold'
-                  : 'text-muted-foreground hover:text-foreground font-medium'
-              )}
-            >
-              Sections &amp; Document Policies
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfigSubtab('houses')}
-              className={cn(
-                'px-3 py-1 text-xs rounded-lg transition-all cursor-pointer',
-                configSubtab === 'houses'
-                  ? 'bg-background text-foreground shadow-xs font-bold'
-                  : 'text-muted-foreground hover:text-foreground font-medium'
-              )}
-            >
-              School Houses ({houses.length})
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* VIEW MODE: CONFIGURATION */}
-      {viewMode === 'config' ? (
+      {error ? (
+        <ErrorState
+          title="Unable to Load Students"
+          message={error}
+          onRetry={fetchStudents}
+          className="my-6"
+        />
+      ) : viewMode === 'config' ? (
+        /* Configuration Workspaces */
         configSubtab === 'fields' ? (
           <CustomFieldBuilder
             customFields={customFields}
-            onChange={(fields) => {
+            onFieldsChange={(fields) => {
               setCustomFields(fields);
-              toast('Custom Fields Updated', 'Student schema extensions updated for the institution.');
+              toast('Custom Fields Saved', 'Student admission schema updated.');
             }}
           />
         ) : configSubtab === 'policies' ? (
@@ -648,17 +499,6 @@ function StudentsPageContent() {
             onViewStudentsByHouse={handleViewStudentsByHouse}
           />
         )
-      ) : simulatedError ? (
-        /* Simulated Error State */
-        <ErrorState
-          title="Unable to Load Students"
-          message="An error occurred while synchronizing student roster records from the institutional server. Please retry."
-          onRetry={() => {
-            setSimulatedError(false);
-            handleSimulateLoading();
-          }}
-          className="my-6"
-        />
       ) : (
         <>
           {/* 2. Summary Metrics */}
@@ -669,14 +509,14 @@ function StudentsPageContent() {
             filters={filters}
             onFilterChange={handleFilterChange}
             onClearFilters={handleClearFilters}
-            totalStudents={students.length}
-            filteredCount={filteredStudents.length}
+            totalCount={totalStudents}
+            filteredCount={totalStudents}
             houses={houses}
           />
 
-          {/* 4. Bulk Action Toolbar */}
+          {/* 4. Bulk Operations Toolbar */}
           <StudentBulkToolbar
-            selectedCount={selectedIds.length}
+            selectedIds={selectedIds}
             onClearSelection={handleClearSelection}
             onBulkChangeStatus={handleBulkChangeStatus}
             onBulkExport={handleBulkExport}
@@ -685,7 +525,7 @@ function StudentsPageContent() {
 
           {/* 5. Student Data Table */}
           <StudentTable
-            students={paginatedStudents}
+            students={students}
             selectedIds={selectedIds}
             onSelectRow={handleSelectRow}
             onSelectAll={handleSelectAll}
@@ -699,10 +539,10 @@ function StudentsPageContent() {
           />
 
           {/* 6. Pagination */}
-          {filteredStudents.length > 0 && (
+          {totalStudents > 0 && (
             <StudentPagination
               currentPage={currentPage}
-              totalItems={filteredStudents.length}
+              totalItems={totalStudents}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
               onPageSizeChange={(size) => {
@@ -714,7 +554,7 @@ function StudentsPageContent() {
         </>
       )}
 
-      {/* 7. Student 360 Detail Sheet (10 tabs) */}
+      {/* 7. Student 360 Detail Sheet */}
       <StudentDetailSheet
         student={selectedStudent}
         isOpen={isDetailOpen}
@@ -732,33 +572,25 @@ function StudentsPageContent() {
         onArchive={(student) => {
           handleOpenArchiveDialog(student);
         }}
+        onUpdateHouse={handleUpdateStudentHouse}
         initialTab={initialDetailTab}
         houses={houses}
-        onUpdateStudentHouse={handleUpdateStudentHouse}
       />
 
-      {/* 8. Admission Workspace Drawer */}
+      {/* 8. Admission / Edit Student Workspace Dialog */}
       <AdmissionWorkspace
-        key={studentToEdit?.id ?? (isFormOpen ? 'open' : 'closed')}
         isOpen={isFormOpen}
         onClose={() => {
           setIsFormOpen(false);
           setStudentToEdit(null);
         }}
+        onSave={handleSaveStudent}
         studentToEdit={studentToEdit}
         existingStudents={students}
-        customFields={customFields}
         houses={houses}
-        onManageHouses={() => {
-          setIsFormOpen(false);
-          setViewMode('config');
-          setConfigSubtab('houses');
-        }}
-        onSaveStudent={handleSaveStudent}
-        onViewStudentProfile={(student) => {
-          setSelectedStudent(student);
-          setIsDetailOpen(true);
-        }}
+        customFields={customFields}
+        admissionSections={admissionSections}
+        documentPolicy={documentPolicy}
       />
 
       {/* 9. Status Change Dialog */}
@@ -768,11 +600,11 @@ function StudentsPageContent() {
           setIsStatusOpen(false);
           setStatusStudent(null);
         }}
+        onConfirm={handleConfirmStatusChange}
         student={statusStudent}
-        onConfirmStatus={handleConfirmStatusChange}
       />
 
-      {/* 10. Archive Confirmation Dialog */}
+      {/* 10. Archive Dialog */}
       <StudentArchiveDialog
         isOpen={isArchiveOpen}
         onClose={() => {
@@ -780,16 +612,16 @@ function StudentsPageContent() {
           setArchiveStudent(null);
           setIsBulkArchiveMode(false);
         }}
-        student={archiveStudent}
-        bulkCount={isBulkArchiveMode ? selectedIds.length : 0}
-        onConfirmArchive={handleConfirmArchive}
+        onConfirm={handleConfirmArchive}
+        studentName={archiveStudent ? archiveStudent.name : undefined}
+        selectedCount={isBulkArchiveMode ? selectedIds.length : undefined}
       />
 
-      {/* 11. Import Students Wizard Sheet */}
+      {/* 11. Student CSV/Excel Import Sheet */}
       <StudentImportSheet
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
-        onImportComplete={handleImportComplete}
+        onImportSuccess={fetchStudents}
       />
     </PageContainer>
   );

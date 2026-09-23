@@ -26,10 +26,18 @@ import { DayOfWeek } from '@/features/shared/types';
 
 export default function TimetablePage() {
   const {
+    classes,
+    teachers,
+    subjects,
+    isLoading,
+    errorMessage,
     displayedPeriods,
     filters,
     metrics,
+    scheduleBlocks,
+    workingDays,
     setFilters,
+    savePeriod,
     deletePeriod,
     duplicatePeriod,
   } = useTimetable();
@@ -111,6 +119,12 @@ export default function TimetablePage() {
         </div>
       )}
 
+      {errorMessage && (
+        <div className="p-3 text-xs bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30 rounded-lg flex items-center justify-between animate-fade-in">
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
       {/* 2. Live Metrics Ribbon */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="shadow-2xs">
@@ -169,12 +183,16 @@ export default function TimetablePage() {
       <TimetableViewToggle
         filters={filters}
         onFilterChange={setFilters}
+        classes={classes}
+        teachers={teachers}
       />
 
       {/* 4. Timetable Schedule Display (Desktop Dynamic Matrix vs Mobile View) */}
       <div className="hidden md:block">
         <TimetableGrid
           periods={displayedPeriods}
+          scheduleBlocks={scheduleBlocks}
+          workingDays={workingDays}
           onAddSlot={handleOpenAdd}
           onEditPeriod={handleOpenEdit}
           onDuplicatePeriod={duplicatePeriod}
@@ -185,6 +203,7 @@ export default function TimetablePage() {
       <div className="block md:hidden">
         <TimetableMobileList
           periods={displayedPeriods}
+          workingDays={workingDays}
           onAddSlot={handleOpenAdd}
           onEditPeriod={handleOpenEdit}
           onDuplicatePeriod={duplicatePeriod}
@@ -196,9 +215,15 @@ export default function TimetablePage() {
       <TimetableAddDialog
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
+        classes={classes}
+        teachers={teachers}
+        subjects={subjects}
+        scheduleBlocks={scheduleBlocks}
+        workingDays={workingDays}
         periodToEdit={selectedPeriod}
         defaultDay={defaultSlotDay}
         defaultPeriodId={defaultSlotPeriodId}
+        onSavePeriod={savePeriod}
       />
 
       {/* 6. Period Bell Schedule & Working Days Configuration Modal */}

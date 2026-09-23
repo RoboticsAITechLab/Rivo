@@ -5,43 +5,44 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
-import { Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import {
-  selectActiveSchedule,
-  selectTeachingPeriods,
-  selectSectionsForClass,
-  resolveTeacherName,
-  resolveSubjectName,
-  resolveClassName,
-  resolveSectionName,
-  resolveRoomName,
-  resolvePeriodDetails,
-} from '@/shared/selectors';
-import { checkTimetableConflicts, TimetableConflict } from '@/shared/validation/timetable-conflict';
-import {
-  PeriodSelect,
-  ClassSelect,
-  SectionSelect,
-  SubjectSelect,
-  TeacherSelect,
-  RoomSelect,
-} from '@/shared/entities';
+import { Clock, CheckCircle2 } from 'lucide-react';
 import { TimetablePeriod } from '../types';
 import { DayOfWeek } from '@/features/shared/types';
+import { ScheduleBlock } from '@/shared/types';
+import { TimetableClass, TimetableTeacher, TimetableSubject, DEFAULT_SCHEDULE_BLOCKS, DEFAULT_WORKING_DAYS } from '../hooks/use-timetable';
 
 interface TimetableAddDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  classes: TimetableClass[];
+  teachers: TimetableTeacher[];
+  subjects: TimetableSubject[];
+  scheduleBlocks?: ScheduleBlock[];
+  workingDays?: DayOfWeek[];
   periodToEdit?: TimetablePeriod | null;
   defaultDay?: DayOfWeek;
   defaultPeriodId?: string;
-  onSavePeriod?: (period: TimetablePeriod) => void;
+  onSavePeriod: (payload: {
+    classId: string;
+    sectionId: string;
+    subjectId: string;
+    teacherId: string;
+    dayOfWeek: DayOfWeek;
+    periodNumber: number;
+    startTime: string;
+    endTime: string;
+    roomNumber: string;
+  }) => Promise<any>;
 }
 
 export function TimetableAddDialog({
   isOpen,
   onClose,
+  classes,
+  teachers,
+  subjects,
+  scheduleBlocks = DEFAULT_SCHEDULE_BLOCKS,
+  workingDays = DEFAULT_WORKING_DAYS,
   periodToEdit,
   defaultDay = 'MON',
   defaultPeriodId,
@@ -54,6 +55,11 @@ export function TimetableAddDialog({
       <TimetableAddForm
         key={periodToEdit?.id ?? `${defaultDay}-${defaultPeriodId || 'new'}`}
         onClose={onClose}
+        classes={classes}
+        teachers={teachers}
+        subjects={subjects}
+        scheduleBlocks={scheduleBlocks}
+        workingDays={workingDays}
         periodToEdit={periodToEdit}
         defaultDay={defaultDay}
         defaultPeriodId={defaultPeriodId}
@@ -65,144 +71,121 @@ export function TimetableAddDialog({
 
 function TimetableAddForm({
   onClose,
+  classes,
+  teachers,
+  subjects,
+  scheduleBlocks,
+  workingDays,
   periodToEdit,
   defaultDay = 'MON',
   defaultPeriodId,
   onSavePeriod,
 }: {
   onClose: () => void;
+  classes: TimetableClass[];
+  teachers: TimetableTeacher[];
+  subjects: TimetableSubject[];
+  scheduleBlocks: ScheduleBlock[];
+  workingDays: DayOfWeek[];
   periodToEdit?: TimetablePeriod | null;
   defaultDay?: DayOfWeek;
   defaultPeriodId?: string;
-  onSavePeriod?: (period: TimetablePeriod) => void;
+  onSavePeriod: (payload: {
+    classId: string;
+    sectionId: string;
+    subjectId: string;
+    teacherId: string;
+    dayOfWeek: DayOfWeek;
+    periodNumber: number;
+    startTime: string;
+    endTime: string;
+    roomNumber: string;
+  }) => Promise<any>;
 }) {
-  const store = useSchoolStore();
-  const activeSchedule = selectActiveSchedule(store);
-  const teachingPeriods = selectTeachingPeriods(store, activeSchedule?.id);
+  const teachingBlocks = React.useMemo(() => {
+    return scheduleBlocks.filter((b) => b.type === 'TEACHING');
+  }, [scheduleBlocks]);
 
-  // Form State
   const [day, setDay] = React.useState<DayOfWeek>(periodToEdit?.day || defaultDay);
-  const [periodId, setPeriodId] = React.useState<string>(() => {
+  const [blockId, setBlockId] = React.useState<string>(() => {
     if (defaultPeriodId) return defaultPeriodId;
-    // Find matching period from start time if editing
     if (periodToEdit?.startTime) {
-      const match = teachingPeriods.find((b) => b.startTime === periodToEdit.startTime);
+      const match = teachingBlocks.find((b) => b.startTime === periodToEdit.startTime);
       if (match) return match.id;
     }
-    return teachingPeriods[0]?.id || 'blk-p1';
+    return teachingBlocks[0]?.id || '';
   });
 
-  const [classId, setClassId] = React.useState<string>(periodToEdit?.classId || 'cls-10');
-  const [sectionId, setSectionId] = React.useState<string>(periodToEdit?.sectionId || 'sec-10-a');
-  const [subjectId, setSubjectId] = React.useState<string>(periodToEdit?.subjectId || 'sub-mat-101');
-  const [teacherId, setTeacherId] = React.useState<string>(periodToEdit?.teacherId || 'tch-001');
-  const [roomId, setRoomId] = React.useState<string>(() => {
-    if (periodToEdit?.room) {
-      const match = store.rooms.find(
-        (r) => r.name.toLowerCase() === periodToEdit.room.toLowerCase() || r.id === periodToEdit.room
-      );
-      if (match) return match.id;
-    }
-    return 'rm-204';
+  const [classId, setClassId] = React.useState<string>(() => {
+    if (periodToEdit?.classId) return periodToEdit.classId;
+    return classes[0]?.id || '';
   });
-  const [notes, setNotes] = React.useState('');
+
+  const currentClass = classes.find((c) => c.id === classId) || classes[0];
+
+  const [sectionId, setSectionId] = React.useState<string>(() => {
+    if (periodToEdit?.sectionId) return periodToEdit.sectionId;
+    return currentClass?.sections[0]?.id || '';
+  });
+
+  const [subjectId, setSubjectId] = React.useState<string>(() => {
+    if (periodToEdit?.subjectId) return periodToEdit.subjectId;
+    return subjects[0]?.id || '';
+  });
+
+  const [teacherId, setTeacherId] = React.useState<string>(() => {
+    if (periodToEdit?.teacherId) return periodToEdit.teacherId;
+    return teachers[0]?.id || '';
+  });
+
+  const [roomNumber, setRoomNumber] = React.useState<string>(periodToEdit?.room || 'Room 204');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
 
   const handleClassChange = (newClassId: string) => {
     setClassId(newClassId);
-    const validSections = selectSectionsForClass(store, newClassId);
-    if (validSections.length > 0 && !validSections.some((s) => s.id === sectionId)) {
-      setSectionId(validSections[0].id);
-    }
-  };
-
-  const validSections = selectSectionsForClass(store, classId);
-  const effectiveSectionId = validSections.some((s) => s.id === sectionId)
-    ? sectionId
-    : (validSections[0]?.id || sectionId);
-
-  // Real-time conflict engine check
-  const conflict: TimetableConflict | null = React.useMemo(() => {
-    return checkTimetableConflicts(store, {
-      day,
-      periodId,
-      classId,
-      sectionId: effectiveSectionId,
-      subjectId,
-      teacherId,
-      roomId,
-      excludeEntryId: periodToEdit?.id,
-    });
-  }, [store, day, periodId, classId, effectiveSectionId, subjectId, teacherId, roomId, periodToEdit]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (conflict) return;
-
-    const periodDetails = resolvePeriodDetails(store, periodId, activeSchedule?.id);
-    const teacherName = resolveTeacherName(store, teacherId);
-    const subjectName = resolveSubjectName(store, subjectId);
-    const className = resolveClassName(store, classId);
-    const sectionName = resolveSectionName(store, classId, effectiveSectionId);
-    const roomName = resolveRoomName(store, roomId);
-
-    let savedEntryId = periodToEdit?.id || '';
-
-    // 1. Save to Central Store
-    if (periodToEdit) {
-      schoolStore.updateTimetableEntry({
-        id: periodToEdit.id,
-        academicSessionId: store.activeSessionId,
-        scheduleId: activeSchedule?.id || 'sch-regular',
-        periodId,
-        day,
-        classId,
-        sectionId: effectiveSectionId,
-        subjectId,
-        teacherId,
-        roomId,
-        notes,
-      });
+    const cls = classes.find((c) => c.id === newClassId);
+    if (cls && cls.sections.length > 0) {
+      setSectionId(cls.sections[0].id);
     } else {
-      const created = schoolStore.createTimetableEntry({
-        academicSessionId: store.activeSessionId,
-        scheduleId: activeSchedule?.id || 'sch-regular',
-        periodId,
-        day,
-        classId,
-        sectionId: effectiveSectionId,
-        subjectId,
-        teacherId,
-        roomId,
-        notes,
-      });
-      savedEntryId = created.id;
+      setSectionId('');
     }
-
-    // 2. Notify legacy parent callback if provided
-    if (onSavePeriod) {
-      onSavePeriod({
-        id: savedEntryId,
-        day,
-        startTime: periodDetails.startTime,
-        endTime: periodDetails.endTime,
-        periodSlot: `${periodDetails.startTime} - ${periodDetails.endTime}`,
-        periodIndex: periodDetails.order,
-        classId,
-        className,
-        sectionId,
-        sectionName,
-        subjectId,
-        subjectName,
-        teacherId,
-        teacherName,
-        room: roomName,
-      });
-    }
-
-    onClose();
   };
 
-  const workingDays = activeSchedule?.workingDays || ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!classId || !sectionId || !subjectId || !teacherId) {
+      setFormError('Please select class, section, subject, and teacher.');
+      return;
+    }
+
+    const selectedBlock = teachingBlocks.find((b) => b.id === blockId) || teachingBlocks[0];
+    if (!selectedBlock) {
+      setFormError('Please select a valid period.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      await onSavePeriod({
+        classId,
+        sectionId,
+        subjectId,
+        teacherId,
+        dayOfWeek: day,
+        periodNumber: selectedBlock.order,
+        startTime: selectedBlock.startTime,
+        endTime: selectedBlock.endTime,
+        roomNumber: roomNumber.trim() || 'Standard Classroom',
+      });
+      onClose();
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to save timetable slot');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
@@ -216,13 +199,19 @@ function TimetableAddForm({
               {periodToEdit ? 'Edit Timetable Entry' : 'Add Timetable Entry'}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Select configured period, class division, subject, teacher and room with real-time collision detection.
+              Assign period slot, class division, subject, faculty and classroom.
             </DialogDescription>
           </div>
         </div>
       </DialogHeader>
 
       <form onSubmit={handleSubmit} className="space-y-3 pt-2">
+        {formError && (
+          <div className="p-3 text-xs bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30 rounded-lg">
+            {formError}
+          </div>
+        )}
+
         {/* Day & Period Selectors */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Day of Week" required>
@@ -239,82 +228,104 @@ function TimetableAddForm({
             </select>
           </FormField>
 
-          <PeriodSelect
-            value={periodId}
-            onChange={(id) => setPeriodId(id)}
-            required
-            showTimeBadge={true}
-          />
+          <FormField label="Schedule Period" required>
+            <select
+              value={blockId}
+              onChange={(e) => setBlockId(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {teachingBlocks.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.startTime} - {b.endTime})
+                </option>
+              ))}
+            </select>
+          </FormField>
         </div>
 
-        {/* Class & Section (Cascading!) */}
+        {/* Class & Section (Cascading) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <ClassSelect
-            value={classId}
-            onChange={handleClassChange}
-            required
-          />
+          <FormField label="Class" required>
+            <select
+              value={classId}
+              onChange={(e) => handleClassChange(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {classes.length === 0 && <option value="">No classes found</option>}
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} (Grade {c.gradeLevel})
+                </option>
+              ))}
+            </select>
+          </FormField>
 
-          <SectionSelect
-            value={effectiveSectionId}
-            onChange={(id) => setSectionId(id)}
-            classId={classId}
-            required
-          />
+          <FormField label="Section" required>
+            <select
+              value={sectionId}
+              onChange={(e) => setSectionId(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {(!currentClass || currentClass.sections.length === 0) && (
+                <option value="">No sections available</option>
+              )}
+              {currentClass?.sections.map((s) => (
+                <option key={s.id} value={s.id}>
+                  Section {s.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
         </div>
 
-        {/* Subject & Teacher (Prioritizing!) */}
+        {/* Subject & Teacher */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <SubjectSelect
-            value={subjectId}
-            onChange={(id) => setSubjectId(id)}
-            classId={classId}
-            required
-          />
+          <FormField label="Subject" required>
+            <select
+              value={subjectId}
+              onChange={(e) => setSubjectId(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {subjects.length === 0 && <option value="">No subjects found</option>}
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.code ? `(${s.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </FormField>
 
-          <TeacherSelect
-            value={teacherId}
-            onChange={(id) => setTeacherId(id)}
-            subjectId={subjectId}
-            required
-          />
+          <FormField label="Faculty In-Charge" required>
+            <select
+              value={teacherId}
+              onChange={(e) => setTeacherId(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {teachers.length === 0 && <option value="">No teachers found</option>}
+              {teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.department})
+                </option>
+              ))}
+            </select>
+          </FormField>
         </div>
 
-        {/* Room / Lab Selector */}
+        {/* Room / Lab */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <RoomSelect
-            value={roomId}
-            onChange={(id) => setRoomId(id)}
-            label="Classroom / Laboratory"
-            required
-          />
-
-          <FormField label="Internal Notes / Syllabus Topic">
+          <FormField label="Room / Laboratory" required>
             <Input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Chapter 4 Quiz / Lab Practical"
+              value={roomNumber}
+              onChange={(e) => setRoomNumber(e.target.value)}
+              placeholder="e.g. Room 204 or Science Lab"
               className="h-8.5 text-xs"
             />
           </FormField>
         </div>
 
-        {/* Conflict Detection Status Banner */}
-        <div className="pt-1">
-          {conflict ? (
-            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 flex items-start gap-2.5 text-xs text-destructive animate-fade-in">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>
-                <h5 className="font-bold">Collision Conflict Detected</h5>
-                <p className="text-[11px] mt-0.5">{conflict.message}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 animate-fade-in">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span className="font-medium">All conflict constraints verified clean. Ready to schedule.</span>
-            </div>
-          )}
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span className="font-medium">Direct database synchronization enabled for active session.</span>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t">
@@ -324,10 +335,10 @@ function TimetableAddForm({
           <Button
             type="submit"
             size="sm"
-            disabled={Boolean(conflict)}
+            disabled={isSubmitting || classes.length === 0 || teachers.length === 0 || subjects.length === 0}
             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs disabled:opacity-50 cursor-pointer"
           >
-            {periodToEdit ? 'Update Period' : 'Add to Timetable'}
+            {isSubmitting ? 'Saving...' : periodToEdit ? 'Update Period' : 'Add to Timetable'}
           </Button>
         </DialogFooter>
       </form>

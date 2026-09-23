@@ -3,13 +3,15 @@
 import * as React from 'react';
 import { TimetablePeriod } from '../types';
 import { DayOfWeek } from '@/features/shared/types';
+import { ScheduleBlock } from '@/shared/types';
 import { TimetablePeriodCard } from './timetable-period-card';
 import { Plus, Coffee, Utensils, Flag, Activity } from 'lucide-react';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectActiveSchedule } from '@/shared/selectors';
+import { DEFAULT_SCHEDULE_BLOCKS, DEFAULT_WORKING_DAYS } from '../hooks/use-timetable';
 
 interface TimetableGridProps {
   periods: TimetablePeriod[];
+  scheduleBlocks?: ScheduleBlock[];
+  workingDays?: DayOfWeek[];
   onAddSlot: (day: DayOfWeek, startTime: string, periodId?: string) => void;
   onEditPeriod: (period: TimetablePeriod) => void;
   onDuplicatePeriod: (period: TimetablePeriod) => void;
@@ -28,23 +30,18 @@ const DAY_LABELS: Record<DayOfWeek, { label: string; short: string }> = {
 
 export function TimetableGrid({
   periods,
+  scheduleBlocks = DEFAULT_SCHEDULE_BLOCKS,
+  workingDays = DEFAULT_WORKING_DAYS,
   onAddSlot,
   onEditPeriod,
   onDuplicatePeriod,
   onDeletePeriod,
 }: TimetableGridProps) {
-  const store = useSchoolStore();
-  const activeSchedule = selectActiveSchedule(store);
+  const sortedBlocks = React.useMemo(() => {
+    return [...scheduleBlocks].sort((a, b) => a.order - b.order);
+  }, [scheduleBlocks]);
 
-  const workingDays: DayOfWeek[] = React.useMemo(() => {
-    return activeSchedule?.workingDays || ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  }, [activeSchedule]);
-
-  const scheduleBlocks = React.useMemo(() => {
-    return activeSchedule?.blocks ? [...activeSchedule.blocks].sort((a, b) => a.order - b.order) : [];
-  }, [activeSchedule]);
-
-  if (scheduleBlocks.length === 0) {
+  if (sortedBlocks.length === 0) {
     return (
       <div className="rounded-xl border border-dashed bg-card/40 p-12 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
@@ -79,7 +76,7 @@ export function TimetableGrid({
           </thead>
 
           <tbody>
-            {scheduleBlocks.map((block) => {
+            {sortedBlocks.map((block) => {
               const isNonTeaching = block.type !== 'TEACHING';
 
               if (isNonTeaching) {

@@ -6,11 +6,11 @@ import { DayOfWeek } from '@/features/shared/types';
 import { Button } from '@/components/ui/button';
 import { Plus, User, MapPin, Edit3, Trash2, Copy, Clock, Coffee } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectActiveSchedule } from '@/shared/selectors';
+import { DEFAULT_WORKING_DAYS } from '../hooks/use-timetable';
 
 interface TimetableMobileListProps {
   periods: TimetablePeriod[];
+  workingDays?: DayOfWeek[];
   onAddSlot: (day: DayOfWeek, startTime: string, periodId?: string) => void;
   onEditPeriod: (period: TimetablePeriod) => void;
   onDuplicatePeriod: (period: TimetablePeriod) => void;
@@ -29,18 +29,12 @@ const DAY_LABELS: Record<DayOfWeek, { label: string; short: string }> = {
 
 export function TimetableMobileList({
   periods,
+  workingDays = DEFAULT_WORKING_DAYS,
   onAddSlot,
   onEditPeriod,
   onDuplicatePeriod,
   onDeletePeriod,
 }: TimetableMobileListProps) {
-  const store = useSchoolStore();
-  const activeSchedule = selectActiveSchedule(store);
-
-  const workingDays: DayOfWeek[] = React.useMemo(() => {
-    return activeSchedule?.workingDays || ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  }, [activeSchedule]);
-
   const [selectedDay, setSelectedDay] = React.useState<DayOfWeek | null>(null);
   const activeDay = selectedDay && workingDays.includes(selectedDay)
     ? selectedDay

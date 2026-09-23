@@ -3,72 +3,115 @@
 import * as React from 'react';
 import { AttendanceRegisterItem, AttendanceAttentionItem } from '../types';
 import { AttendanceStatus } from '@/features/shared/types';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { selectStudentsForClassSection, selectAttendanceRegister } from '@/shared/selectors';
+
+export interface ClassItem {
+  id: string;
+  name: string;
+  gradeLevel: number;
+  sections: Array<{ id: string; name: string }>;
+}
 
 export function useAttendance() {
-  const store = useSchoolStore();
+  const [classes, setClasses] = React.useState<ClassItem[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses] = React.useState(true);
 
-  const todayFormatted = React.useMemo(() => {
-    return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }, []);
+  const [selectedDate, setSelectedDate] = React.useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [selectedClassId, setSelectedClassId] = React.useState('');
+  const [selectedSectionId, setSelectedSectionId] = React.useState('');
 
-  const [selectedDate, setSelectedDate] = React.useState(todayFormatted);
-  const [selectedClassId, setSelectedClassId] = React.useState(store.classes[0]?.id || '');
-  const [selectedSectionId, setSelectedSectionId] = React.useState(store.classes[0]?.sections[0]?.id || '');
+  const [isLoadingStudents, setIsLoadingStudents] = React.useState(false);
+  const [items, setItems] = React.useState<AttendanceRegisterItem[]>([]);
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = React.useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  // Sync selection if store classes load or change
+  // 1. Fetch available classes
   React.useEffect(() => {
-    if (!selectedClassId && store.classes.length > 0) {
-      setSelectedClassId(store.classes[0].id);
-      setSelectedSectionId(store.classes[0].sections[0]?.id || '');
+    let isMounted = true;
+    async function loadClasses() {
+      setIsLoadingClasses(true);
+      try {
+        const res = await fetch('/api/classes');
+        if (res.ok) {
+          const data = await res.json();
+          const list: ClassItem[] = (data.classes || []).map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            gradeLevel: c.gradeLevel,
+            sections: c.sections || [],
+          }));
+          if (isMounted) {
+            setClasses(list);
+            if (list.length > 0) {
+              setSelectedClassId(list[0].id);
+              if (list[0].sections.length > 0) {
+                setSelectedSectionId(list[0].sections[0].id);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load classes for attendance:', err);
+      } finally {
+        if (isMounted) setIsLoadingClasses(false);
+      }
     }
-  }, [store.classes, selectedClassId]);
+    loadClasses();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  // Local draft status map keyed by selection to automatically isolate edits per class/section/date
-  const selectionKey = `${selectedClassId}:${selectedSectionId}:${selectedDate}`;
-  const [draftEditsBySelection, setDraftEditsBySelection] = React.useState<
-    Record<string, Record<string, { status: AttendanceStatus; reason?: string }>>
-  >({});
+  // 2. Fetch student roster and attendance status when class/section/date change
+  const fetchRoster = React.useCallback(async () => {
+    if (!selectedClassId) return;
 
-  // Query actual students belonging to Class + Section
-  const enrolledStudents = selectStudentsForClassSection(store, selectedClassId, selectedSectionId);
+    setIsLoadingStudents(true);
+    setErrorMessage(null);
+    try {
+      const params = new URLSearchParams({
+        classId: selectedClassId,
+        date: selectedDate,
+      });
+      if (selectedSectionId) {
+        params.append('sectionId', selectedSectionId);
+      }
 
-  // Get saved register or defaults for selected date
-  const registerInfo = selectAttendanceRegister(
-    store,
-    selectedClassId,
-    selectedSectionId,
-    selectedDate
-  );
+      const res = await fetch(`/api/attendance?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const roster: AttendanceRegisterItem[] = (data.students || []).map((s: any) => ({
+          id: `att-item-${s.id}`,
+          studentId: s.id,
+          rollNumber: s.rollNumber,
+          studentName: s.name,
+          admissionNumber: s.admissionNumber,
+          status: s.status as AttendanceStatus,
+          punchTime: s.status === 'PRESENT' || s.status === 'LATE' ? '07:55 AM' : undefined,
+          markedBy: 'Faculty In-Charge',
+          reason: s.reason || undefined,
+          gender: s.gender,
+        }));
+        setItems(roster);
+      } else {
+        const err = await res.json().catch(() => ({ message: 'Failed to fetch attendance roster' }));
+        setErrorMessage(err.message);
+      }
+    } catch (err) {
+      console.error('Failed to load attendance roster:', err);
+      setErrorMessage('Network error fetching attendance');
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  }, [selectedClassId, selectedSectionId, selectedDate]);
 
-  // Combine enrolled students with saved state or local uncommitted edits
-  const items: AttendanceRegisterItem[] = React.useMemo(() => {
-    const localStatuses = draftEditsBySelection[selectionKey] || {};
-    return enrolledStudents.map((s, idx) => {
-      const rollNumber = String(idx + 1).padStart(2, '0');
-      const saved = registerInfo.students.find((r) => r.student.id === s.id);
-      const local = localStatuses[s.id];
-
-      const status = local ? local.status : saved ? saved.status : ('PRESENT' as AttendanceStatus);
-      const reason = local ? local.reason : saved ? saved.reason : undefined;
-
-      return {
-        id: `att-item-${s.id}`,
-        studentId: s.id,
-        rollNumber,
-        studentName: s.name || `${s.firstName} ${s.lastName}`.trim(),
-        admissionNumber: s.admissionNumber,
-        status,
-        punchTime: status === 'PRESENT' || status === 'LATE' ? '07:55 AM' : undefined,
-        markedBy: 'Faculty In-Charge',
-        reason,
-        gender: s.gender,
-      };
-    });
-  }, [enrolledStudents, registerInfo, draftEditsBySelection, selectionKey]);
+  React.useEffect(() => {
+    if (selectedClassId) {
+      fetchRoster();
+    }
+  }, [fetchRoster, selectedClassId]);
 
   // Derive metrics live from items
   const metrics = React.useMemo(() => {
@@ -101,73 +144,87 @@ export function useAttendance() {
   }, []);
 
   const handleUpdateStatus = (studentId: string, status: AttendanceStatus) => {
-    setDraftEditsBySelection((prev) => ({
-      ...prev,
-      [selectionKey]: {
-        ...(prev[selectionKey] || {}),
-        [studentId]: {
-          status,
-          reason: prev[selectionKey]?.[studentId]?.reason,
-        },
-      },
-    }));
+    setItems((prev) =>
+      prev.map((item) =>
+        item.studentId === studentId
+          ? {
+              ...item,
+              status,
+              punchTime: status === 'PRESENT' || status === 'LATE' ? '07:55 AM' : undefined,
+            }
+          : item
+      )
+    );
   };
 
   const handleUpdateReason = (studentId: string, reason: string) => {
-    setDraftEditsBySelection((prev) => ({
-      ...prev,
-      [selectionKey]: {
-        ...(prev[selectionKey] || {}),
-        [studentId]: {
-          status: prev[selectionKey]?.[studentId]?.status || 'ABSENT',
-          reason,
-        },
-      },
-    }));
+    setItems((prev) =>
+      prev.map((item) =>
+        item.studentId === studentId
+          ? {
+              ...item,
+              reason,
+            }
+          : item
+      )
+    );
   };
 
   const handleMarkAll = (status: AttendanceStatus) => {
-    const next: Record<string, { status: AttendanceStatus; reason?: string }> = {};
-    items.forEach((item) => {
-      next[item.studentId] = { status };
-    });
-    setDraftEditsBySelection((prev) => ({
-      ...prev,
-      [selectionKey]: next,
-    }));
+    setItems((prev) =>
+      prev.map((item) => ({
+        ...item,
+        status,
+        punchTime: status === 'PRESENT' || status === 'LATE' ? '07:55 AM' : undefined,
+      }))
+    );
   };
 
-  const handleSaveAttendance = () => {
+  const handleSaveAttendance = async () => {
+    if (!selectedClassId || !selectedSectionId) {
+      alert('Please select both a class and a section.');
+      return;
+    }
+
     setIsSaving(true);
-    setTimeout(() => {
+    setErrorMessage(null);
+    try {
       const records = items.map((item) => ({
         studentId: item.studentId,
         status: item.status,
-        reason: item.reason,
+        reason: item.reason || null,
       }));
 
-      schoolStore.saveAttendanceRegister(
-        selectedClassId,
-        selectedSectionId,
-        selectedDate,
-        records
-      );
-
-      setDraftEditsBySelection((prev) => {
-        const copy = { ...prev };
-        delete copy[selectionKey];
-        return copy;
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedClassId,
+          sectionId: selectedSectionId,
+          date: selectedDate,
+          records,
+        }),
       });
 
+      if (res.ok) {
+        setSaveSuccessNotice(`Attendance saved successfully for ${selectedDate}!`);
+        setTimeout(() => setSaveSuccessNotice(null), 3500);
+      } else {
+        const err = await res.json().catch(() => ({ message: 'Failed to save attendance' }));
+        setErrorMessage(err.message || 'Failed to save attendance');
+      }
+    } catch (err) {
+      console.error('Error saving attendance:', err);
+      setErrorMessage('Network error while saving attendance');
+    } finally {
       setIsSaving(false);
-      setSaveSuccessNotice(
-        `Attendance roll-call saved successfully for ${selectedDate}!`
-      );
-      setTimeout(() => setSaveSuccessNotice(null), 3500);
-    }, 300);
+    }
   };
 
   return {
+    classes,
+    isLoadingClasses,
+    isLoadingStudents,
     items,
     attentionItems,
     selectedDate,
@@ -179,9 +236,11 @@ export function useAttendance() {
     metrics,
     isSaving,
     saveSuccessNotice,
+    errorMessage,
     updateStatus: handleUpdateStatus,
     updateReason: handleUpdateReason,
     markAll: handleMarkAll,
     saveAttendance: handleSaveAttendance,
+    refreshRoster: fetchRoster,
   };
 }

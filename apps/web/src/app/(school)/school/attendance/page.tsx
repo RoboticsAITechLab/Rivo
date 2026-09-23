@@ -16,6 +16,9 @@ import { AttendanceRegisterItem } from '@/features/attendance/types';
 
 export default function AttendancePage() {
   const {
+    classes,
+    isLoadingClasses,
+    isLoadingStudents,
     items,
     attentionItems,
     selectedDate,
@@ -27,6 +30,7 @@ export default function AttendancePage() {
     metrics,
     isSaving,
     saveSuccessNotice,
+    errorMessage,
     updateStatus,
     updateReason,
     markAll,
@@ -40,9 +44,11 @@ export default function AttendancePage() {
     admissionNumber: string;
   } | null>(null);
 
-  const handleExport = () => {
-    window.print();
-  };
+  const currentClass = classes.find((c) => c.id === selectedClassId);
+  const currentSection = currentClass?.sections.find((s) => s.id === selectedSectionId);
+  const classSectionLabel = currentClass
+    ? `${currentClass.name}${currentSection ? ` • Section ${currentSection.name}` : ''}`
+    : 'Class Roster';
 
   return (
     <PageContainer>
@@ -75,8 +81,16 @@ export default function AttendancePage() {
         </div>
       )}
 
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="p-3 text-xs bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/30 rounded-lg flex items-center gap-2 shadow-2xs animate-fade-in">
+          <span className="font-semibold">{errorMessage}</span>
+        </div>
+      )}
+
       {/* 2. Attendance Dashboard (Selectors, Date Bar & Live Metric Cards) */}
       <AttendanceDashboard
+        classes={classes}
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
         selectedClassId={selectedClassId}
@@ -100,8 +114,8 @@ export default function AttendancePage() {
           <h3 className="text-sm font-bold text-foreground">
             Daily Roll-Call Register
           </h3>
-          <span className="text-xs text-muted-foreground">
-            Section 10-A • Neha Sharma (Class Teacher)
+          <span className="text-xs text-muted-foreground font-medium">
+            {classSectionLabel}
           </span>
         </div>
 

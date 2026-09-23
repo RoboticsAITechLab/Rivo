@@ -53,9 +53,13 @@ export async function GET(req: NextRequest) {
       startTime: s.startTime,
       endTime: s.endTime,
       roomNumber: s.roomNumber || 'Standard Classroom',
+      classId: s.classId,
       className: s.class.name,
+      sectionId: s.sectionId,
       sectionName: s.section.name,
+      subjectId: s.subjectId,
       subjectName: s.subject.name,
+      teacherId: s.teacherId,
       teacherName: `${s.teacher.user.firstName} ${s.teacher.user.lastName}`,
     }));
 
@@ -138,6 +142,43 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Error in POST /api/timetable/school:', error);
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// DELETE /api/timetable/school - Delete weekly schedule slot
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ message: 'Slot ID is required' }, { status: 400 });
+    }
+
+    const auth = await requireAuth(req, {
+      permission: 'school_timetable.delete',
+    });
+
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
+    const slot = await prisma.timetableSlot.findFirst({
+      where: { id, schoolId: auth.schoolId },
+    });
+
+    if (!slot) {
+      return NextResponse.json({ message: 'Timetable slot not found' }, { status: 404 });
+    }
+
+    await prisma.timetableSlot.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, message: 'Timetable slot deleted' });
+  } catch (error) {
+    console.error('Error in DELETE /api/timetable/school:', error);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }

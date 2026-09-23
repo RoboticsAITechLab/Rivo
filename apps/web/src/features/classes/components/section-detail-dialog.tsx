@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Users, User, MapPin } from 'lucide-react';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
 
 interface SectionDetailDialogProps {
   classItem: ClassItem | null;
@@ -21,16 +20,18 @@ export function SectionDetailDialog({
   isOpen,
   onClose,
 }: SectionDetailDialogProps) {
-  const store = useSchoolStore();
-  if (!classItem || !section) return null;
+  const [sectionStudents, setSectionStudents] = React.useState<any[]>([]);
 
-  // Filter real students from central store matching this class and section
-  const sectionStudents = store.students.filter(
-    (s) =>
-      s.classId === classItem.id ||
-      (s.className?.toLowerCase() === classItem.className.toLowerCase() &&
-       s.sectionId === section.id)
-  );
+  React.useEffect(() => {
+    if (!classItem?.id || !section?.id || !isOpen) return;
+
+    fetch(`/api/students?classId=${classItem.id}&sectionId=${section.id}&pageSize=100`)
+      .then((res) => res.json())
+      .then((data) => setSectionStudents(data.students || []))
+      .catch(() => setSectionStudents([]));
+  }, [classItem?.id, section?.id, isOpen]);
+
+  if (!classItem || !section) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

@@ -3,12 +3,12 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectClasses } from '@/shared/selectors';
 import { Calendar, ChevronLeft, ChevronRight, Save, Users, UserCheck, UserX, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ClassItem } from '../hooks/use-attendance';
 
 interface AttendanceDashboardProps {
+  classes: ClassItem[];
   selectedDate: string;
   onDateChange: (date: string) => void;
   selectedClassId: string;
@@ -28,6 +28,7 @@ interface AttendanceDashboardProps {
 }
 
 export function AttendanceDashboard({
+  classes,
   selectedDate,
   onDateChange,
   selectedClassId,
@@ -38,17 +39,28 @@ export function AttendanceDashboard({
   onSaveAttendance,
   isSaving,
 }: AttendanceDashboardProps) {
-  const store = useSchoolStore();
-  const classes = selectClasses(store);
   const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0];
 
   const handlePrevDay = () => {
-    onDateChange('Sep 18, 2025');
+    const cur = new Date(selectedDate);
+    cur.setDate(cur.getDate() - 1);
+    onDateChange(cur.toISOString().split('T')[0]);
   };
 
   const handleNextDay = () => {
-    onDateChange('Sep 20, 2025');
+    const cur = new Date(selectedDate);
+    cur.setDate(cur.getDate() + 1);
+    onDateChange(cur.toISOString().split('T')[0]);
   };
+
+  const formattedDisplayDate = React.useMemo(() => {
+    try {
+      const d = new Date(selectedDate);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
 
   return (
     <div className="space-y-4">
@@ -63,15 +75,18 @@ export function AttendanceDashboard({
               onChange={(e) => {
                 const cls = classes.find((c) => c.id === e.target.value);
                 onClassChange(e.target.value);
-                if (cls?.sections[0]) {
+                if (cls && cls.sections.length > 0) {
                   onSectionChange(cls.sections[0].id);
+                } else {
+                  onSectionChange('');
                 }
               }}
               className="h-8.5 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
+              {classes.length === 0 && <option value="">No classes found</option>}
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
-                  {cls.className} ({cls.gradeLevel})
+                  {cls.name} (Grade {cls.gradeLevel})
                 </option>
               ))}
             </select>
@@ -84,6 +99,9 @@ export function AttendanceDashboard({
               onChange={(e) => onSectionChange(e.target.value)}
               className="h-8.5 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
+              {(!currentClass || currentClass.sections.length === 0) && (
+                <option value="">No sections</option>
+              )}
               {currentClass?.sections.map((sec) => (
                 <option key={sec.id} value={sec.id}>
                   Section {sec.name}
@@ -105,10 +123,18 @@ export function AttendanceDashboard({
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
-            <span className="px-2 flex items-center gap-1.5 text-foreground">
+            <label className="px-2 flex items-center gap-1.5 text-foreground cursor-pointer">
               <Calendar className="h-3.5 w-3.5 text-primary" />
-              {selectedDate}
-            </span>
+              <span>{formattedDisplayDate}</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) onDateChange(e.target.value);
+                }}
+                className="sr-only"
+              />
+            </label>
             <Button
               variant="ghost"
               size="icon"
@@ -123,7 +149,7 @@ export function AttendanceDashboard({
           <Button
             size="sm"
             onClick={onSaveAttendance}
-            disabled={isSaving}
+            disabled={isSaving || classes.length === 0}
             className="gap-1.5 text-xs shadow-2xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
           >
             <Save className="h-3.5 w-3.5" />

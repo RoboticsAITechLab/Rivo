@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { SubjectDetail, SubjectFilterState } from '../types';
-import { mockRepository } from '@/features/shared/mock-repository';
 
 const defaultFilters: SubjectFilterState = {
   searchQuery: '',
@@ -13,9 +12,50 @@ const defaultFilters: SubjectFilterState = {
 };
 
 export function useSubjects() {
-  const [subjects, setSubjects] = React.useState<SubjectDetail[]>(() => mockRepository.getSubjects());
+  const [subjects, setSubjects] = React.useState<SubjectDetail[]>([]);
   const [filters, setFilters] = React.useState<SubjectFilterState>(defaultFilters);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const fetchSubjects = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetch('/api/subjects');
+      if (!res.ok) {
+        throw new Error('Failed to fetch subjects.');
+      }
+      const data = await res.json();
+      const rawSubjects: any[] = data.subjects || [];
+
+      const formatted: SubjectDetail[] = rawSubjects.map((s) => ({
+        id: s.id,
+        name: s.name,
+        code: s.code || '',
+        type: 'CORE',
+        department: 'General Academics',
+        description: '',
+        applicableClassIds: [],
+        applicableClassNames: [],
+        qualifiedTeacherIds: [],
+        qualifiedTeacherNames: [],
+        weeklyPeriods: s.timetableSlotCount || 5,
+        status: 'ACTIVE',
+        createdAt: s.createdAt || new Date().toISOString(),
+      }));
+
+      setSubjects(formatted);
+    } catch (err: any) {
+      console.error('Error fetching subjects:', err);
+      setError(err?.message || 'Error fetching subjects.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchSubjects();
+  }, [fetchSubjects]);
 
   const departments = React.useMemo(() => {
     return Array.from(new Set(subjects.map((s) => s.department))).filter(Boolean);
@@ -29,22 +69,14 @@ export function useSubjects() {
 
   const filteredSubjects = React.useMemo(() => {
     return subjects.filter((item) => {
-      if (filters.type !== 'ALL' && item.type !== filters.type) return false;
-      if (filters.department !== 'ALL' && item.department !== filters.department) return false;
-      if (filters.status !== 'ALL' && item.status !== filters.status) return false;
-      if (filters.className !== 'ALL' && !item.applicableClassNames.includes(filters.className)) return false;
-
       if (filters.searchQuery.trim() !== '') {
         const query = filters.searchQuery.toLowerCase().trim();
         const matchesName = item.name.toLowerCase().includes(query);
         const matchesCode = item.code.toLowerCase().includes(query);
-        const matchesTeacher = item.qualifiedTeacherNames.some((t) => t.toLowerCase().includes(query));
-
-        if (!matchesName && !matchesCode && !matchesTeacher) {
+        if (!matchesName && !matchesCode) {
           return false;
         }
       }
-
       return true;
     });
   }, [subjects, filters]);
@@ -57,9 +89,43 @@ export function useSubjects() {
     setFilters(defaultFilters);
   };
 
-  const handleSaveSubject = (subject: SubjectDetail) => {
-    mockRepository.saveSubject(subject);
-    setSubjects(mockRepository.getSubjects());
+  const handleSaveSubject = async (subject: Partial<SubjectDetail>) => {
+    try {
+      setIsLoading(true);
+      if (subject.id && !subject.id.startsWith('sub-temp-') && !subject.id.startsWith('mock-')) {
+        const res = await fetch(`/api/subjects/${subject.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: subject.name,
+            code: subject.code,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.message || 'Failed to update subject.');
+        }
+      } else {
+        const res = await fetch('/api/subjects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: subject.name,
+            code: subject.code,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.message || 'Failed to create subject.');
+        }
+      }
+      await fetchSubjects();
+    } catch (err: any) {
+      console.error('Error saving subject:', err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return {
@@ -69,9 +135,10 @@ export function useSubjects() {
     departments,
     classes,
     isLoading,
-    setIsLoading,
+    error,
     handleFilterChange,
     handleClearFilters,
     handleSaveSubject,
+    refreshSubjects: fetchSubjects,
   };
 }

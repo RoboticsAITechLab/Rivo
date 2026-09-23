@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { ArrowLeft, Edit3, Users, BookOpen, Calendar, User, MapPin } from 'lucide-react';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectSubjectsForClass } from '@/shared/selectors';
 import { cn } from '@/lib/utils';
 
 interface ClassDetailSheetProps {
@@ -36,15 +34,27 @@ export function ClassDetailSheet({
   onEdit,
   onViewSection,
 }: ClassDetailSheetProps) {
-  const store = useSchoolStore();
   const [activeTab, setActiveTab] = React.useState<ClassTabKey>('overview');
+  const [classStudents, setClassStudents] = React.useState<any[]>([]);
+  const [classSubjects, setClassSubjects] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (!classItem?.id || !isOpen) return;
+
+    // Fetch live enrolled students for this class
+    fetch(`/api/students?classId=${classItem.id}&pageSize=100`)
+      .then((res) => res.json())
+      .then((data) => setClassStudents(data.students || []))
+      .catch(() => setClassStudents([]));
+
+    // Fetch live subjects for this school
+    fetch('/api/subjects')
+      .then((res) => res.json())
+      .then((data) => setClassSubjects(data.subjects || []))
+      .catch(() => setClassSubjects([]));
+  }, [classItem?.id, isOpen]);
 
   if (!classItem) return null;
-
-  const classStudents = store.students.filter(
-    (s) => s.classId === classItem.id || s.className?.toLowerCase() === classItem.className.toLowerCase(),
-  );
-  const classSubjects = selectSubjectsForClass(store, classItem.id).relevant;
 
   const avgSize = classItem.sections.length > 0
     ? Math.round(classItem.totalStudents / classItem.sections.length)

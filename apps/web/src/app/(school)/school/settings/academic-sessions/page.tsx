@@ -1,59 +1,85 @@
 'use client';
 
 import * as React from 'react';
-import { Calendar, Plus, Search, CheckCircle2, Star } from 'lucide-react';
+import { Calendar, Plus, Search, Star, Loader2, AlertCircle } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { FormField } from '@/components/ui/form-field';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { AcademicSession } from '@/shared/types';
 import { EntityStatusBadge } from '@/features/settings/components/entity-status-badge';
 
+interface AcademicSessionRecord {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: 'ACTIVE' | 'ARCHIVED' | 'UPCOMING' | 'COMPLETED';
+  isCurrent: boolean;
+  enrollmentCount?: number;
+  assignmentCount?: number;
+}
+
 export default function AcademicSessionsSettingsPage() {
-  const store = useSchoolStore();
+  const [sessions, setSessions] = React.useState<AcademicSessionRecord[]>([]);
   const [search, setSearch] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-  const [editingSession, setEditingSession] = React.useState<AcademicSession | null>(null);
+  const [editingSession, setEditingSession] = React.useState<AcademicSessionRecord | null>(null);
 
   const [formData, setFormData] = React.useState({
     name: '',
-    code: '',
     startDate: '',
     endDate: '',
-    status: 'ACTIVE' as 'ACTIVE' | 'ARCHIVED' | 'UPCOMING',
+    status: 'ACTIVE' as 'ACTIVE' | 'ARCHIVED' | 'UPCOMING' | 'COMPLETED',
     isCurrent: false,
   });
 
-  const sessions = store.academicSessions || [];
+  const fetchSessions = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetch('/api/academic-sessions');
+      if (!res.ok) throw new Error('Failed to load academic sessions.');
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err: any) {
+      console.error('Error fetching academic sessions:', err);
+      setError(err?.message || 'Error loading academic sessions.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const filteredSessions = sessions.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.code.toLowerCase().includes(search.toLowerCase())
+  React.useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const filteredSessions = sessions.filter((s) =>
+    s.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleOpenCreate = () => {
     setEditingSession(null);
     setFormData({
       name: '',
-      code: '',
-      startDate: '',
-      endDate: '',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
       status: 'ACTIVE',
       isCurrent: sessions.length === 0,
     });
     setIsDrawerOpen(true);
   };
 
-  const handleOpenEdit = (session: AcademicSession) => {
+  const handleOpenEdit = (session: AcademicSessionRecord) => {
     setEditingSession(session);
     setFormData({
       name: session.name,
-      code: session.code,
       startDate: session.startDate,
       endDate: session.endDate,
       status: session.status,
@@ -62,42 +88,75 @@ export default function AcademicSessionsSettingsPage() {
     setIsDrawerOpen(true);
   };
 
-  const handleSetCurrent = (session: AcademicSession) => {
-    schoolStore.setActiveSession(session.id);
+  const handleSetCurrent = async (session: AcademicSessionRecord) => {
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/academic-sessions/${session.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'ACTIVE',
+          makeCurrent: true,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.message || 'Failed to set active session.');
+      }
+      await fetchSessions();
+    } catch (err: any) {
+      alert(err?.message || 'Error setting active session.');
+      setIsLoading(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.code.trim()) return;
+    if (!formData.name.trim() || !formData.startDate || !formData.endDate) return;
 
-    if (editingSession) {
-      schoolStore.updateAcademicSession({
-        ...editingSession,
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        status: formData.status,
-        isCurrent: formData.isCurrent,
-      });
-      if (formData.isCurrent) {
-        schoolStore.setActiveSession(editingSession.id);
+    try {
+      setIsSubmitting(true);
+      if (editingSession) {
+        const res = await fetch(`/api/academic-sessions/${editingSession.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            status: formData.status,
+            makeCurrent: formData.isCurrent,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.message || 'Failed to update academic session.');
+        }
+      } else {
+        const res = await fetch('/api/academic-sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            status: formData.status,
+            makeCurrent: formData.isCurrent,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.message || 'Failed to create academic session.');
+        }
       }
-    } else {
-      const created = schoolStore.createAcademicSession({
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        status: formData.status,
-        isCurrent: formData.isCurrent,
-      });
-      if (formData.isCurrent) {
-        schoolStore.setActiveSession(created.id);
-      }
+
+      setIsDrawerOpen(false);
+      await fetchSessions();
+    } catch (err: any) {
+      alert(err?.message || 'Error saving academic session.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsDrawerOpen(false);
   };
 
   return (
@@ -107,12 +166,19 @@ export default function AcademicSessionsSettingsPage() {
         description="Configure academic years, current operational session and calendar term boundaries."
         icon={Calendar}
         actions={
-          <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs h-8">
+          <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs h-8 cursor-pointer">
             <Plus className="h-3.5 w-3.5" />
             Add Academic Session
           </Button>
         }
       />
+
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-xs text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -120,7 +186,7 @@ export default function AcademicSessionsSettingsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sessions by name or code..."
+            placeholder="Search sessions by name..."
             className="h-8 pl-8 text-xs bg-card"
           />
         </div>
@@ -128,7 +194,12 @@ export default function AcademicSessionsSettingsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {sessions.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center space-y-2">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
+              <p className="text-xs text-muted-foreground">Loading academic sessions from database...</p>
+            </div>
+          ) : sessions.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <Calendar className="h-6 w-6" />
@@ -154,7 +225,6 @@ export default function AcademicSessionsSettingsPage() {
                 <thead className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <tr>
                     <th className="py-2.5 px-4">Session Name</th>
-                    <th className="py-2.5 px-4">Code</th>
                     <th className="py-2.5 px-4">Start Date</th>
                     <th className="py-2.5 px-4">End Date</th>
                     <th className="py-2.5 px-4">Status</th>
@@ -175,9 +245,6 @@ export default function AcademicSessionsSettingsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-mono font-bold text-foreground">
-                        {s.code}
-                      </td>
                       <td className="py-3 px-4 text-muted-foreground font-mono">
                         {s.startDate || '—'}
                       </td>
@@ -193,7 +260,7 @@ export default function AcademicSessionsSettingsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleSetCurrent(s)}
-                            className="h-7 px-2 text-[11px] text-primary hover:text-primary"
+                            className="h-7 px-2 text-[11px] text-primary hover:text-primary cursor-pointer"
                           >
                             Set Current
                           </Button>
@@ -202,7 +269,7 @@ export default function AcademicSessionsSettingsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenEdit(s)}
-                          className="h-7 px-2.5 text-[11px]"
+                          className="h-7 px-2.5 text-[11px] cursor-pointer"
                         >
                           Edit
                         </Button>
@@ -240,32 +307,23 @@ export default function AcademicSessionsSettingsPage() {
               />
             </FormField>
 
-            <FormField id="code" label="Session Code" required>
-              <Input
-                id="code"
-                required
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="e.g. AY-2026-27"
-                className="text-xs font-mono uppercase"
-              />
-            </FormField>
-
             <div className="grid grid-cols-2 gap-3">
-              <FormField id="startDate" label="Start Date">
+              <FormField id="startDate" label="Start Date" required>
                 <Input
                   id="startDate"
                   type="date"
+                  required
                   value={formData.startDate}
                   onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
                   className="text-xs font-mono"
                 />
               </FormField>
 
-              <FormField id="endDate" label="End Date">
+              <FormField id="endDate" label="End Date" required>
                 <Input
                   id="endDate"
                   type="date"
+                  required
                   value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                   className="text-xs font-mono"
@@ -282,6 +340,7 @@ export default function AcademicSessionsSettingsPage() {
               >
                 <option value="ACTIVE">Active</option>
                 <option value="UPCOMING">Upcoming</option>
+                <option value="COMPLETED">Completed</option>
                 <option value="ARCHIVED">Archived</option>
               </select>
             </FormField>
@@ -292,7 +351,7 @@ export default function AcademicSessionsSettingsPage() {
                 id="isCurrent"
                 checked={formData.isCurrent}
                 onChange={(e) => setFormData({ ...formData, isCurrent: e.target.checked })}
-                className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
               />
               <label htmlFor="isCurrent" className="text-xs font-medium text-foreground cursor-pointer">
                 Set as Active Current Session for all school modules
@@ -306,10 +365,14 @@ export default function AcademicSessionsSettingsPage() {
                 size="sm"
                 onClick={() => setIsDrawerOpen(false)}
                 className="text-xs"
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="text-xs">
+              <Button type="submit" size="sm" className="text-xs" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : null}
                 {editingSession ? 'Update Session' : 'Create Session'}
               </Button>
             </SheetFooter>

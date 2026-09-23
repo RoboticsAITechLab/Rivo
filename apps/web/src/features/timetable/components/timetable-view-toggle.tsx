@@ -2,23 +2,24 @@
 
 import * as React from 'react';
 import { TimetableFilterState } from '../types';
+import { TimetableClass, TimetableTeacher } from '../hooks/use-timetable';
 import { Button } from '@/components/ui/button';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectClasses, selectTeachers, selectRooms } from '@/shared/selectors';
 import { Calendar, Users, GraduationCap, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TimetableViewToggleProps {
   filters: TimetableFilterState;
   onFilterChange: (updates: Partial<TimetableFilterState>) => void;
+  classes: TimetableClass[];
+  teachers: TimetableTeacher[];
 }
 
-export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewToggleProps) {
-  const store = useSchoolStore();
-  const classes = selectClasses(store);
-  const teachers = selectTeachers(store);
-  const rooms = selectRooms(store);
-
+export function TimetableViewToggle({
+  filters,
+  onFilterChange,
+  classes,
+  teachers,
+}: TimetableViewToggleProps) {
   const selectedClass = classes.find((c) => c.id === filters.classId) || classes[0];
 
   return (
@@ -72,7 +73,7 @@ export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewTo
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-lg border bg-background px-2.5 py-1 text-xs font-medium text-foreground gap-1.5 shadow-2xs">
             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>{filters.selectedWeek || 'Current Week (Sep 15 - Sep 20)'}</span>
+            <span>{filters.selectedWeek || 'Current Week'}</span>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="outline" size="icon" className="h-8 w-8" title="Previous Week">
@@ -102,9 +103,10 @@ export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewTo
                 }}
                 className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
+                {classes.length === 0 && <option value="">No classes</option>}
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.className} ({cls.gradeLevel})
+                    {cls.name} (Grade {cls.gradeLevel})
                   </option>
                 ))}
               </select>
@@ -117,6 +119,9 @@ export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewTo
                 onChange={(e) => onFilterChange({ sectionId: e.target.value })}
                 className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
+                {(!selectedClass || selectedClass.sections.length === 0) && (
+                  <option value="">No sections</option>
+                )}
                 {selectedClass?.sections.map((sec) => (
                   <option key={sec.id} value={sec.id}>
                     Section {sec.name}
@@ -135,9 +140,10 @@ export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewTo
               onChange={(e) => onFilterChange({ teacherId: e.target.value })}
               className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring min-w-[200px]"
             >
+              {teachers.length === 0 && <option value="">No teachers found</option>}
               {teachers.map((tch) => (
                 <option key={tch.id} value={tch.id}>
-                  {tch.personal.firstName} {tch.personal.lastName} ({tch.employment.department})
+                  {tch.name} ({tch.department})
                 </option>
               ))}
             </select>
@@ -147,17 +153,13 @@ export function TimetableViewToggle({ filters, onFilterChange }: TimetableViewTo
         {filters.viewMode === 'ROOM' && (
           <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-muted-foreground">Room:</label>
-            <select
+            <input
+              type="text"
               value={filters.room}
               onChange={(e) => onFilterChange({ room: e.target.value })}
+              placeholder="e.g. Room 204"
               className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring min-w-[160px]"
-            >
-              {rooms.map((rm) => (
-                <option key={rm.id} value={rm.name}>
-                  {rm.name} ({rm.building})
-                </option>
-              ))}
-            </select>
+            />
           </div>
         )}
 

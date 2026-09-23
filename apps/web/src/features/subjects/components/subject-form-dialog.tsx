@@ -9,8 +9,6 @@ import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { BookOpen, Search } from 'lucide-react';
 import { SubjectType } from '@/features/shared/types';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { selectClasses, resolveClassName } from '@/shared/selectors';
 
 interface SubjectFormDialogProps {
   isOpen: boolean;
@@ -53,8 +51,14 @@ function SubjectFormContent({
   existingSubjects: SubjectDetail[];
   onSaveSubject: (subject: SubjectDetail) => void;
 }) {
-  const store = useSchoolStore();
-  const classes = selectClasses(store);
+  const [classes, setClasses] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/classes')
+      .then((res) => res.json())
+      .then((data) => setClasses(data.classes || []))
+      .catch(() => setClasses([]));
+  }, []);
 
   const [name, setName] = React.useState(subjectToEdit?.name || '');
   const [code, setCode] = React.useState(subjectToEdit?.code || '');
@@ -130,33 +134,6 @@ function SubjectFormContent({
       status,
       createdAt: subjectToEdit?.createdAt || new Date().toISOString(),
     };
-
-    // Synchronize into central store
-    if (subjectToEdit) {
-      schoolStore.updateSubject({
-        id: subId,
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        type,
-        department,
-        description: description.trim(),
-        applicableClassIds: selectedClassIds,
-        weeklyPeriods,
-        status,
-      });
-    } else {
-      schoolStore.createSubject({
-        id: subId,
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        type,
-        department,
-        description: description.trim(),
-        applicableClassIds: selectedClassIds,
-        weeklyPeriods,
-        status,
-      });
-    }
 
     onSaveSubject(updatedItem);
   };

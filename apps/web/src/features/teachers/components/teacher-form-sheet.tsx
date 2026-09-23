@@ -11,8 +11,6 @@ import { FormSection } from '@/components/ui/form-section';
 import { Plus, Trash2, AlertCircle, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { EmploymentType } from '@/features/shared/types';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectClasses, selectSubjects } from '@/shared/selectors';
 
 interface TeacherFormSheetProps {
   isOpen: boolean;
@@ -97,9 +95,40 @@ function TeacherFormWizard({
   existingTeachers: TeacherDetail[];
   onSaveTeacher: (teacher: TeacherDetail) => void;
 }) {
-  const store = useSchoolStore();
-  const storeClasses = selectClasses(store);
-  const storeSubjects = selectSubjects(store);
+  const [storeClasses, setStoreClasses] = React.useState<any[]>([]);
+  const [storeSubjects, setStoreSubjects] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/classes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.classes) {
+          setStoreClasses(
+            data.classes.map((c: any) => ({
+              id: c.id,
+              className: c.name,
+              sections: (c.sections || []).map((s: any) => ({ id: s.id, name: s.name })),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/subjects')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.subjects) {
+          setStoreSubjects(
+            data.subjects.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              code: s.code,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Form State
   const [firstName, setFirstName] = React.useState(teacherToEdit?.personal.firstName || '');

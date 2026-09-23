@@ -16,9 +16,6 @@ import { UnsavedDialog } from './unsaved-dialog';
 import { SubmitSuccessDialog } from './submit-success-dialog';
 import { AdmissionReview } from './admission-review';
 import { buildStudentDetail } from '@/lib/student-utils';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
-import { selectClasses } from '@/shared/selectors';
-
 interface AdmissionWorkspaceProps {
   isOpen: boolean;
   onClose: () => void;
@@ -46,8 +43,24 @@ export function AdmissionWorkspace({
   onViewStudentProfile,
   onManageHouses,
 }: AdmissionWorkspaceProps) {
-  const store = useSchoolStore();
-  const storeClasses = selectClasses(store);
+  const [storeClasses, setStoreClasses] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/classes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.classes) {
+          setStoreClasses(
+            data.classes.map((c: any) => ({
+              id: c.id,
+              className: c.name,
+              sections: (c.sections || []).map((s: any) => ({ id: s.id, name: s.name })),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Mode: Form editing vs Pre-submission Review
   const [isReviewMode, setIsReviewMode] = useState(false);

@@ -19,68 +19,127 @@ import {
   Info,
   Layers,
   Plus,
+  RefreshCw,
   Sparkles,
   Users,
 } from 'lucide-react';
-import {
-  mockCurrentUser,
-  mockAttentionItems,
-  mockAttendanceSummary,
-  mockLowAttendanceClasses,
-  mockUpcomingExams,
-  mockRecentNotices,
-  mockRecentActivity,
-} from '@/data/mock-data';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ErrorState } from '@/components/ui/error-state';
 import { cn } from '@/lib/utils';
 
+interface DashboardData {
+  school: {
+    id: string;
+    name: string;
+    code: string;
+    type: string;
+  };
+  stats: {
+    studentsCount: number;
+    totalStudentsCount: number;
+    teachersCount: number;
+    classesCount: number;
+    sectionsCount: number;
+    activeSession: string;
+    attendancePercentage: string;
+    attendanceBreakdown: {
+      total: number;
+      present: number;
+      absent: number;
+      late: number;
+      registersCompleted: number;
+    };
+  };
+  lowAttendanceClasses: Array<{
+    className: string;
+    sectionName: string;
+    percentage: number;
+  }>;
+  upcomingExams: Array<{
+    id: string;
+    name: string;
+    code?: string;
+    startDate: string;
+    endDate: string;
+    papersCount: number;
+    isPublished: boolean;
+  }>;
+  recentActivity: Array<{
+    id: string;
+    event: string;
+    details: string | null;
+    createdAt: string;
+  }>;
+}
+
 export default function SchoolDashboardPage() {
-  const store = useSchoolStore();
-  const studentsCount = store.students?.length ?? 0;
-  const teachersCount = store.teachers?.length ?? 0;
-  const classesCount = store.classes?.length ?? 0;
-  const activeSession = store.academicSessions?.find((s) => s.status === 'ACTIVE')?.name || '2026-2027';
-  const pendingHomeworkCount = store.homework?.filter((h) => h.status === 'PUBLISHED').length ?? 0;
+  const [data, setData] = React.useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const attendanceRegisters = Object.values(store.attendanceRegisters || {});
-  const allAttendanceRecords = attendanceRegisters.flatMap((reg) => reg?.records || []);
-  const totalAttendanceRecords = allAttendanceRecords.length;
-  const presentAttendanceRecords = allAttendanceRecords.filter((a) => a.status === 'PRESENT').length;
-  const attendancePercentage = totalAttendanceRecords > 0
-    ? `${((presentAttendanceRecords / totalAttendanceRecords) * 100).toFixed(1)}%`
-    : '0.0%';
-
-  const getSeverityIcon = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />;
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />;
-      case 'info':
-        return <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />;
-      default:
-        return <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />;
+  const fetchDashboard = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/school/dashboard');
+      if (!res.ok) {
+        throw new Error(`Failed to load school dashboard metrics (${res.status})`);
+      }
+      const json = await res.json();
+      setData(json);
+    } catch (err: unknown) {
+      console.error('Error loading dashboard:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect to dashboard service');
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const getSeverityBadgeClass = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20';
-      case 'warning':
-        return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
-      case 'info':
-        return 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20';
-      default:
-        return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
-    }
-  };
+  React.useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  if (isLoading) {
+    return (
+      <PageContainer>
+        <div className="space-y-6 animate-pulse">
+          <div className="h-10 w-64 bg-muted rounded-md" />
+          <div className="h-20 w-full bg-muted/60 rounded-xl" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-28 bg-muted/70 rounded-xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-7 h-64 bg-muted/60 rounded-xl" />
+            <div className="lg:col-span-5 h-64 bg-muted/60 rounded-xl" />
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <PageContainer>
+        <ErrorState
+          title="Dashboard Unavailable"
+          message={error || 'Unable to load real-time institutional dashboard metrics.'}
+          onRetry={fetchDashboard}
+        />
+      </PageContainer>
+    );
+  }
+
+  const { school, stats, lowAttendanceClasses, upcomingExams, recentActivity } = data;
+
+  const totalAttendance = stats.attendanceBreakdown.total;
+  const presentAttendance = stats.attendanceBreakdown.present;
+  const attendanceRateNum = totalAttendance > 0 ? Math.round((presentAttendance / totalAttendance) * 100) : 0;
 
   return (
     <PageContainer>
@@ -97,12 +156,12 @@ export default function SchoolDashboardPage() {
           <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-muted-foreground">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <Building2 className="h-3.5 w-3.5 text-primary" />
-              {mockCurrentUser.schoolName}
+              {school.name}
             </span>
             <span>•</span>
             <span className="inline-flex items-center gap-1">
               <Calendar className="h-3.5 w-3.5" />
-              Session {activeSession}
+              Session {stats.activeSession}
             </span>
             <span>•</span>
             <span>Institutional Overview</span>
@@ -110,9 +169,14 @@ export default function SchoolDashboardPage() {
         }
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-              <Download className="h-3.5 w-3.5" />
-              Export Report
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={fetchDashboard}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
             </Button>
             <Button size="sm" className="gap-1.5 text-xs" asChild>
               <Link href="/school/students">
@@ -124,7 +188,7 @@ export default function SchoolDashboardPage() {
         }
       />
 
-      {/* 2. ATTENTION REQUIRED SECTION - Light amber tinted operational banner */}
+      {/* 2. ATTENTION REQUIRED SECTION */}
       <div className="rounded-xl border border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/15 p-4 sm:p-5 shadow-2xs">
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-500/15">
           <div className="flex items-center gap-2.5">
@@ -133,46 +197,44 @@ export default function SchoolDashboardPage() {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
             </span>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-950 dark:text-amber-200">
-              Administrative Attention Required
+              Administrative Status Overview
             </h2>
           </div>
           <Link
             href="/school/notifications"
             className="group inline-flex items-center gap-1.5 text-xs font-semibold text-amber-900 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-100 hover:underline transition-colors outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded px-1.5 py-0.5"
           >
-            <span>View all alerts</span>
+            <span>View notifications</span>
             <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
         <div className="divide-y divide-amber-500/15">
-          {mockAttentionItems.length === 0 ? (
+          {lowAttendanceClasses.length === 0 ? (
             <div className="py-2 text-center text-xs text-muted-foreground">
-              All systems operational — no urgent administrative alerts require action.
+              All systems operational — institutional rosters and cohorts are meeting standard operational criteria.
             </div>
           ) : (
-            mockAttentionItems.map((item) => (
+            lowAttendanceClasses.map((item, idx) => (
               <div
-                key={item.id}
+                key={idx}
                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
               >
                 <div className="flex items-start sm:items-center gap-3 min-w-0">
-                  {getSeverityIcon(item.severity)}
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-foreground">
-                        {item.title}
+                        Low Attendance Flagged: {item.className} - {item.sectionName}
                       </span>
-                      {item.context && (
-                        <Badge
-                          variant="outline"
-                          className={cn('text-[10px] px-1.5 py-0 h-4 border', getSeverityBadgeClass(item.severity))}
-                        >
-                          {item.context}
-                        </Badge>
-                      )}
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 h-4 border bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                      >
+                        {item.percentage}%
+                      </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
-                      {item.description}
+                      Attendance rate is below the institutional 85% threshold.
                     </p>
                   </div>
                 </div>
@@ -182,7 +244,7 @@ export default function SchoolDashboardPage() {
                   className="self-end sm:self-auto h-7 px-3 text-xs bg-card/80 hover:bg-card text-foreground font-medium shrink-0 border-amber-500/25"
                   asChild
                 >
-                  <Link href={item.href}>{item.actionLabel}</Link>
+                  <Link href="/school/attendance">Review Cohort</Link>
                 </Button>
               </div>
             ))
@@ -194,49 +256,49 @@ export default function SchoolDashboardPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           title="Students"
-          value={studentsCount.toLocaleString()}
-          change={studentsCount === 0 ? 'No students enrolled' : `${studentsCount} enrolled`}
-          isPositive={studentsCount > 0}
+          value={stats.studentsCount.toLocaleString()}
+          change={stats.studentsCount === 0 ? 'No active students' : `${stats.studentsCount} active`}
+          isPositive={stats.studentsCount > 0}
           timeframe="Total active"
           icon={GraduationCap}
         />
         <StatCard
           title="Teachers"
-          value={teachersCount.toLocaleString()}
-          change={teachersCount === 0 ? 'No faculty onboarded' : `${teachersCount} faculty`}
-          isPositive={teachersCount > 0}
+          value={stats.teachersCount.toLocaleString()}
+          change={stats.teachersCount === 0 ? 'No faculty onboarded' : `${stats.teachersCount} active`}
+          isPositive={stats.teachersCount > 0}
           timeframe="Active staff"
           icon={Users}
         />
         <StatCard
           title="Attendance"
-          value={attendancePercentage}
-          change={totalAttendanceRecords === 0 ? 'No records today' : `${presentAttendanceRecords} present`}
-          isPositive={totalAttendanceRecords > 0}
-          timeframe="Session rate"
+          value={stats.attendancePercentage}
+          change={totalAttendance === 0 ? 'No roll calls today' : `${presentAttendance} present`}
+          isPositive={totalAttendance > 0}
+          timeframe="Today rate"
           icon={CalendarCheck}
         />
         <StatCard
           title="Classes"
-          value={classesCount.toLocaleString()}
-          change={classesCount === 0 ? 'No classes created' : `${classesCount} cohorts`}
-          isPositive={classesCount > 0}
-          timeframe="Active rosters"
+          value={stats.classesCount.toLocaleString()}
+          change={stats.classesCount === 0 ? 'No active classes' : `${stats.classesCount} active`}
+          isPositive={stats.classesCount > 0}
+          timeframe="Active cohorts"
           icon={Layers}
         />
         <StatCard
-          title="Pending Tasks"
-          value={pendingHomeworkCount.toString()}
-          change={pendingHomeworkCount === 0 ? 'Queue clear' : 'Needs review'}
-          isPositive={pendingHomeworkCount === 0}
-          timeframe="Homework tasks"
+          title="Sections"
+          value={stats.sectionsCount.toLocaleString()}
+          change={stats.sectionsCount === 0 ? 'No active sections' : `${stats.sectionsCount} divisions`}
+          isPositive={stats.sectionsCount > 0}
+          timeframe="Class sections"
           icon={FileText}
         />
       </div>
 
       {/* 4. TODAY / THIS WEEK (ATTENDANCE + UPCOMING EXAMS) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Today Attendance Progress & Low Attendance Classes */}
+        {/* Today Attendance Progress */}
         <div className="lg:col-span-7 flex flex-col justify-between rounded-xl border border-border/80 bg-card p-5 shadow-2xs">
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-border/60">
@@ -271,48 +333,47 @@ export default function SchoolDashboardPage() {
                     Recorded Headcount
                   </span>
                   <span className="text-sm font-bold text-foreground font-mono">
-                    {mockAttendanceSummary.presentCount} / {mockAttendanceSummary.totalEnrolled} students
+                    {presentAttendance} / {totalAttendance} students
                   </span>
                 </div>
                 {/* Progress bar */}
                 <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden flex">
                   <div
                     className="bg-emerald-500 transition-all duration-500 rounded-full"
-                    style={{ width: `${mockAttendanceSummary.todayPercentage}%` }}
+                    style={{ width: `${attendanceRateNum}%` }}
                   />
                 </div>
                 <div className="flex justify-between items-center mt-2 text-xs">
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    {mockAttendanceSummary.todayPercentage}% Present ({mockAttendanceSummary.presentCount})
+                    {stats.attendancePercentage} Present ({presentAttendance})
                   </span>
                   <span className="text-muted-foreground font-medium">
-                    {mockAttendanceSummary.absentCount} Absent
+                    {stats.attendanceBreakdown.absent} Absent • {stats.attendanceBreakdown.late} Late
                   </span>
                 </div>
               </div>
 
-              {/* Low attendance classes list */}
+              {/* Attendance registers completed */}
               <div className="rounded-lg border border-border/70 bg-surface-subtle/80 p-3.5 space-y-2">
                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Low Attendance Alerts
+                  Today&apos;s Registers Completed: {stats.attendanceBreakdown.registersCompleted}
                 </div>
-                {mockLowAttendanceClasses.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-muted-foreground">
-                    No attendance exceptions flagged. All cohorts meeting institutional threshold.
+                {lowAttendanceClasses.length === 0 ? (
+                  <div className="py-2 text-center text-xs text-muted-foreground">
+                    {totalAttendance === 0
+                      ? 'No roll call registers recorded yet for today.'
+                      : 'All completed registers are operating within healthy attendance margins.'}
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
-                    {mockLowAttendanceClasses.map((cls: any) => (
+                    {lowAttendanceClasses.map((cls, idx) => (
                       <div
-                        key={cls.className}
+                        key={idx}
                         className="flex items-center justify-between py-2 text-xs"
                       >
                         <div>
                           <span className="font-semibold text-foreground">
-                            {cls.className}
-                          </span>
-                          <span className="text-muted-foreground ml-2">
-                            Teacher: {cls.teacher} ({cls.absentCount} absent)
+                            {cls.className} ({cls.sectionName})
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -359,22 +420,22 @@ export default function SchoolDashboardPage() {
                 asChild
               >
                 <Link href="/school/exams">
-                  <span>View Timetable</span>
+                  <span>View Cycles</span>
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </Button>
             </div>
 
             <div className="pt-4 space-y-3">
-              {store.exams.length === 0 ? (
+              {upcomingExams.length === 0 ? (
                 <div className="py-8 text-center text-xs text-muted-foreground space-y-3">
-                  <p>No upcoming examinations scheduled.</p>
+                  <p>No upcoming examination cycles scheduled.</p>
                   <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
                     <Link href="/school/exams">+ Create Assessment Cycle</Link>
                   </Button>
                 </div>
               ) : (
-                store.exams.slice(0, 2).map((exam) => (
+                upcomingExams.slice(0, 3).map((exam) => (
                   <div
                     key={exam.id}
                     className="rounded-lg border border-border/70 bg-surface-subtle/50 p-3.5 transition-colors hover:border-primary/40 space-y-1.5"
@@ -384,17 +445,13 @@ export default function SchoolDashboardPage() {
                         {exam.name}
                       </div>
                       <Badge variant="outline" className="text-[10px] uppercase font-semibold shrink-0">
-                        {exam.status}
+                        {exam.isPublished ? 'PUBLISHED' : 'DRAFT'}
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
-                      <span>{exam.startDate} – {exam.endDate}</span>
+                      <span>{new Date(exam.startDate).toLocaleDateString()} – {new Date(exam.endDate).toLocaleDateString()}</span>
                       <span>•</span>
-                      <span>{exam.type}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5 text-primary" />
-                      <span>Academic Session {activeSession}</span>
+                      <span>{exam.papersCount} Papers</span>
                     </div>
                   </div>
                 ))
@@ -463,12 +520,12 @@ export default function SchoolDashboardPage() {
                 className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
                 asChild
               >
-                <Link href="/school/homework">
+                <Link href="/school/classes">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <FileText className="h-4 w-4" />
+                    <Layers className="h-4 w-4" />
                   </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Create Homework</span>
-                  <span className="text-[10px] text-muted-foreground">Assignment queue</span>
+                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Manage Classes</span>
+                  <span className="text-[10px] text-muted-foreground">Cohorts &amp; sections</span>
                 </Link>
               </Button>
 
@@ -482,7 +539,7 @@ export default function SchoolDashboardPage() {
                     <Award className="h-4 w-4" />
                   </div>
                   <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Create Exam</span>
-                  <span className="text-[10px] text-muted-foreground">Datesheet &amp; halls</span>
+                  <span className="text-[10px] text-muted-foreground">Cycles &amp; papers</span>
                 </Link>
               </Button>
 
@@ -491,19 +548,19 @@ export default function SchoolDashboardPage() {
                 className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
                 asChild
               >
-                <Link href="/school/notices">
+                <Link href="/school/timetable">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <Bell className="h-4 w-4" />
+                    <Clock className="h-4 w-4" />
                   </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Publish Notice</span>
-                  <span className="text-[10px] text-muted-foreground">Circular broadcast</span>
+                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Timetable</span>
+                  <span className="text-[10px] text-muted-foreground">Weekly slots</span>
                 </Link>
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Important Circulars & Notices */}
+        {/* Recent Audit Trail / Security Logs */}
         <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card p-5 shadow-2xs">
           <div className="flex items-center justify-between pb-3 border-b border-border/60">
             <div className="flex items-center gap-2.5">
@@ -512,113 +569,44 @@ export default function SchoolDashboardPage() {
               </div>
               <div>
                 <h2 className="text-sm font-bold text-foreground">
-                  Important Circulars &amp; Notices
+                  Security &amp; Audit Trail
                 </h2>
-                <p className="text-[11px] text-muted-foreground">Official school announcements</p>
+                <p className="text-[11px] text-muted-foreground">Real-time system event logs</p>
               </div>
             </div>
-            <Link
-              href="/school/notices"
-              className="group inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 hover:underline transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary rounded px-2 py-1 bg-primary/8 dark:bg-primary/15"
-            >
-              <span>View all notices</span>
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
-            </Link>
+            <span className="text-[11px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded">
+              Verified Events
+            </span>
           </div>
 
           <div className="pt-4 space-y-3">
-            {mockRecentNotices.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground space-y-3">
-                <p>No institutional notices or circulars published yet.</p>
-                <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
-                  <Link href="/school/notices">+ Draft Notice</Link>
-                </Button>
+            {recentActivity.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground space-y-1">
+                <p>No recent security audit logs recorded for this institution.</p>
               </div>
             ) : (
-              mockRecentNotices.slice(0, 2).map((notice) => (
-                <Link
-                  key={notice.id}
-                  href="/school/notices"
-                  className="group block rounded-lg border border-border/70 bg-surface-subtle/50 p-3.5 transition-all hover:border-primary/50 hover:bg-card hover:shadow-2xs space-y-1.5 cursor-pointer"
+              recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="rounded-lg border border-border/70 bg-surface-subtle/50 p-3 transition-colors hover:border-primary/40 space-y-1"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={cn(
-                          'h-2 w-2 rounded-full shrink-0',
-                          notice.priority === 'URGENT'
-                            ? 'bg-red-500 ring-2 ring-red-500/20'
-                            : notice.priority === 'HIGH'
-                            ? 'bg-amber-500 ring-2 ring-amber-500/20'
-                            : 'bg-blue-500 ring-2 ring-blue-500/20',
-                        )}
-                      />
-                      <span className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                        {notice.title}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground shrink-0 ml-2 font-mono">
-                      {notice.date}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-foreground">
+                      {activity.event}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {new Date(activity.createdAt).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                    {notice.summary}
-                  </p>
-                  <div className="flex items-center justify-end pt-1">
-                    <span className="text-[11px] font-medium text-primary inline-flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                      Read circular <ArrowRight className="h-2.5 w-2.5 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  </div>
-                </Link>
+                  {activity.details && (
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {activity.details}
+                    </p>
+                  )}
+                </div>
               ))
             )}
           </div>
-        </div>
-      </div>
-
-      {/* 6. RECENT SCHOOL ACTIVITY TIMELINE */}
-      <div className="rounded-xl border border-border/80 bg-card shadow-2xs overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-border/60 bg-surface-subtle/30">
-          <div>
-            <h2 className="text-sm font-bold text-foreground">
-              Recent School Activity Log
-            </h2>
-            <p className="text-[11px] text-muted-foreground">
-              Automated audit trail &amp; event updates
-            </p>
-          </div>
-          <span className="text-[11px] font-medium text-muted-foreground bg-muted/60 px-2 py-0.5 rounded">
-            Live Stream
-          </span>
-        </div>
-        <div className="divide-y divide-border/60">
-          {mockRecentActivity.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">
-              No system activity logged for this session yet.
-            </div>
-          ) : (
-            mockRecentActivity.map((activity) => (
-              <div
-                key={activity.id}
-                className="flex items-start sm:items-center justify-between gap-4 p-3.5 sm:px-5 hover:bg-surface-subtle/50 transition-colors text-xs"
-              >
-                <div className="flex items-start sm:items-center gap-3 min-w-0">
-                  <span className="h-2 w-2 rounded-full bg-primary/70 shrink-0 mt-1 sm:mt-0 ring-2 ring-primary/20" />
-                  <div className="min-w-0">
-                    <span className="font-semibold text-foreground">
-                      {activity.title}
-                    </span>
-                    <span className="text-muted-foreground ml-2 truncate">
-                      {activity.description}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[11px] text-muted-foreground shrink-0 font-medium font-mono">
-                  {activity.timestamp}
-                </span>
-              </div>
-            ))
-          )}
         </div>
       </div>
     </PageContainer>

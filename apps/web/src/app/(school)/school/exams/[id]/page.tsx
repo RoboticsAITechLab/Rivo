@@ -79,7 +79,42 @@ export default function ExamDetailPage() {
   const examId = params.id as string;
   const store = useSchoolStore();
 
-  const exam = selectExamById(store, examId);
+  const [liveExam, setLiveExam] = React.useState<any>(null);
+  const [isLoadingLive, setIsLoadingLive] = React.useState(true);
+
+  React.useEffect(() => {
+    async function loadLiveTerm() {
+      try {
+        const res = await fetch(`/api/timetable/exam?termId=${examId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.examTerms && data.examTerms.length > 0) {
+            const t = data.examTerms[0];
+            setLiveExam({
+              id: t.id,
+              name: t.name,
+              code: t.code || 'EXAM',
+              type: 'TERM',
+              status: t.isPublished ? 'PUBLISHED' : 'SCHEDULED',
+              startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
+              endDate: t.endDate ? new Date(t.endDate).toISOString().split('T')[0] : '',
+              campusIds: ['cmp-main'],
+              classIds: [],
+              description: `${t.name} examination cycle.`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch live exam term:', e);
+      } finally {
+        setIsLoadingLive(false);
+      }
+    }
+    loadLiveTerm();
+  }, [examId]);
+
+  const examFromStore = selectExamById(store, examId);
+  const exam = examFromStore || liveExam;
   const papers = selectExamPapers(store, examId);
   const schedule = selectExamSchedule(store, examId);
   const candidates = selectExamCandidates(store, examId);
@@ -104,13 +139,22 @@ export default function ExamDetailPage() {
   };
 
   if (!exam) {
+    if (isLoadingLive) {
+      return (
+        <PageContainer>
+          <div className="py-20 text-center text-xs text-muted-foreground">
+            Loading examination cycle details...
+          </div>
+        </PageContainer>
+      );
+    }
     return (
       <PageContainer>
         <div className="py-20 text-center space-y-3">
           <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto" />
           <h2 className="text-base font-bold text-foreground">Examination Cycle Not Found</h2>
           <p className="text-xs text-muted-foreground">
-            The requested examination cycle identifier &ldquo;{examId}&rdquo; does not exist in the institutional store.
+            The requested examination cycle identifier &ldquo;{examId}&rdquo; does not exist.
           </p>
           <Link href="/school/exams">
             <Button size="sm" variant="outline" className="text-xs mt-2">

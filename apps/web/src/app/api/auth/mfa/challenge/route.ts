@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Lookup user and primary active school membership
+    // Lookup user, primary active school membership, and teacher profile
     const user = await prisma.user.findUnique({
       where: { id: verification.userId },
       include: {
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
           where: { status: 'ACTIVE' },
           include: { school: true },
         },
+        teachers: true,
       },
     });
 
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
     if (!primaryMembership) {
       return NextResponse.json({ message: 'User has no active school membership.' }, { status: 403 });
     }
+
+    const teacherProfile = user.teachers?.find((t) => t.schoolId === primaryMembership.schoolId);
+    const role = primaryMembership.role;
 
     // Create session in PostgreSQL
     const { rawToken } = await createSession({
@@ -88,12 +92,20 @@ export async function POST(req: NextRequest) {
       message: 'MFA verified successfully.',
       user: {
         id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: primaryMembership.role,
+        phone: user.phone || undefined,
+        role: role === 'SCHOOL_ADMIN'
+          ? 'School Administrator'
+          : role === 'TEACHER'
+          ? 'Teacher'
+          : role,
+        roleType: role,
+        initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
         schoolId: primaryMembership.schoolId,
         schoolName: primaryMembership.school.name,
+        schoolSlug: primaryMembership.school.slug,
+        teacherId: teacherProfile?.id,
       },
     });
 

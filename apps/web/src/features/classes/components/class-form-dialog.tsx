@@ -8,9 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { Plus, X, Layers } from 'lucide-react';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { selectTeachers, resolveTeacherName } from '@/shared/selectors';
-import { TeacherSelect } from '@/shared/entities';
 
 interface ClassFormDialogProps {
   isOpen: boolean;
@@ -53,21 +50,19 @@ function ClassFormContent({
   existingClasses: ClassItem[];
   onSaveClass: (classItem: ClassItem) => void;
 }) {
-  const store = useSchoolStore();
-  const teachers = selectTeachers(store);
+  const [teachers, setTeachers] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/teachers')
+      .then((res) => res.json())
+      .then((data) => setTeachers(data.teachers || []))
+      .catch(() => setTeachers([]));
+  }, []);
 
   const [session] = React.useState(classToEdit?.academicSession || '2025-26');
   const [className, setClassName] = React.useState(classToEdit?.className || '');
   const [displayName, setDisplayName] = React.useState(classToEdit?.displayName || '');
-  const [primaryTeacherId, setPrimaryTeacherId] = React.useState<string>(() => {
-    if (classToEdit?.primaryClassTeacher) {
-      const match = teachers.find(
-        (t) => `${t.personal.firstName} ${t.personal.lastName}`.toLowerCase() === classToEdit.primaryClassTeacher.toLowerCase()
-      );
-      if (match) return match.id;
-    }
-    return teachers[0]?.id || 'tch-001';
-  });
+  const [primaryTeacherId, setPrimaryTeacherId] = React.useState<string>(classToEdit?.primaryClassTeacher || '');
   const status: 'ACTIVE' | 'ARCHIVED' = classToEdit?.status || 'ACTIVE';
 
   // Dynamic sections state
@@ -170,45 +165,6 @@ function ClassFormContent({
       sections: sectionsPayload,
       createdAt: classToEdit?.createdAt || new Date().toISOString(),
     };
-
-    // Also persist into central relational store
-    if (classToEdit) {
-      schoolStore.updateClass({
-        id: classId,
-        className,
-        displayName: displayName || className,
-        gradeLevel: `Grade ${numericGrade}`,
-        academicSessionId: store.activeSessionId,
-        primaryClassTeacherId: primaryTeacherId,
-        status,
-        sections: sectionsPayload.map((s) => ({
-          id: s.id,
-          classId,
-          name: s.name,
-          classTeacherId: s.classTeacherId,
-          roomId: 'rm-204',
-          capacity: 45,
-        })),
-      });
-    } else {
-      schoolStore.createClass({
-        id: classId,
-        className,
-        displayName: displayName || className,
-        gradeLevel: `Grade ${numericGrade}`,
-        academicSessionId: store.activeSessionId,
-        primaryClassTeacherId: primaryTeacherId,
-        status,
-        sections: sectionsPayload.map((s) => ({
-          id: s.id,
-          classId,
-          name: s.name,
-          classTeacherId: s.classTeacherId,
-          roomId: 'rm-204',
-          capacity: 45,
-        })),
-      });
-    }
 
     onSaveClass(updatedItem);
   };
@@ -338,13 +294,22 @@ function ClassFormContent({
           </div>
         </div>
 
-        {/* Lead Class Teacher using Universal TeacherSelect with Contextual + Add New */}
-        <TeacherSelect
-          value={primaryTeacherId}
-          onChange={(id) => setPrimaryTeacherId(id)}
-          label="Lead Class Teacher"
-          required
-        />
+        {/* Lead Class Teacher */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-700">Lead Class Teacher</label>
+          <select
+            value={primaryTeacherId || ''}
+            onChange={(e) => setPrimaryTeacherId(e.target.value)}
+            className="w-full text-xs h-9 px-3 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option value="">Select lead teacher...</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name || `${t.firstName} ${t.lastName}`} ({t.email})
+              </option>
+            ))}
+          </select>
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
