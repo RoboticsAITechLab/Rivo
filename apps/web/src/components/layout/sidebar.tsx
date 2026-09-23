@@ -10,6 +10,7 @@ import { NavIcon } from '@/components/navigation/nav-icon';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
 import { RivoLogo } from '@/components/ui/rivo-logo';
+import { useAuth } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
 
 export function Sidebar({
@@ -20,6 +21,8 @@ export function Sidebar({
   onToggleCollapse: () => void;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const schoolDisplayName = user?.schoolName || mockCurrentUser.schoolName;
 
   return (
     <aside
@@ -47,7 +50,7 @@ export function Sidebar({
                   RIVO
                 </span>
                 <span className="text-[11px] font-medium text-muted-foreground truncate">
-                  {mockCurrentUser.schoolName}
+                  {schoolDisplayName}
                 </span>
               </div>
             </div>

@@ -15,6 +15,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { RivoLogo } from '@/components/ui/rivo-logo';
+import { useAuth } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
 
 export function MobileNav({
@@ -25,6 +26,8 @@ export function MobileNav({
   onOpenChange: (open: boolean) => void;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const schoolDisplayName = user?.schoolName || mockCurrentUser.schoolName;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -37,7 +40,7 @@ export function MobileNav({
                 RIVO
               </SheetTitle>
               <div className="text-xs text-muted-foreground truncate">
-                {mockCurrentUser.schoolName}
+                {schoolDisplayName}
               </div>
             </div>
           </div>

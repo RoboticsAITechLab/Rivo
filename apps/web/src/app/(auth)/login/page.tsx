@@ -127,15 +127,15 @@ function LoginFormContent() {
       if (result.success && result.user) {
         if (result.user.roleType === 'TEACHER') {
           const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-          router.push(dest);
+          window.location.href = dest;
         } else if (
           result.user.roleType === 'SCHOOL_ADMIN' ||
           result.user.roleType === 'ADMIN' ||
           result.user.roleType === 'OWNER'
         ) {
-          router.push(returnUrl || '/school');
+          window.location.href = returnUrl || '/school';
         } else {
-          router.push('/access-denied');
+          router.replace('/access-denied');
         }
       } else {
         const errorMsg =
@@ -176,15 +176,15 @@ function LoginFormContent() {
       if (result.success && result.user) {
         if (result.user.roleType === 'TEACHER') {
           const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-          router.push(dest);
+          window.location.href = dest;
         } else if (
           result.user.roleType === 'SCHOOL_ADMIN' ||
           result.user.roleType === 'ADMIN' ||
           result.user.roleType === 'OWNER'
         ) {
-          router.push(returnUrl || '/school');
+          window.location.href = returnUrl || '/school';
         } else {
-          router.push('/access-denied');
+          router.replace('/access-denied');
         }
       } else {
         setMfaError(result.error || 'Invalid verification code. Please check and try again.');

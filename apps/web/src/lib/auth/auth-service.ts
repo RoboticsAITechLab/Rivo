@@ -86,7 +86,7 @@ export class AuthService implements IAuthService {
         return {
           success: true,
           mfaRequired: true,
-          mfaChallengeToken: data.mfaChallengeToken,
+          mfaChallengeToken: data.challengeToken || data.mfaChallengeToken,
         };
       }
 
