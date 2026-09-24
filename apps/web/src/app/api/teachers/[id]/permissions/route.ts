@@ -9,7 +9,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireAuth(req, { roles: ['OWNER', 'ADMIN', 'SCHOOL_ADMIN'] });
+    const auth = await requireAuth(req, {
+      scope: 'SCHOOL',
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }
@@ -109,7 +112,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireAuth(req, { roles: ['OWNER', 'ADMIN', 'SCHOOL_ADMIN'] });
+    const auth = await requireAuth(req, {
+      scope: 'SCHOOL',
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }

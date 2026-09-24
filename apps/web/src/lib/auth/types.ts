@@ -5,14 +5,22 @@ export type AuthState =
   | 'UNAUTHENTICATED'
   | 'ERROR';
 
-export type UserRoleType =
-  | 'OWNER'
+export type PlatformRoleType = 'OWNER' | 'PLATFORM_ADMIN';
+
+export type SchoolRoleType =
+  | 'DIRECTOR'
+  | 'PRINCIPAL'
   | 'ADMIN'
-  | 'SCHOOL_ADMIN'
   | 'TEACHER'
   | 'STAFF'
   | 'STUDENT'
-  | 'PARENT';
+  | 'PARENT'
+  | 'SCHOOL_ADMIN' // Deprecated backward-compatible alias
+  | 'OWNER';       // Deprecated backward-compatible alias on school
+
+export type UserRoleType = PlatformRoleType | SchoolRoleType;
+
+export type AuthScope = 'PLATFORM' | 'SCHOOL';
 
 export interface AuthUser {
   id: string;
@@ -21,6 +29,8 @@ export interface AuthUser {
   phone?: string;
   role: string;
   roleType: UserRoleType;
+  scope: AuthScope;
+  platformRole?: PlatformRoleType | null;
   initials: string;
   schoolId?: string;
   schoolName?: string;

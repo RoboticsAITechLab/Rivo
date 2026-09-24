@@ -65,11 +65,26 @@ export async function POST(req: NextRequest) {
       data: { revokedAt: new Date() },
     });
 
+    // Allowed school roles for invitation
+    const validRoles = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'TEACHER', 'STAFF', 'SCHOOL_ADMIN'];
+    const targetRole = validRoles.includes(role) ? role : 'TEACHER';
+
+    // Privilege escalation protection:
+    // Only DIRECTOR can invite another DIRECTOR or PRINCIPAL
+    if (targetRole === 'DIRECTOR' || targetRole === 'PRINCIPAL') {
+      if (auth.role !== 'DIRECTOR') {
+        return NextResponse.json(
+          { message: 'Forbidden: Only the School Director can invite Directors or Principals.' },
+          { status: 403 }
+        );
+      }
+    }
+
     const invitation = await prisma.staffInvitation.create({
       data: {
         schoolId: auth.schoolId,
         email: trimmedEmail,
-        role: role === 'STAFF' ? 'STAFF' : 'TEACHER',
+        role: targetRole,
         customRoleId: customRoleId || null,
         campusId: campusId || null,
         department: department || null,

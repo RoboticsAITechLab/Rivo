@@ -8,14 +8,21 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
-enum Role {
+enum PlatformRole {
   OWNER
+  PLATFORM_ADMIN
+}
+
+enum Role {
+  DIRECTOR
+  PRINCIPAL
   ADMIN
-  SCHOOL_ADMIN
   TEACHER
   STAFF
   STUDENT
   PARENT
+  SCHOOL_ADMIN // Preserved for backward-compatible migration
+  OWNER        // Preserved for backward-compatible migration
 }
 
 enum UserStatus {
@@ -81,6 +88,64 @@ enum AttendanceStatus {
   EXCUSED
 }
 
+enum ExamMarkStatus {
+  PRESENT
+  ABSENT
+  NOT_ATTEMPTED
+  EXEMPT
+}
+
+enum ExamResultOverallStatus {
+  PASS
+  FAIL
+  COMPARTMENT
+  WITHHELD
+}
+
+enum ResultPublicationStatus {
+  DRAFT
+  CALCULATED
+  PUBLISHED
+  WITHDRAWN
+}
+
+enum SubjectResultStatus {
+  PASS
+  FAIL
+  ABSENT
+  EXEMPT
+}
+
+enum NoticeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum NoticePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NoticeTargetType {
+  ALL_SCHOOL
+  CLASS
+  SECTION
+  TEACHERS
+  PARENTS
+  STUDENTS
+}
+
+enum NotificationCategory {
+  GENERAL
+  NOTICE
+  RESULT
+  ATTENDANCE
+  EXAM
+}
+
 model School {
   id                      String                   @id @default(uuid())
   name                    String
@@ -110,6 +175,12 @@ model School {
   securityAuditLogs       SecurityAuditLog[]
   idSequences             IdSequence[]
   idFormatConfig          IdFormatConfig?
+  examMarks               ExamMark[]
+  examResults             ExamResult[]
+  resultAuditLogs         ResultAuditLog[]
+  notices                 Notice[]
+  notifications           Notification[]
+  noticeAuditLogs         NoticeAuditLog[]
 
   @@index([status])
   @@map("schools")
@@ -127,6 +198,7 @@ model User {
   lastLoginAt             DateTime?                @map("last_login_at")
   isActive                Boolean                  @default(true)
   isPlatformOwner         Boolean                  @default(false)
+  platformRole            PlatformRole?            @map("platform_role")
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   memberships             SchoolMembership[]
@@ -141,6 +213,9 @@ model User {
   mfa                     UserMfa?
   mfaRecoveryCodes        MfaRecoveryCode[]
   mfaChallenges           MfaChallenge[]
+  notifications           Notification[]
+  deviceTokens            DeviceToken[]
+  noticeReadStatuses      NoticeReadStatus[]
 
   @@map("users")
 }
@@ -193,6 +268,8 @@ model Student {
   enrollments       StudentEnrollment[]
   attendanceRecords AttendanceRecord[]
   documents         StudentDocument[]
+  examMarks         ExamMark[]
+  examResults       ExamResult[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId])
@@ -296,6 +373,8 @@ model AcademicSession {
   attendanceRegisters AttendanceRegister[]
   timetableSlots      TimetableSlot[]
   examTerms           ExamTerm[]
+  examMarks           ExamMark[]
+  examResults         ExamResult[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -317,6 +396,8 @@ model Class {
   attendanceRegisters AttendanceRegister[]
   timetableSlots      TimetableSlot[]
   examSchedules       ExamSchedule[]
+  examResults         ExamResult[]
+  notices             Notice[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -337,6 +418,8 @@ model Section {
   attendanceRegisters AttendanceRegister[]
   timetableSlots      TimetableSlot[]
   examSchedules       ExamSchedule[]
+  examResults         ExamResult[]
+  notices             Notice[]
 
   @@unique([classId, name])
   @@index([schoolId])
@@ -356,6 +439,7 @@ model Subject {
   attendanceRegisters AttendanceRegister[]
   timetableSlots      TimetableSlot[]
   examPapers          ExamPaper[]
+  resultSubjects      ExamResultSubject[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -638,6 +722,9 @@ model ExamTerm {
   school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
   papers          ExamPaper[]
+  marks           ExamMark[]
+  results         ExamResult[]
+  resultAuditLogs ResultAuditLog[]
 
   @@unique([schoolId, academicSessionId, name])
   @@index([schoolId])
@@ -655,9 +742,11 @@ model ExamPaper {
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  examTerm  ExamTerm       @relation(fields: [examTermId], references: [id], onDelete: Cascade)
-  subject   Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  schedules ExamSchedule[]
+  examTerm       ExamTerm            @relation(fields: [examTermId], references: [id], onDelete: Cascade)
+  subject        Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schedules      ExamSchedule[]
+  marks          ExamMark[]
+  resultSubjects ExamResultSubject[]
 
   @@index([examTermId])
   @@index([subjectId])
@@ -688,13 +777,230 @@ model ExamSchedule {
 }
 
 // ==========================================
+// FORMAL RESULTS SYSTEM
+// ==========================================
+
+model ExamMark {
+  id                String         @id @default(uuid())
+  schoolId          String         @map("school_id")
+  academicSessionId String         @map("academic_session_id")
+  examTermId        String         @map("exam_term_id")
+  paperId           String         @map("paper_id")
+  studentId         String         @map("student_id")
+  marksObtained     Float?         @map("marks_obtained")
+  maxMarks          Float          @default(100) @map("max_marks")
+  passingMarks      Float          @default(35) @map("passing_marks")
+  status            ExamMarkStatus @default(PRESENT)
+  remarks           String?
+  enteredByUserId   String         @map("entered_by_user_id")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  examTerm        ExamTerm        @relation(fields: [examTermId], references: [id], onDelete: Cascade)
+  paper           ExamPaper       @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  student         Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([paperId, studentId])
+  @@index([schoolId])
+  @@index([examTermId])
+  @@index([academicSessionId])
+  @@index([studentId])
+  @@map("exam_marks")
+}
+
+model ExamResult {
+  id                String                  @id @default(uuid())
+  schoolId          String                  @map("school_id")
+  academicSessionId String                  @map("academic_session_id")
+  examTermId        String                  @map("exam_term_id")
+  studentId         String                  @map("student_id")
+  classId           String                  @map("class_id")
+  sectionId         String                  @map("section_id")
+  totalMarks        Float                   @default(0) @map("total_marks")
+  maxTotalMarks     Float                   @default(0) @map("max_total_marks")
+  percentage        Float                   @default(0)
+  grade             String?
+  overallStatus     ExamResultOverallStatus @default(PASS) @map("overall_status")
+  status            ResultPublicationStatus @default(DRAFT)
+  publishedAt       DateTime?               @map("published_at")
+  publishedByUserId String?                 @map("published_by_user_id")
+  calculatedAt      DateTime                @default(now()) @map("calculated_at")
+  remarks           String?
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession     @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  examTerm        ExamTerm            @relation(fields: [examTermId], references: [id], onDelete: Cascade)
+  student         Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class           Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section         Section             @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subjectResults  ExamResultSubject[]
+
+  @@unique([examTermId, studentId])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@index([examTermId])
+  @@index([studentId])
+  @@index([classId, sectionId])
+  @@index([status])
+  @@map("exam_results")
+}
+
+model ExamResultSubject {
+  id            String              @id @default(uuid())
+  examResultId  String              @map("exam_result_id")
+  paperId       String              @map("paper_id")
+  subjectId     String              @map("subject_id")
+  marksObtained Float?              @map("marks_obtained")
+  maxMarks      Float               @default(100) @map("max_marks")
+  passingMarks  Float               @default(35) @map("passing_marks")
+  grade         String?
+  status        SubjectResultStatus @default(PASS)
+  remarks       String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  examResult ExamResult @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  paper      ExamPaper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([examResultId, paperId])
+  @@index([examResultId])
+  @@index([paperId])
+  @@index([subjectId])
+  @@map("exam_result_subjects")
+}
+
+model ResultAuditLog {
+  id                String   @id @default(uuid())
+  schoolId          String   @map("school_id")
+  examTermId        String   @map("exam_term_id")
+  action            String   // MARKS_ENTERED, MARKS_UPDATED, RESULT_CALCULATED, RESULT_PUBLISHED, RESULT_WITHDRAWN
+  performedByUserId String   @map("performed_by_user_id")
+  details           String?  // JSON metadata
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  school   School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  examTerm ExamTerm @relation(fields: [examTermId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([examTermId])
+  @@map("result_audit_logs")
+}
+
+// ==========================================
+// NOTICES & COMMUNICATION FOUNDATION
+// ==========================================
+
+model Notice {
+  id           String             @id @default(uuid())
+  schoolId     String             @map("school_id")
+  title        String
+  body         String
+  status       NoticeStatus       @default(DRAFT)
+  priority     NoticePriority     @default(NORMAL)
+  targetType   NoticeTargetType   @default(ALL_SCHOOL) @map("target_type")
+  classId      String?            @map("class_id")
+  sectionId    String?            @map("section_id")
+  authorId     String             @map("author_id")
+  publishedAt  DateTime?          @map("published_at")
+  scheduledAt  DateTime?          @map("scheduled_at")
+  expiresAt    DateTime?          @map("expires_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  school       School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class        Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
+  section      Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  readStatuses NoticeReadStatus[]
+
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, targetType])
+  @@index([classId, sectionId])
+  @@index([publishedAt])
+  @@map("notices")
+}
+
+model NoticeReadStatus {
+  id       String   @id @default(uuid())
+  noticeId String   @map("notice_id")
+  userId   String   @map("user_id")
+  readAt   DateTime @default(now()) @map("read_at")
+
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+  @@map("notice_read_statuses")
+}
+
+model NoticeAuditLog {
+  id                String   @id @default(uuid())
+  schoolId          String   @map("school_id")
+  noticeId          String   @map("notice_id")
+  action            String   // NOTICE_CREATED, NOTICE_EDITED, NOTICE_PUBLISHED, NOTICE_ARCHIVED
+  performedByUserId String   @map("performed_by_user_id")
+  details           String?  // JSON metadata
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([noticeId])
+  @@map("notice_audit_logs")
+}
+
+model Notification {
+  id        String               @id @default(uuid())
+  schoolId  String               @map("school_id")
+  userId    String               @map("user_id")
+  title     String
+  body      String
+  category  NotificationCategory @default(GENERAL)
+  linkUrl   String?              @map("link_url")
+  isRead    Boolean              @default(false) @map("is_read")
+  readAt    DateTime?            @map("read_at")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String
+  platform  String   @default("web") // web, ios, android
+  isActive  Boolean  @default(true)  @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+
+// ==========================================
 // AUTHENTICATION & SECURITY MODELS
 // ==========================================
 
 model Session {
   id         String    @id @default(uuid())
   userId     String    @map("user_id")
-  schoolId   String    @map("school_id")
+  schoolId   String?   @map("school_id")
   tokenHash  String    @unique @map("token_hash")
   expiresAt  DateTime  @map("expires_at")
   lastSeenAt DateTime  @default(now()) @map("last_seen_at")
@@ -703,8 +1009,8 @@ model Session {
   userAgent  String?   @map("user_agent")
   createdAt  DateTime  @default(now()) @map("created_at")
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([schoolId])

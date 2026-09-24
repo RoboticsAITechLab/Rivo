@@ -73,11 +73,13 @@ export async function getEffectivePermission(params: {
     return { granted: false, scope: 'OWN', reason: 'No active school membership found for this tenant.' };
   }
 
-  // 3. School Owners, Admins, and School Admins have full SCHOOL scope across all features
+  // 3. School Directors, Principals, Admins, and School Admins have full SCHOOL scope across all features
   if (
-    membership.role === 'OWNER' ||
+    membership.role === 'DIRECTOR' ||
+    membership.role === 'PRINCIPAL' ||
     membership.role === 'ADMIN' ||
-    membership.role === 'SCHOOL_ADMIN'
+    membership.role === 'SCHOOL_ADMIN' ||
+    membership.role === 'OWNER'
   ) {
     return { granted: true, scope: 'SCHOOL' };
   }
@@ -138,6 +140,9 @@ export async function getEffectivePermission(params: {
       permissionCode === 'school_timetable.view'
     ) {
       return { granted: true, scope: 'ASSIGNED' };
+    }
+    if (permissionCode === 'notices.view') {
+      return { granted: true, scope: 'SCHOOL' };
     }
   }
 
@@ -263,10 +268,12 @@ export interface AuthContextResult {
   authorized: true;
   session: ActiveSessionContext;
   userId: string;
+  scope?: PermissionScope;
+  authScope: 'PLATFORM' | 'SCHOOL';
   schoolId: string;
+  platformSchoolId?: string | null;
   role: string;
   teacherId?: string;
-  scope?: PermissionScope;
 }
 
 export interface AuthFailureResult {
@@ -277,22 +284,24 @@ export interface AuthFailureResult {
 export type RequireAuthResponse = AuthContextResult | AuthFailureResult;
 
 /**
- * Standard backend security guard for API route handlers (Phase 20 & 21).
+ * Standard backend security guard for API route handlers.
  *
  * Enforces:
  * 1. Valid session from secure HttpOnly cookie
- * 2. Active User account (not suspended or disabled)
- * 3. Active School Membership (derives tenant schoolId securely)
- * 4. Optional Role restriction
- * 5. Optional Granular Permission check
- * 6. Optional Resource Scope validation
+ * 2. Scope enforcement: 'PLATFORM' (control plane) vs 'SCHOOL' (tenant institutional data)
+ * 3. Active User account (not suspended or disabled)
+ * 4. Tenant isolation (requires active SchoolMembership for school-scoped endpoints)
+ * 5. Optional Role restriction
+ * 6. Optional Granular Permission check
+ * 7. Optional Resource Scope validation
  */
 export async function requireAuth(
   req: NextRequest,
   options?: {
+    scope?: 'PLATFORM' | 'SCHOOL';
     permission?: string;
     resource?: TeacherResourceTarget;
-    roles?: Role[];
+    roles?: (Role | 'PLATFORM_ADMIN')[];
   }
 ): Promise<RequireAuthResponse> {
   // 1. Session verification
@@ -307,9 +316,34 @@ export async function requireAuth(
     };
   }
 
-  // 2. Role restriction check (if specific roles are required)
+  // 2. Scope check: default is 'SCHOOL' if not specified, unless endpoint explicitly requests 'PLATFORM'
+  const targetScope = options?.scope || (options?.roles?.some((r) => r === 'PLATFORM_ADMIN') ? 'PLATFORM' : 'SCHOOL');
+
+  if (targetScope === 'PLATFORM') {
+    if (session.scope !== 'PLATFORM') {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { message: 'Forbidden: Platform-level access required.' },
+          { status: 403 }
+        ),
+      };
+    }
+  } else if (targetScope === 'SCHOOL') {
+    if (session.scope !== 'SCHOOL' || !session.schoolId) {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { message: 'Forbidden: School tenant context required.' },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
+  // 3. Role restriction check (if specific roles are required)
   if (options?.roles && options.roles.length > 0) {
-    if (!options.roles.includes(session.role as Role)) {
+    if (!options.roles.includes(session.role as any)) {
       return {
         authorized: false,
         response: NextResponse.json(
@@ -320,8 +354,18 @@ export async function requireAuth(
     }
   }
 
-  // 3. Permission & Scope check (if specific capability is required)
+  // 4. Permission & Scope check (if specific capability is required within a school tenant)
   if (options?.permission) {
+    if (!session.schoolId) {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { message: 'Forbidden: Cannot check tenant permissions without school context.' },
+          { status: 403 }
+        ),
+      };
+    }
+
     const auth = await authorizeResource({
       userId: session.userId,
       schoolId: session.schoolId,
@@ -343,7 +387,9 @@ export async function requireAuth(
       authorized: true,
       session,
       userId: session.userId,
+      authScope: session.scope,
       schoolId: session.schoolId,
+      platformSchoolId: null,
       role: session.role,
       teacherId: session.teacherId,
       scope: auth.scope,
@@ -354,15 +400,17 @@ export async function requireAuth(
     authorized: true,
     session,
     userId: session.userId,
-    schoolId: session.schoolId,
+    authScope: session.scope,
+    schoolId: session.schoolId || '',
+    platformSchoolId: session.schoolId,
     role: session.role,
     teacherId: session.teacherId,
   };
 }
 
 /**
- * Server-side source of truth for the authenticated current user (Phase 11).
- * Resolves user profile, active school membership, role, and effective permissions.
+ * Server-side source of truth for the authenticated current user.
+ * Resolves user profile, active scope (platform vs school), role, and institutional metadata.
  */
 export async function getCurrentUser(reqOrToken: NextRequest | string) {
   const session = await getValidSession(reqOrToken);
@@ -372,14 +420,14 @@ export async function getCurrentUser(reqOrToken: NextRequest | string) {
     where: { id: session.userId },
     include: {
       memberships: {
-        where: { schoolId: session.schoolId, status: 'ACTIVE' },
+        where: session.schoolId ? { schoolId: session.schoolId, status: 'ACTIVE' } : undefined,
         include: {
           school: true,
           customRole: true,
         },
       },
       teachers: {
-        where: { schoolId: session.schoolId },
+        where: session.schoolId ? { schoolId: session.schoolId } : undefined,
       },
       mfa: {
         select: {
@@ -394,23 +442,48 @@ export async function getCurrentUser(reqOrToken: NextRequest | string) {
     return null;
   }
 
-  const membership = user.memberships[0];
+  // Platform User Representation
+  if (session.scope === 'PLATFORM') {
+    const pRole = user.platformRole || (user.isPlatformOwner ? 'OWNER' : 'PLATFORM_ADMIN');
+    return {
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      email: user.email,
+      phone: user.phone || undefined,
+      role: pRole === 'OWNER' ? 'Platform Owner' : 'Platform Administrator',
+      roleType: pRole,
+      scope: 'PLATFORM' as const,
+      platformRole: pRole,
+      initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'PO',
+      status: user.status,
+      mfaEnabled: !!user.mfa?.enabled,
+    };
+  }
+
+  // School User Representation
+  const membership = user.memberships?.[0];
   if (!membership) return null;
 
   const school = membership.school;
-  const teacher = user.teachers[0];
+  const teacher = user.teachers?.[0];
 
   return {
     id: user.id,
     name: `${user.firstName} ${user.lastName}`.trim(),
     email: user.email,
     phone: user.phone || undefined,
-    role: membership.role === 'SCHOOL_ADMIN'
+    role: membership.role === 'DIRECTOR'
+      ? 'Director'
+      : membership.role === 'PRINCIPAL'
+      ? 'Principal'
+      : membership.role === 'SCHOOL_ADMIN' || membership.role === 'ADMIN'
       ? 'School Administrator'
       : membership.role === 'TEACHER'
       ? 'Teacher'
       : membership.role,
     roleType: membership.role,
+    scope: 'SCHOOL' as const,
+    platformRole: user.platformRole,
     customRoleName: membership.customRole?.name,
     initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
     schoolId: school.id,

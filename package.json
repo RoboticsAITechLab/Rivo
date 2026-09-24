@@ -19,7 +19,8 @@
     "build": "npm run build --workspace=web",
     "test:auth": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/auth-matrix.test.ts",
     "test:id": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/id-generator.test.ts",
-    "test": "npm run test:auth && npm run test:id"
+    "test:phase": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/phase-results-notices-communication.test.ts",
+    "test": "npm run test:auth && npm run test:id && npm run test:phase"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

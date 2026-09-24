@@ -19,6 +19,7 @@ import {
 } from '@/data/mock-custom-fields';
 import { StudentDetail, StudentFilterState, StudentStatus } from '@/types/student';
 import { SchoolHouse } from '@/types/house';
+import { buildStudentDetail } from '@/lib/student-utils';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
@@ -58,13 +59,13 @@ const defaultFilters: StudentFilterState = {
 
 // Map backend API student object to frontend StudentDetail view model
 function mapApiStudentToDetail(s: any): StudentDetail {
-  return {
+  return buildStudentDetail({
     id: s.id,
     admissionNumber: s.admissionNumber || '',
     name: s.name || `${s.firstName || ''} ${s.lastName || ''}`.trim() || 'Student',
     firstName: s.firstName || '',
     lastName: s.lastName || '',
-    gender: (s.gender as any) || 'OTHER',
+    gender: (s.gender as any) || 'Male',
     dateOfBirth: s.dateOfBirth || '',
     bloodGroup: s.bloodGroup || '',
     status: (s.status as StudentStatus) || 'ACTIVE',
@@ -73,33 +74,12 @@ function mapApiStudentToDetail(s: any): StudentDetail {
     rollNumber: s.rollNumber || '01',
     academicSession: s.sessionName || '2026-2027',
     houseId: s.house || null,
-    stream: s.stream || null,
     guardianName: s.guardianName || 'Parent / Guardian',
     guardianPhone: s.guardianPhone || '',
-    primaryGuardian: {
-      id: `g-${s.id}`,
-      name: s.guardianName || 'Parent / Guardian',
-      relationship: 'Father',
-      phone: s.guardianPhone || '',
-    },
-    guardians: s.guardianName
-      ? [
-          {
-            id: `g-${s.id}`,
-            name: s.guardianName,
-            relationship: 'Father',
-            phone: s.guardianPhone || '',
-          },
-        ]
-      : [],
     email: s.email || '',
     phone: s.phone || '',
-    address: typeof s.address === 'object' ? s.address : { line1: s.address || '' },
-    attendancePercentage: 92,
-    activityTimeline: [],
-    documents: [],
-    photoUrl: undefined,
-  };
+    street: typeof s.address === 'string' ? s.address : (s.address?.street || ''),
+  });
 }
 
 function StudentsPageContent() {
@@ -263,7 +243,7 @@ function StudentsPageContent() {
           status: studentData.status,
           email: studentData.email,
           phone: studentData.phone,
-          address: typeof studentData.address === 'string' ? studentData.address : studentData.address?.line1,
+          address: typeof studentData.address === 'string' ? studentData.address : (studentData.address?.street || ''),
           className: studentData.className,
           sectionName: studentData.section,
         }),
@@ -473,7 +453,7 @@ function StudentsPageContent() {
         configSubtab === 'fields' ? (
           <CustomFieldBuilder
             customFields={customFields}
-            onFieldsChange={(fields) => {
+            onChange={(fields) => {
               setCustomFields(fields);
               toast('Custom Fields Saved', 'Student admission schema updated.');
             }}
@@ -509,14 +489,14 @@ function StudentsPageContent() {
             filters={filters}
             onFilterChange={handleFilterChange}
             onClearFilters={handleClearFilters}
-            totalCount={totalStudents}
+            totalStudents={totalStudents}
             filteredCount={totalStudents}
             houses={houses}
           />
 
           {/* 4. Bulk Operations Toolbar */}
           <StudentBulkToolbar
-            selectedIds={selectedIds}
+            selectedCount={selectedIds.length}
             onClearSelection={handleClearSelection}
             onBulkChangeStatus={handleBulkChangeStatus}
             onBulkExport={handleBulkExport}
@@ -572,7 +552,7 @@ function StudentsPageContent() {
         onArchive={(student) => {
           handleOpenArchiveDialog(student);
         }}
-        onUpdateHouse={handleUpdateStudentHouse}
+        onUpdateStudentHouse={handleUpdateStudentHouse}
         initialTab={initialDetailTab}
         houses={houses}
       />
@@ -584,13 +564,12 @@ function StudentsPageContent() {
           setIsFormOpen(false);
           setStudentToEdit(null);
         }}
-        onSave={handleSaveStudent}
+        onSaveStudent={handleSaveStudent}
         studentToEdit={studentToEdit}
         existingStudents={students}
         houses={houses}
         customFields={customFields}
-        admissionSections={admissionSections}
-        documentPolicy={documentPolicy}
+        onViewStudentProfile={handleViewStudent}
       />
 
       {/* 9. Status Change Dialog */}
@@ -600,7 +579,7 @@ function StudentsPageContent() {
           setIsStatusOpen(false);
           setStatusStudent(null);
         }}
-        onConfirm={handleConfirmStatusChange}
+        onConfirmStatus={handleConfirmStatusChange}
         student={statusStudent}
       />
 
@@ -612,16 +591,16 @@ function StudentsPageContent() {
           setArchiveStudent(null);
           setIsBulkArchiveMode(false);
         }}
-        onConfirm={handleConfirmArchive}
-        studentName={archiveStudent ? archiveStudent.name : undefined}
-        selectedCount={isBulkArchiveMode ? selectedIds.length : undefined}
+        onConfirmArchive={handleConfirmArchive}
+        student={archiveStudent}
+        bulkCount={isBulkArchiveMode ? selectedIds.length : undefined}
       />
 
       {/* 11. Student CSV/Excel Import Sheet */}
       <StudentImportSheet
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
-        onImportSuccess={fetchStudents}
+        onImportComplete={() => fetchStudents()}
       />
     </PageContainer>
   );

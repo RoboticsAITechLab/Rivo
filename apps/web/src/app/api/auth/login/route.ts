@@ -92,26 +92,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Resolve active school membership
+    // 3. Resolve identity: Platform User vs School Tenant User
+    const platformRole = user.platformRole || (user.isPlatformOwner ? 'OWNER' : null);
     const primaryMembership = user.memberships[0];
-    if (!primaryMembership) {
+
+    // If neither platform role nor school membership exists, deny login
+    if (!platformRole && !primaryMembership) {
       await logSecurityAudit({
         event: 'LOGIN_FAILURE',
         userId: user.id,
         ipAddress: ip,
         userAgent,
-        details: { email: trimmedEmail, reason: 'NO_ACTIVE_MEMBERSHIP' },
+        details: { email: trimmedEmail, reason: 'NO_ACTIVE_MEMBERSHIP_OR_PLATFORM_ROLE' },
       });
 
       return NextResponse.json(
-        { message: 'No active school membership found for this account.' },
+        { message: 'No active institutional membership or platform role found for this account.' },
         { status: 403 }
       );
     }
-
-    const school = primaryMembership.school;
-    const role = primaryMembership.role;
-    const teacherProfile = user.teachers[0];
 
     // Check if MFA is enabled on the account
     if (user.mfa && user.mfa.enabled) {
@@ -124,10 +123,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Determine session scope: Platform User logs in with schoolId = null (unless only a school member)
+    const isPlatformLogin = !!platformRole && !primaryMembership;
+    const sessionSchoolId = isPlatformLogin ? null : (primaryMembership ? primaryMembership.schoolId : null);
+
     // 4. Create database-backed Session
     const { rawToken } = await createSession({
       userId: user.id,
-      schoolId: school.id,
+      schoolId: sessionSchoolId,
       rememberMe: !!rememberMe,
       ipAddress: ip,
       userAgent,
@@ -146,29 +149,52 @@ export async function POST(req: NextRequest) {
     await logSecurityAudit({
       event: 'LOGIN_SUCCESS',
       userId: user.id,
-      schoolId: school.id,
+      schoolId: sessionSchoolId,
       ipAddress: ip,
       userAgent,
-      details: { role },
+      details: {
+        scope: isPlatformLogin ? 'PLATFORM' : 'SCHOOL',
+        role: isPlatformLogin ? platformRole : primaryMembership?.role,
+      },
     });
 
-    const authUser = {
-      id: user.id,
-      name: `${user.firstName} ${user.lastName}`.trim(),
-      email: user.email,
-      phone: user.phone || undefined,
-      role: role === 'SCHOOL_ADMIN'
-        ? 'School Administrator'
-        : role === 'TEACHER'
-        ? 'Teacher'
-        : role,
-      roleType: role,
-      initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
-      schoolId: school.id,
-      schoolName: school.name,
-      schoolSlug: school.slug,
-      teacherId: teacherProfile?.id,
-    };
+    const teacherProfile = user.teachers[0];
+
+    const authUser = isPlatformLogin
+      ? {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone || undefined,
+          role: platformRole === 'OWNER' ? 'Platform Owner' : 'Platform Administrator',
+          roleType: platformRole,
+          scope: 'PLATFORM' as const,
+          platformRole,
+          initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'PO',
+        }
+      : {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone || undefined,
+          role: primaryMembership?.role === 'DIRECTOR'
+            ? 'Director'
+            : primaryMembership?.role === 'PRINCIPAL'
+            ? 'Principal'
+            : primaryMembership?.role === 'SCHOOL_ADMIN' || primaryMembership?.role === 'ADMIN'
+            ? 'School Administrator'
+            : primaryMembership?.role === 'TEACHER'
+            ? 'Teacher'
+            : primaryMembership?.role || 'User',
+          roleType: primaryMembership?.role,
+          scope: 'SCHOOL' as const,
+          platformRole: user.platformRole,
+          initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
+          schoolId: primaryMembership?.school.id,
+          schoolName: primaryMembership?.school.name,
+          schoolSlug: primaryMembership?.school.slug,
+          teacherId: teacherProfile?.id,
+        };
 
     const response = NextResponse.json({
       success: true,

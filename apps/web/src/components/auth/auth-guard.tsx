@@ -21,9 +21,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
       router.replace(`/login?returnUrl=${returnUrl}`);
     } else if (authState === 'AUTHENTICATED' && user) {
       const isAllowed =
-        user.roleType === 'SCHOOL_ADMIN' ||
+        user.roleType === 'DIRECTOR' ||
+        user.roleType === 'PRINCIPAL' ||
         user.roleType === 'ADMIN' ||
-        user.roleType === 'OWNER' ||
+        user.roleType === 'SCHOOL_ADMIN' ||
         user.roleType === 'TEACHER' ||
         user.roleType === 'STAFF';
 

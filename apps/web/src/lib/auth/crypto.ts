@@ -99,7 +99,7 @@ export interface TokenPayload {
   userId: string;
   email: string;
   role: string;
-  schoolId: string;
+  schoolId?: string | null;
   teacherId?: string;
   exp: number;
 }

@@ -210,6 +210,59 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: 'Publish exam results to parents and students',
   },
 
+  // Notices
+  {
+    code: 'notices.view',
+    module: 'notices',
+    action: 'view',
+    name: 'View Notices',
+    description: 'View institutional announcements, circulars, and notices',
+  },
+  {
+    code: 'notices.create',
+    module: 'notices',
+    action: 'create',
+    name: 'Create Notices',
+    description: 'Draft school, class, or cohort circular notices',
+  },
+  {
+    code: 'notices.edit',
+    module: 'notices',
+    action: 'edit',
+    name: 'Edit Notices',
+    description: 'Modify draft or published notices',
+  },
+  {
+    code: 'notices.publish',
+    module: 'notices',
+    action: 'publish',
+    name: 'Publish Notices',
+    description: 'Publish and dispatch notices to targeted cohorts',
+  },
+  {
+    code: 'notices.archive',
+    module: 'notices',
+    action: 'archive',
+    name: 'Archive Notices',
+    description: 'Archive or withdraw published circular notices',
+  },
+
+  // Communication
+  {
+    code: 'communication.view',
+    module: 'communication',
+    action: 'view',
+    name: 'View Communication Groups',
+    description: 'View student, parent, and faculty communication groups',
+  },
+  {
+    code: 'communication.send',
+    module: 'communication',
+    action: 'send',
+    name: 'Dispatch Notifications',
+    description: 'Send multi-channel announcements and alerts',
+  },
+
   // Users Management
   {
     code: 'users.view',
@@ -307,5 +360,37 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     action: 'revoke',
     name: 'Revoke Invitations',
     description: 'Cancel pending staff invitations',
+  },
+
+  // ==========================================
+  // RIVO PLATFORM CONTROL PLANE PERMISSIONS
+  // ==========================================
+  {
+    code: 'platform.schools.view',
+    module: 'platform',
+    action: 'view',
+    name: 'View All Schools',
+    description: 'Inspect multi-tenant school directory and health metrics',
+  },
+  {
+    code: 'platform.schools.manage',
+    module: 'platform',
+    action: 'manage',
+    name: 'Manage Schools',
+    description: 'Suspend, activate, or configure institutional tenants',
+  },
+  {
+    code: 'platform.admins.manage',
+    module: 'platform',
+    action: 'manage',
+    name: 'Manage Platform Administrators',
+    description: 'Appoint, configure, or revoke platform administrator credentials',
+  },
+  {
+    code: 'platform.audit.view',
+    module: 'platform',
+    action: 'view',
+    name: 'View Platform Audit Logs',
+    description: 'View cross-system security and access audit logs',
   },
 ];

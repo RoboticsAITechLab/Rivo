@@ -89,9 +89,10 @@ export default function SignupPage() {
   useEffect(() => {
     if (authState === 'AUTHENTICATED' && user) {
       if (
+        user.roleType === 'DIRECTOR' ||
+        user.roleType === 'PRINCIPAL' ||
         user.roleType === 'SCHOOL_ADMIN' ||
         user.roleType === 'ADMIN' ||
-        user.roleType === 'OWNER' ||
         user.roleType === 'TEACHER'
       ) {
         router.replace('/school');

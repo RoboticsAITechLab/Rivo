@@ -129,6 +129,15 @@ export const APP_NAVIGATION: AppNavItem[] = [
     keywords: ['announcements', 'circulars', 'bulletins', 'news', 'broadcast'],
   },
   {
+    title: 'Groups',
+    href: '/school/communication/groups',
+    iconName: 'Users',
+    group: 'COMMUNICATION',
+    description: 'Dynamic parent, class, and faculty communication groups',
+    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    keywords: ['groups', 'audiences', 'parents', 'teachers', 'cohorts'],
+  },
+  {
     title: 'Notifications',
     href: '/school/notifications',
     iconName: 'Inbox',

@@ -117,7 +117,7 @@ function SubjectFormContent({
     }
 
     const subId = subjectToEdit?.id || `sub-${Date.now()}`;
-    const applicableClassNames = selectedClassIds.map((id) => resolveClassName(store, id));
+    const applicableClassNames = selectedClassIds;
 
     const updatedItem: SubjectDetail = {
       id: subId,

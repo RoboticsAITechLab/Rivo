@@ -98,12 +98,12 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 3. Create SchoolMembership
+      // 3. Create SchoolMembership with DIRECTOR role (highest authority within the school)
       const membership = await tx.schoolMembership.create({
         data: {
           userId: newUser.id,
           schoolId: newSchool.id,
-          role: 'SCHOOL_ADMIN',
+          role: 'DIRECTOR',
           status: 'ACTIVE',
         },
       });
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       schoolId: result.school.id,
       ipAddress: ip,
       userAgent,
-      details: { signup: true, role: 'SCHOOL_ADMIN' },
+      details: { signup: true, role: 'DIRECTOR' },
     });
 
     const authUser = {
@@ -165,9 +165,10 @@ export async function POST(req: NextRequest) {
       name: `${result.user.firstName} ${result.user.lastName}`.trim(),
       email: result.user.email,
       phone: result.user.phone || undefined,
-      role: 'School Administrator',
-      roleType: 'SCHOOL_ADMIN',
-      initials: `${result.user.firstName?.[0] || ''}${result.user.lastName?.[0] || ''}`.toUpperCase() || 'SA',
+      role: 'Director',
+      roleType: 'DIRECTOR' as const,
+      scope: 'SCHOOL' as const,
+      initials: `${result.user.firstName?.[0] || ''}${result.user.lastName?.[0] || ''}`.toUpperCase() || 'DR',
       schoolId: result.school.id,
       schoolName: result.school.name,
       schoolSlug: result.school.slug,

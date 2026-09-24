@@ -52,14 +52,12 @@ export async function GET(
         status: student.status,
         address: student.address,
         bloodGroup: student.bloodGroup,
-        emergencyContact: student.emergencyContact,
         campusId: student.campusId,
         campusName: student.campus?.name || 'Main Campus',
         className: activeEnrollment?.class?.name || 'Unassigned',
         classId: activeEnrollment?.classId || null,
         sectionName: activeEnrollment?.section?.name || 'General',
         sectionId: activeEnrollment?.sectionId || null,
-        rollNumber: activeEnrollment?.rollNumber || null,
         sessionName: activeEnrollment?.academicSession?.name || null,
         academicSessionId: activeEnrollment?.academicSessionId || null,
         createdAt: student.createdAt.toISOString(),
@@ -207,13 +205,13 @@ export async function DELETE(
       return NextResponse.json({ message: 'Student not found' }, { status: 404 });
     }
 
-    // If student has historical attendance records, soft-delete via status WITHDRAWN/ARCHIVED
+    // If student has historical attendance records, soft-delete via status TRANSFERRED or INACTIVE
     if (existing.attendanceRecords.length > 0) {
       await prisma.student.update({
         where: { id },
-        data: { status: 'WITHDRAWN' },
+        data: { status: 'TRANSFERRED' },
       });
-      return NextResponse.json({ message: 'Student successfully marked as withdrawn (archived)' });
+      return NextResponse.json({ message: 'Student successfully marked as transferred (archived)' });
     }
 
     // Clean delete if no historical attendance records

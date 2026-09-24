@@ -50,6 +50,20 @@ export default function AttendancePage() {
     ? `${currentClass.name}${currentSection ? ` • Section ${currentSection.name}` : ''}`
     : 'Class Roster';
 
+  const handleExport = () => {
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      ["Admission No,Student Name,Roll No,Status,Reason"]
+        .concat(items.map(i => `"${i.admissionNumber}","${i.studentName}","${i.rollNumber || ''}","${i.status}","${i.reason || ''}"`))
+        .join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `attendance_${selectedDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <PageContainer>
       {/* 1. Page Header */}

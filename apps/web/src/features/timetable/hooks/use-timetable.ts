@@ -8,16 +8,16 @@ import { ScheduleBlock } from '@/shared/types';
 export const DEFAULT_WORKING_DAYS: DayOfWeek[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 export const DEFAULT_SCHEDULE_BLOCKS: ScheduleBlock[] = [
-  { id: 'blk-p1', scheduleId: 'sch-regular', name: 'Period 1', type: 'TEACHING', order: 1, startTime: '08:00', endTime: '08:45' },
-  { id: 'blk-p2', scheduleId: 'sch-regular', name: 'Period 2', type: 'TEACHING', order: 2, startTime: '08:45', endTime: '09:30' },
-  { id: 'blk-p3', scheduleId: 'sch-regular', name: 'Period 3', type: 'TEACHING', order: 3, startTime: '09:30', endTime: '10:15' },
-  { id: 'blk-rec', scheduleId: 'sch-regular', name: 'Morning Break', type: 'BREAK', order: 4, startTime: '10:15', endTime: '10:35' },
-  { id: 'blk-p4', scheduleId: 'sch-regular', name: 'Period 4', type: 'TEACHING', order: 5, startTime: '10:35', endTime: '11:20' },
-  { id: 'blk-p5', scheduleId: 'sch-regular', name: 'Period 5', type: 'TEACHING', order: 6, startTime: '11:20', endTime: '12:05' },
-  { id: 'blk-lun', scheduleId: 'sch-regular', name: 'Lunch Break', type: 'LUNCH', order: 7, startTime: '12:05', endTime: '12:45' },
-  { id: 'blk-p6', scheduleId: 'sch-regular', name: 'Period 6', type: 'TEACHING', order: 8, startTime: '12:45', endTime: '01:30' },
-  { id: 'blk-p7', scheduleId: 'sch-regular', name: 'Period 7', type: 'TEACHING', order: 9, startTime: '01:30', endTime: '02:15' },
-  { id: 'blk-p8', scheduleId: 'sch-regular', name: 'Period 8', type: 'TEACHING', order: 10, startTime: '02:15', endTime: '03:00' },
+  { id: 'blk-p1', scheduleId: 'sch-regular', name: 'Period 1', type: 'TEACHING', order: 1, startTime: '08:00', endTime: '08:45', status: 'ACTIVE' },
+  { id: 'blk-p2', scheduleId: 'sch-regular', name: 'Period 2', type: 'TEACHING', order: 2, startTime: '08:45', endTime: '09:30', status: 'ACTIVE' },
+  { id: 'blk-p3', scheduleId: 'sch-regular', name: 'Period 3', type: 'TEACHING', order: 3, startTime: '09:30', endTime: '10:15', status: 'ACTIVE' },
+  { id: 'blk-rec', scheduleId: 'sch-regular', name: 'Morning Break', type: 'BREAK', order: 4, startTime: '10:15', endTime: '10:35', status: 'ACTIVE' },
+  { id: 'blk-p4', scheduleId: 'sch-regular', name: 'Period 4', type: 'TEACHING', order: 5, startTime: '10:35', endTime: '11:20', status: 'ACTIVE' },
+  { id: 'blk-p5', scheduleId: 'sch-regular', name: 'Period 5', type: 'TEACHING', order: 6, startTime: '11:20', endTime: '12:05', status: 'ACTIVE' },
+  { id: 'blk-lun', scheduleId: 'sch-regular', name: 'Lunch Break', type: 'LUNCH', order: 7, startTime: '12:05', endTime: '12:45', status: 'ACTIVE' },
+  { id: 'blk-p6', scheduleId: 'sch-regular', name: 'Period 6', type: 'TEACHING', order: 8, startTime: '12:45', endTime: '01:30', status: 'ACTIVE' },
+  { id: 'blk-p7', scheduleId: 'sch-regular', name: 'Period 7', type: 'TEACHING', order: 9, startTime: '01:30', endTime: '02:15', status: 'ACTIVE' },
+  { id: 'blk-p8', scheduleId: 'sch-regular', name: 'Period 8', type: 'TEACHING', order: 10, startTime: '02:15', endTime: '03:00', status: 'ACTIVE' },
 ];
 
 export interface TimetableClass {

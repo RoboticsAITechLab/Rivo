@@ -35,13 +35,14 @@ async function main() {
   // 1. Platform Owner
   const owner = await prisma.user.upsert({
     where: { email: 'owner@rivo.local' },
-    update: { passwordHash: hashedPassword },
+    update: { passwordHash: hashedPassword, platformRole: 'OWNER', isPlatformOwner: true },
     create: {
       email: 'owner@rivo.local',
       firstName: 'Platform',
       lastName: 'Owner',
       passwordHash: hashedPassword,
       isPlatformOwner: true,
+      platformRole: 'OWNER',
       isActive: true,
     },
   });

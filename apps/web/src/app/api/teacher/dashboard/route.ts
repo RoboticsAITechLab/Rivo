@@ -4,7 +4,10 @@ import { requireAuth } from '@/lib/auth/authorize';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, { roles: ['TEACHER', 'SCHOOL_ADMIN', 'ADMIN', 'OWNER'] });
+    const auth = await requireAuth(req, {
+      scope: 'SCHOOL',
+      roles: ['TEACHER', 'DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }

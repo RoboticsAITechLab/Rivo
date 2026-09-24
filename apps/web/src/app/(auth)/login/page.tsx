@@ -52,13 +52,17 @@ function LoginFormContent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (authState === 'AUTHENTICATED' && user) {
-      if (user.roleType === 'TEACHER') {
+      if (user.scope === 'PLATFORM' || user.roleType === 'OWNER' || user.roleType === 'PLATFORM_ADMIN') {
+        router.replace('/platform/dashboard');
+      } else if (user.roleType === 'TEACHER') {
         const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
         router.replace(dest);
       } else if (
-        user.roleType === 'SCHOOL_ADMIN' ||
+        user.roleType === 'DIRECTOR' ||
+        user.roleType === 'PRINCIPAL' ||
         user.roleType === 'ADMIN' ||
-        user.roleType === 'OWNER'
+        user.roleType === 'SCHOOL_ADMIN' ||
+        user.roleType === 'STAFF'
       ) {
         router.replace(returnUrl || '/school');
       } else {

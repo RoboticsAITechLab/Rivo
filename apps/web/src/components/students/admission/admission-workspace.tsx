@@ -891,7 +891,7 @@ export function AdmissionWorkspace({
                           setClassName(newCls);
                           const clsObj = storeClasses.find((c) => c.className === newCls);
                           if (clsObj && clsObj.sections.length > 0) {
-                            if (!clsObj.sections.some((s) => s.name === section)) {
+                            if (!clsObj.sections.some((s: any) => s.name === section)) {
                               setSection(clsObj.sections[0].name);
                             }
                           }
@@ -915,7 +915,7 @@ export function AdmissionWorkspace({
                         onChange={(e) => setSection(e.target.value)}
                         className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       >
-                        {(storeClasses.find((c) => c.className === className)?.sections || []).map((s) => (
+                        {(storeClasses.find((c) => c.className === className)?.sections || []).map((s: any) => (
                           <option key={s.id} value={s.name}>
                             Section {s.name}
                           </option>

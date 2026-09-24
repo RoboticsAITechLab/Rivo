@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
         firstName: e.student.firstName,
         lastName: e.student.lastName,
         name: `${e.student.firstName} ${e.student.lastName}`.trim(),
-        rollNumber: e.rollNumber || String(idx + 1).padStart(2, '0'),
+        rollNumber: String(idx + 1).padStart(2, '0'),
         gender: e.student.gender,
         status: record ? record.status : 'PRESENT',
         reason: record?.reason || '',

@@ -124,7 +124,7 @@ export async function PUT(
     if (status === 'ACTIVE' && body.makeCurrent) {
       await prisma.academicSession.updateMany({
         where: { schoolId: auth.schoolId, status: 'ACTIVE', NOT: { id: existing.id } },
-        data: { status: 'COMPLETED' },
+        data: { status: 'ARCHIVED' },
       });
     }
 

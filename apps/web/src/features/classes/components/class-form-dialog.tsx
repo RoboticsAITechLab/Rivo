@@ -131,7 +131,7 @@ function ClassFormContent({
       return;
     }
 
-    const leadTeacherName = resolveTeacherName(store, primaryTeacherId);
+    const leadTeacherName = primaryTeacherId ? 'Assigned Faculty' : 'Unassigned';
 
     const sectionsPayload: SectionItem[] = sections.map((sec, idx) => {
       const existingSec = classToEdit?.sections.find((s) => s.name === sec.name);
@@ -140,7 +140,7 @@ function ClassFormContent({
         name: sec.name,
         roomNumber: existingSec?.roomNumber || `Room 20${idx + 1}`,
         classTeacherId: sec.teacherId,
-        classTeacherName: resolveTeacherName(store, sec.teacherId),
+        classTeacherName: sec.teacherId ? 'Faculty Assigned' : 'Unassigned',
         studentCount: existingSec?.studentCount || 42,
         subjectsCount: existingSec?.subjectsCount || 6,
         attendanceRate: existingSec?.attendanceRate || 94.2,

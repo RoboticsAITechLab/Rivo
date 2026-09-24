@@ -54,18 +54,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'User account is inactive or suspended.' }, { status: 403 });
     }
 
+    const platformRole = user.platformRole || (user.isPlatformOwner ? 'OWNER' : null);
     const primaryMembership = user.memberships[0];
-    if (!primaryMembership) {
-      return NextResponse.json({ message: 'User has no active school membership.' }, { status: 403 });
+
+    if (!platformRole && !primaryMembership) {
+      return NextResponse.json({ message: 'User has no active institutional membership or platform role.' }, { status: 403 });
     }
 
-    const teacherProfile = user.teachers?.find((t) => t.schoolId === primaryMembership.schoolId);
-    const role = primaryMembership.role;
+    const isPlatformLogin = !!platformRole && !primaryMembership;
+    const sessionSchoolId = isPlatformLogin ? null : (primaryMembership ? primaryMembership.schoolId : null);
+    const teacherProfile = user.teachers?.find((t) => t.schoolId === sessionSchoolId);
 
     // Create session in PostgreSQL
     const { rawToken } = await createSession({
       userId: user.id,
-      schoolId: primaryMembership.schoolId,
+      schoolId: sessionSchoolId,
       ipAddress: ip,
       userAgent,
     });
@@ -78,35 +81,57 @@ export async function POST(req: NextRequest) {
 
     await logSecurityAudit({
       userId: user.id,
-      schoolId: primaryMembership.schoolId,
+      schoolId: sessionSchoolId,
       event: 'MFA_LOGIN_SUCCESS',
       ipAddress: ip,
       userAgent,
       details: {
         method: verification.isRecovery ? 'RECOVERY_CODE' : 'TOTP',
+        scope: isPlatformLogin ? 'PLATFORM' : 'SCHOOL',
+        role: isPlatformLogin ? platformRole : primaryMembership?.role,
       },
     });
+
+    const authUser = isPlatformLogin
+      ? {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone || undefined,
+          role: platformRole === 'OWNER' ? 'Platform Owner' : 'Platform Administrator',
+          roleType: platformRole,
+          scope: 'PLATFORM' as const,
+          platformRole,
+          initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'PO',
+        }
+      : {
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`.trim(),
+          email: user.email,
+          phone: user.phone || undefined,
+          role: primaryMembership?.role === 'DIRECTOR'
+            ? 'Director'
+            : primaryMembership?.role === 'PRINCIPAL'
+            ? 'Principal'
+            : primaryMembership?.role === 'SCHOOL_ADMIN' || primaryMembership?.role === 'ADMIN'
+            ? 'School Administrator'
+            : primaryMembership?.role === 'TEACHER'
+            ? 'Teacher'
+            : primaryMembership?.role || 'User',
+          roleType: primaryMembership?.role,
+          scope: 'SCHOOL' as const,
+          platformRole: user.platformRole,
+          initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
+          schoolId: primaryMembership?.school.id,
+          schoolName: primaryMembership?.school.name,
+          schoolSlug: primaryMembership?.school.slug,
+          teacherId: teacherProfile?.id,
+        };
 
     const response = NextResponse.json({
       success: true,
       message: 'MFA verified successfully.',
-      user: {
-        id: user.id,
-        name: `${user.firstName} ${user.lastName}`.trim(),
-        email: user.email,
-        phone: user.phone || undefined,
-        role: role === 'SCHOOL_ADMIN'
-          ? 'School Administrator'
-          : role === 'TEACHER'
-          ? 'Teacher'
-          : role,
-        roleType: role,
-        initials: `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'US',
-        schoolId: primaryMembership.schoolId,
-        schoolName: primaryMembership.school.name,
-        schoolSlug: primaryMembership.school.slug,
-        teacherId: teacherProfile?.id,
-      },
+      user: authUser,
     });
 
     // Set HttpOnly session cookie

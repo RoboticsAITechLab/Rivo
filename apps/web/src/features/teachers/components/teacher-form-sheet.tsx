@@ -229,7 +229,7 @@ function TeacherFormWizard({
         }
         if (field === 'sectionId') {
           const cls = storeClasses.find((c) => c.id === a.classId);
-          const sec = cls?.sections.find((s) => s.id === value);
+          const sec = cls?.sections.find((s: any) => s.id === value);
           return {
             ...a,
             sectionId: value as string,
@@ -728,7 +728,7 @@ function TeacherFormWizard({
                           onChange={(e) => handleAssignmentChange(asg.id, 'sectionId', e.target.value)}
                           className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs"
                         >
-                          {(storeClasses.find((c) => c.id === asg.classId)?.sections || []).map((s) => (
+                          {(storeClasses.find((c) => c.id === asg.classId)?.sections || []).map((s: any) => (
                             <option key={s.id} value={s.id}>
                               Section {s.name}
                             </option>

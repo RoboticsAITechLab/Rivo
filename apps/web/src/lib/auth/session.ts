@@ -13,9 +13,11 @@ export const SESSION_COOKIE_NAME = 'rivo_session';
 export interface ActiveSessionContext {
   sessionId: string;
   userId: string;
-  schoolId: string;
+  scope: 'PLATFORM' | 'SCHOOL';
+  schoolId: string | null;
   email: string;
   role: string;
+  platformRole?: 'OWNER' | 'PLATFORM_ADMIN' | null;
   teacherId?: string;
   status: string;
 }
@@ -23,10 +25,11 @@ export interface ActiveSessionContext {
 /**
  * Creates a database-backed session with a cryptographically random token.
  * Stores only the SHA-256 hash of the token in the database.
+ * Supports schoolId = null for platform users (OWNER, PLATFORM_ADMIN).
  */
 export async function createSession(params: {
   userId: string;
-  schoolId: string;
+  schoolId?: string | null;
   rememberMe?: boolean;
   ipAddress?: string | null;
   userAgent?: string | null;
@@ -43,7 +46,7 @@ export async function createSession(params: {
   const session = await prisma.session.create({
     data: {
       userId,
-      schoolId,
+      schoolId: schoolId || null,
       tokenHash,
       expiresAt,
       ipAddress: ipAddress || null,
@@ -84,21 +87,42 @@ export async function getValidSession(
     // 1. Check Redis session cache first
     const cached = await getCachedSession(tokenHash);
     if (cached) {
-      if (
-        cached.user.status === 'ACTIVE' &&
-        cached.user.isActive &&
-        cached.membership &&
-        cached.membership.status === 'ACTIVE'
-      ) {
-        return {
-          sessionId: cached.session.id,
-          userId: cached.user.id,
-          schoolId: cached.session.schoolId,
-          email: cached.user.email,
-          role: cached.membership.role,
-          teacherId: cached.teacherProfile?.id,
-          status: cached.user.status,
-        };
+      if (cached.user.status === 'ACTIVE' && cached.user.isActive) {
+        // Platform session cache hit
+        if (!cached.session.schoolId) {
+          const platformRole = (cached.user.platformRole || (cached.user.isPlatformOwner ? 'OWNER' : null)) as 'OWNER' | 'PLATFORM_ADMIN' | null;
+          if (platformRole) {
+            return {
+              sessionId: cached.session.id,
+              userId: cached.user.id,
+              scope: 'PLATFORM',
+              schoolId: null,
+              email: cached.user.email,
+              role: platformRole,
+              platformRole,
+              status: cached.user.status,
+            };
+          }
+        }
+
+        // School session cache hit
+        if (
+          cached.membership &&
+          cached.membership.status === 'ACTIVE' &&
+          cached.session.schoolId
+        ) {
+          return {
+            sessionId: cached.session.id,
+            userId: cached.user.id,
+            scope: 'SCHOOL',
+            schoolId: cached.session.schoolId,
+            email: cached.user.email,
+            role: cached.membership.role,
+            platformRole: cached.user.platformRole as any,
+            teacherId: cached.teacherProfile?.id,
+            status: cached.user.status,
+          };
+        }
       }
     }
 
@@ -131,7 +155,34 @@ export async function getValidSession(
       return null;
     }
 
-    // Check active school membership
+    // A. PLATFORM SESSION (no schoolId)
+    if (!session.schoolId) {
+      const platformRole = session.user.platformRole || (session.user.isPlatformOwner ? 'OWNER' : null);
+      if (!platformRole) {
+        await invalidateSessionCache(tokenHash, session.user.id);
+        return null;
+      }
+
+      await setCachedSession(tokenHash, {
+        session,
+        user: session.user,
+        membership: null,
+        teacherProfile: null,
+      });
+
+      return {
+        sessionId: session.id,
+        userId: session.user.id,
+        scope: 'PLATFORM',
+        schoolId: null,
+        email: session.user.email,
+        role: platformRole,
+        platformRole: platformRole as 'OWNER' | 'PLATFORM_ADMIN',
+        status: session.user.status,
+      };
+    }
+
+    // B. SCHOOL SESSION (requires active school membership in session.schoolId)
     const membership = session.user.memberships.find(
       (m) => m.schoolId === session.schoolId && m.status === 'ACTIVE'
     );
@@ -154,9 +205,11 @@ export async function getValidSession(
     return {
       sessionId: session.id,
       userId: session.user.id,
+      scope: 'SCHOOL',
       schoolId: session.schoolId,
       email: session.user.email,
       role: membership.role,
+      platformRole: session.user.platformRole as any,
       teacherId: teacher?.id,
       status: session.user.status,
     };

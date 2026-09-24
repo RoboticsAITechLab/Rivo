@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     if (status === 'ACTIVE' && body.makeCurrent) {
       await prisma.academicSession.updateMany({
         where: { schoolId: auth.schoolId, status: 'ACTIVE' },
-        data: { status: 'COMPLETED' },
+        data: { status: 'ARCHIVED' },
       });
     }
 

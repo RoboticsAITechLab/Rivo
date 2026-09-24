@@ -6,7 +6,7 @@ export interface CachedSessionData {
   session: {
     id: string;
     userId: string;
-    schoolId: string;
+    schoolId: string | null;
     tokenHash: string;
     expiresAt: string;
     lastSeenAt: string;
@@ -20,6 +20,7 @@ export interface CachedSessionData {
     status: string;
     isActive: boolean;
     isPlatformOwner: boolean;
+    platformRole?: string | null;
   };
   membership: {
     id: string;
@@ -127,6 +128,7 @@ export async function setCachedSession(
         status: data.user.status,
         isActive: data.user.isActive,
         isPlatformOwner: data.user.isPlatformOwner,
+        platformRole: data.user.platformRole,
       },
       membership: data.membership
         ? {
@@ -194,6 +196,7 @@ export async function setCachedSession(
               status: data.user.status,
               isActive: data.user.isActive,
               isPlatformOwner: data.user.isPlatformOwner,
+              platformRole: data.user.platformRole,
             },
             membership: data.membership
               ? {

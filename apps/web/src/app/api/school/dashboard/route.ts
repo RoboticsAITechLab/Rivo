@@ -6,7 +6,8 @@ import { requireAuth } from '@/lib/auth/authorize';
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, {
-      roles: ['SCHOOL_ADMIN', 'ADMIN', 'OWNER', 'STAFF'],
+      scope: 'SCHOOL',
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'STAFF'],
     });
 
     if (!auth.authorized) {
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       prisma.school.findUnique({
         where: { id: schoolId },
-        select: { id: true, name: true, code: true, type: true },
+        select: { id: true, name: true, slug: true },
       }),
       prisma.academicSession.findFirst({
         where: { schoolId, status: 'ACTIVE' },
@@ -48,10 +49,10 @@ export async function GET(req: NextRequest) {
         where: { schoolId, status: 'ACTIVE' },
       }),
       prisma.class.count({
-        where: { schoolId, status: 'ACTIVE' },
+        where: { schoolId },
       }),
       prisma.section.count({
-        where: { class: { schoolId }, status: 'ACTIVE' },
+        where: { class: { schoolId } },
       }),
       prisma.attendanceRegister.findMany({
         where: { schoolId, date: today },
@@ -139,8 +140,7 @@ export async function GET(req: NextRequest) {
       school: {
         id: school?.id || schoolId,
         name: school?.name || 'Rivo Institution',
-        code: school?.code || '',
-        type: school?.type || 'K12',
+        slug: school?.slug || '',
       },
       stats: {
         studentsCount,
