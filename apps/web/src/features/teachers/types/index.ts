@@ -6,6 +6,7 @@ export interface TeachingAssignment {
   className: string;
   sectionId: string;
   sectionName: string;
+  streamId?: string | null;
   subjectId: string;
   subjectName: string;
   periodsPerWeek: number;
@@ -15,23 +16,26 @@ export interface TeacherPersonal {
   firstName: string;
   middleName?: string;
   lastName: string;
-  dateOfBirth: string;
+  dateOfBirth?: string;
   gender: 'Male' | 'Female' | 'Other';
   bloodGroup?: string;
   phone: string;
   email: string;
   password?: string;
-  photoUrl?: string;
+  photoUrl?: string | null;
 }
 
 export interface TeacherEmployment {
   employeeId: string;
-  joiningDate: string;
+  joiningDate?: string;
   employmentType: EmploymentType;
   department: string;
   designation: string;
   qualification: string;
+  specialization?: string;
   experienceYears: number;
+  campusId?: string | null;
+  campusName?: string;
 }
 
 export interface TeacherAddress {
@@ -73,4 +77,5 @@ export interface TeacherFilterState {
   className: string;
   status: string;
   employmentType: string;
+  campusId: string;
 }

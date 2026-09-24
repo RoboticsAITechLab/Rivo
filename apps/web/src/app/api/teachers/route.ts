@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, Prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
-import { generateSecureToken, hashPassword, hashToken, validatePasswordPolicy } from '@/lib/auth/crypto';
-import { sendStaffInvitationEmail } from '@/lib/email/email-service';
+import { generateSecureToken, hashPassword, validatePasswordPolicy } from '@/lib/auth/crypto';
 
 // GET /api/teachers - List all teachers with assignments and subjects
 export async function GET(req: NextRequest) {
@@ -15,6 +14,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim() || '';
     const status = searchParams.get('status');
+    const campusId = searchParams.get('campusId');
 
     const where: Prisma.TeacherWhereInput = {
       schoolId: auth.schoolId,
@@ -24,11 +24,16 @@ export async function GET(req: NextRequest) {
       where.status = status as Prisma.TeacherWhereInput['status'];
     }
 
+    if (campusId && campusId !== 'ALL') {
+      where.campusId = campusId;
+    }
+
     if (search) {
       where.OR = [
         { employeeId: { contains: search, mode: 'insensitive' } },
         { department: { contains: search, mode: 'insensitive' } },
         { designation: { contains: search, mode: 'insensitive' } },
+        { specialization: { contains: search, mode: 'insensitive' } },
         {
           user: {
             OR: [
@@ -65,6 +70,7 @@ export async function GET(req: NextRequest) {
         className: a.class.name,
         sectionId: a.sectionId,
         sectionName: a.section.name,
+        streamId: a.streamId,
         subjectId: a.subjectId,
         subjectName: a.subject?.name || 'Class Teacher',
         isClassTeacher: a.isClassTeacher,
@@ -76,13 +82,27 @@ export async function GET(req: NextRequest) {
         id: t.id,
         userId: t.userId,
         employeeId: t.employeeId || 'TCH-000',
+        firstName: t.user.firstName,
+        lastName: t.user.lastName,
         name: `${t.user.firstName} ${t.user.lastName}`.trim(),
         email: t.user.email,
         phone: t.phone || '',
+        photoUrl: t.photoUrl || null,
+        gender: t.gender || null,
+        dateOfBirth: t.dateOfBirth ? t.dateOfBirth.toISOString().split('T')[0] : null,
+        joiningDate: t.joiningDate ? t.joiningDate.toISOString().split('T')[0] : null,
+        employmentType: t.employmentType || 'FULL_TIME',
+        experienceYears: t.experienceYears || 0,
+        specialization: t.specialization || null,
+        emergencyContactName: t.emergencyContactName || null,
+        emergencyContactPhone: t.emergencyContactPhone || null,
+        emergencyContactRelation: t.emergencyContactRelation || null,
+        address: t.address || null,
         status: t.status,
         department: t.department || 'General',
         designation: t.designation || 'Faculty Member',
         qualification: t.qualification || 'Master of Education',
+        campusId: t.campusId,
         campusName: t.campus?.name || 'Main Campus',
         totalClassesCount: uniqueClasses.size,
         assignments,
@@ -117,6 +137,17 @@ export async function POST(req: NextRequest) {
       designation,
       qualification,
       campusId,
+      photoUrl,
+      gender,
+      dateOfBirth,
+      joiningDate,
+      employmentType,
+      experienceYears,
+      specialization,
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactRelation,
+      address,
       assignments,
     } = body;
 
@@ -155,8 +186,6 @@ export async function POST(req: NextRequest) {
     const activeSession = await prisma.academicSession.findFirst({
       where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
-
-    let inviteToken: string | null = null;
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create or link user
@@ -220,6 +249,17 @@ export async function POST(req: NextRequest) {
           designation: designation || null,
           qualification: qualification || null,
           campusId: campusId || null,
+          photoUrl: photoUrl || null,
+          gender: gender || null,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+          joiningDate: joiningDate ? new Date(joiningDate) : null,
+          employmentType: employmentType || 'FULL_TIME',
+          experienceYears: experienceYears ? parseInt(String(experienceYears), 10) : 0,
+          specialization: specialization || null,
+          emergencyContactName: emergencyContactName || null,
+          emergencyContactPhone: emergencyContactPhone || null,
+          emergencyContactRelation: emergencyContactRelation || null,
+          address: address || null,
         },
         create: {
           schoolId: auth.schoolId,
@@ -230,6 +270,17 @@ export async function POST(req: NextRequest) {
           designation: designation || null,
           qualification: qualification || null,
           campusId: campusId || null,
+          photoUrl: photoUrl || null,
+          gender: gender || null,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+          joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
+          employmentType: employmentType || 'FULL_TIME',
+          experienceYears: experienceYears ? parseInt(String(experienceYears), 10) : 0,
+          specialization: specialization || null,
+          emergencyContactName: emergencyContactName || null,
+          emergencyContactPhone: emergencyContactPhone || null,
+          emergencyContactRelation: emergencyContactRelation || null,
+          address: address || null,
           status: 'ACTIVE',
         },
       });
@@ -248,13 +299,17 @@ export async function POST(req: NextRequest) {
                   subjectId: a.subjectId || null,
                 },
               },
-              update: { isClassTeacher: !!a.isClassTeacher },
+              update: {
+                streamId: a.streamId || null,
+                isClassTeacher: !!a.isClassTeacher,
+              },
               create: {
                 schoolId: auth.schoolId,
                 teacherId: teacher.id,
                 academicSessionId: activeSession.id,
                 classId: a.classId,
                 sectionId: a.sectionId,
+                streamId: a.streamId || null,
                 subjectId: a.subjectId || null,
                 isClassTeacher: !!a.isClassTeacher,
               },
@@ -263,60 +318,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 5. If invited, create an invitation record with token
-      if (isInvited) {
-        inviteToken = generateSecureToken(32);
-        await tx.staffInvitation.create({
-          data: {
-            schoolId: auth.schoolId,
-            email: trimmedEmail,
-            role: 'TEACHER',
-            campusId: campusId || null,
-            department: department || null,
-            designation: designation || null,
-            invitedById: auth.userId,
-            tokenHash: hashToken(inviteToken),
-            expiresAt: new Date(Date.now() + 7 * 86400 * 1000),
-          },
-        });
-      }
-
       return teacher;
     });
 
-    if (inviteToken) {
-      const school = await prisma.school.findUnique({
-        where: { id: auth.schoolId },
-        select: { name: true },
-      });
-      const appUrl = process.env.APP_URL || 'http://localhost:3000';
-      const inviteUrl = `${appUrl}/invite/accept?token=${inviteToken}`;
-      await sendStaffInvitationEmail({
-        to: trimmedEmail,
-        schoolName: school?.name || 'Rivo School',
-        role: 'TEACHER',
-        inviteUrl,
-        schoolId: auth.schoolId,
-        invitedById: auth.userId,
-        ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip',
-        userAgent: req.headers.get('user-agent') || 'unknown-ua',
-      });
-    }
-
     return NextResponse.json({
       success: true,
-      message: 'Teacher record created successfully.',
+      message: 'Teacher profile created successfully.',
       teacher: result,
-      ...(inviteToken ? { inviteToken, inviteUrl: `/invite/accept?token=${inviteToken}` } : {}),
     });
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Error in POST /api/teachers:', error);
-    if ((error as { code?: string })?.code === 'P2002') {
-      return NextResponse.json(
-        { message: 'A teacher with this employee ID or email already exists.' },
-        { status: 409 }
-      );
-    }
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }

@@ -11,6 +11,7 @@ export interface TimetablePeriod {
   className: string;
   sectionId: string;
   sectionName: string;
+  streamId?: string | null;
   subjectId: string;
   subjectName: string;
   teacherId: string;
@@ -21,9 +22,20 @@ export interface TimetablePeriod {
 }
 
 export interface TimetableConflict {
-  type: 'TEACHER_BUSY' | 'CLASS_OCCUPIED' | 'ROOM_OCCUPIED';
+  type: 'TEACHER_CONFLICT' | 'CLASS_SECTION_CONFLICT' | 'ROOM_CONFLICT' | 'TEACHER_BUSY' | 'CLASS_OCCUPIED' | 'ROOM_OCCUPIED';
   message: string;
-  existingPeriod: TimetablePeriod;
+  details?: {
+    teacherName?: string;
+    conflictingClass?: string;
+    conflictingSection?: string;
+    conflictingSubject?: string;
+    dayOfWeek?: string;
+    periodNumber?: number;
+    startTime?: string;
+    endTime?: string;
+    roomNumber?: string;
+  };
+  existingPeriod?: TimetablePeriod;
 }
 
 export type TimetableViewMode = 'CLASS' | 'TEACHER' | 'ROOM';
@@ -31,8 +43,10 @@ export type TimetableViewMode = 'CLASS' | 'TEACHER' | 'ROOM';
 export interface TimetableFilterState {
   academicSession: string;
   viewMode: TimetableViewMode;
+  campusId?: string;
   classId: string;
   sectionId: string;
+  streamId?: string;
   teacherId: string;
   room: string;
   selectedWeek: string;

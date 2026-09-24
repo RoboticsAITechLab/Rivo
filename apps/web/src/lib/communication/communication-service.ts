@@ -180,13 +180,14 @@ export class NotificationDispatcher {
         const resend = getResendClient();
         if (resend) {
           const recipients = await prisma.user.findMany({
-            where: { id: { in: userIds.slice(0, 50) } }, // cap transactional email batch
+            where: { id: { in: userIds.slice(0, 50) }, email: { not: null } },
             select: { email: true },
           });
 
           const sender = getEmailSender();
           const from = `${sender.name} <${sender.email}>`;
           for (const recipient of recipients) {
+            if (!recipient.email) continue;
             try {
               await resend.emails.send({
                 from,

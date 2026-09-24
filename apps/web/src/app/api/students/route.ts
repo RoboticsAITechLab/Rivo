@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, Prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
+import { normalizePhone, normalizeEmail } from '@/lib/auth/normalize';
 
 // GET /api/students - List, search, filter, and paginate students
 export async function GET(req: NextRequest) {
@@ -241,26 +242,143 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 3. Create Guardian if provided
-      if (guardian && guardian.firstName) {
-        const parent = await tx.parent.create({
-          data: {
+      // 3. Create or link Guardian(s) with identity-conflict safety
+      const rawGuardians: any[] = Array.isArray(body.guardians) && body.guardians.length > 0
+        ? body.guardians
+        : (body.guardian ? [body.guardian] : []);
+
+      for (let i = 0; i < rawGuardians.length; i++) {
+        const g = rawGuardians[i];
+        if (!g || (!g.firstName && !g.name)) continue;
+
+        const gName = (g.firstName || g.name || '').trim();
+        const parts = gName.split(' ');
+        const fName = g.firstName ? g.firstName.trim() : parts[0] || 'Parent';
+        const lName = g.lastName ? g.lastName.trim() : parts.slice(1).join(' ') || '';
+        
+        const normPhone = normalizePhone(g.phone);
+        const normEmail = normalizeEmail(g.email);
+
+        // Check if parent already exists in this school by phone or email
+        let existingParent = await tx.parent.findFirst({
+          where: {
             schoolId: auth.schoolId,
-            firstName: guardian.firstName,
-            lastName: guardian.lastName || '',
-            phone: guardian.phone || null,
-            email: guardian.email || null,
+            OR: [
+              ...(normPhone ? [{ phone: normPhone }] : []),
+              ...(normEmail ? [{ email: normEmail }] : []),
+            ],
           },
         });
 
-        await tx.parentStudent.create({
-          data: {
-            parentId: parent.id,
-            studentId: student.id,
-            relationshipType: guardian.relation || 'GUARDIAN',
-            isPrimaryContact: true,
+        let parentId: string;
+
+        if (existingParent) {
+          // Identity Conflict Detection (Prompt Section 8):
+          // If the contact matches an existing parent, verify name similarity or explicit linking confirmation
+          const existingFullName = `${existingParent.firstName} ${existingParent.lastName}`.trim().toLowerCase();
+          const incomingFullName = `${fName} ${lName}`.trim().toLowerCase();
+          const namesMatch = existingFullName === incomingFullName ||
+            existingParent.firstName.toLowerCase() === fName.toLowerCase();
+
+          if (!namesMatch && !body.confirmLinkExistingParent && !g.confirmLinkExistingParent) {
+            throw new Error(
+              `Contact "${normPhone || normEmail}" is already registered to parent "${existingParent.firstName} ${existingParent.lastName}". To link to this existing parent, confirm linking.`
+            );
+          }
+
+          parentId = existingParent.id;
+        } else {
+          const newParent = await tx.parent.create({
+            data: {
+              schoolId: auth.schoolId,
+              firstName: fName,
+              lastName: lName,
+              phone: normPhone,
+              email: normEmail,
+            },
+          });
+          parentId = newParent.id;
+          existingParent = newParent;
+        }
+
+        // Ensure User + SchoolMembership exists for the parent identity
+        if (!existingParent.userId && (normPhone || normEmail)) {
+          let user = await tx.user.findFirst({
+            where: {
+              OR: [
+                ...(normPhone ? [{ phone: normPhone }] : []),
+                ...(normEmail ? [{ email: normEmail }] : []),
+              ],
+            },
+          });
+
+          if (!user) {
+            user = await tx.user.create({
+              data: {
+                firstName: fName,
+                lastName: lName,
+                phone: normPhone,
+                email: normEmail,
+                status: 'ACTIVE',
+                isActive: true,
+              },
+            });
+          }
+
+          await tx.parent.update({
+            where: { id: parentId },
+            data: { userId: user.id },
+          });
+
+          const mem = await tx.schoolMembership.findUnique({
+            where: {
+              userId_schoolId: {
+                userId: user.id,
+                schoolId: auth.schoolId,
+              },
+            },
+          });
+
+          if (!mem) {
+            await tx.schoolMembership.create({
+              data: {
+                userId: user.id,
+                schoolId: auth.schoolId,
+                role: 'PARENT',
+                status: 'ACTIVE',
+              },
+            });
+          }
+        }
+
+        // Map relationship type safely to ParentRelationship enum
+        const rawRel = (g.relationship || g.relation || 'GUARDIAN').toString().toUpperCase();
+        let relType: 'FATHER' | 'MOTHER' | 'GUARDIAN' | 'OTHER' = 'GUARDIAN';
+        if (rawRel.includes('FATHER')) relType = 'FATHER';
+        else if (rawRel.includes('MOTHER')) relType = 'MOTHER';
+        else if (rawRel.includes('LEGAL') || rawRel.includes('GUARDIAN')) relType = 'GUARDIAN';
+        else if (rawRel.includes('OTHER') || rawRel.includes('GRAND')) relType = 'OTHER';
+
+        // Check if student is already linked to this parent
+        const existingLink = await tx.parentStudent.findUnique({
+          where: {
+            parentId_studentId: {
+              parentId,
+              studentId: student.id,
+            },
           },
         });
+
+        if (!existingLink) {
+          await tx.parentStudent.create({
+            data: {
+              parentId,
+              studentId: student.id,
+              relationshipType: relType,
+              isPrimaryContact: Boolean(g.isPrimary ?? (i === 0)),
+            },
+          });
+        }
       }
 
       return student;

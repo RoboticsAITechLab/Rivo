@@ -246,6 +246,10 @@ function StudentsPageContent() {
           address: typeof studentData.address === 'string' ? studentData.address : (studentData.address?.street || ''),
           className: studentData.className,
           sectionName: studentData.section,
+          guardian: (studentData as any).primaryGuardian || (studentData as any).guardians?.[0] || (studentData.guardianName ? {
+            name: studentData.guardianName,
+            phone: studentData.guardianPhone,
+          } : undefined),
         }),
       });
 

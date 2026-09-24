@@ -12,11 +12,13 @@ export async function GET() {
 
   // 1. Check PostgreSQL
   const dbStart = Date.now();
+  let dbError: string | null = null;
   try {
     await prisma.$queryRaw`SELECT 1`;
     dbStatus = 'connected';
     dbLatencyMs = Date.now() - dbStart;
-  } catch {
+  } catch (err: any) {
+    dbError = err?.message || String(err);
     dbStatus = 'unhealthy';
   }
 
@@ -37,6 +39,7 @@ export async function GET() {
         database: {
           status: dbStatus,
           latencyMs: dbLatencyMs,
+          error: dbError,
         },
         redis: {
           status: redisHealth.status,

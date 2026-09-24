@@ -60,9 +60,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'MFA is not enabled on this account.' }, { status: 400 });
     }
 
-    const isPasswordValid = await verifyPassword(password, user.passwordHash);
-    if (!isPasswordValid) {
-      return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
+    if (user.passwordHash) {
+      const isPasswordValid = await verifyPassword(password, user.passwordHash);
+      if (!isPasswordValid) {
+        return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
+      }
     }
 
     const { rawCodes, hashedCodes } = generateRecoveryCodes(8);

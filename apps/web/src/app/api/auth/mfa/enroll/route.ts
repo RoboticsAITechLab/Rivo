@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       return auth.response;
     }
 
-    const { secret, uri } = generateTotpSecret(auth.session.email);
+    const { secret, uri } = generateTotpSecret(auth.session.email || 'user@rivo.school');
     const qrCode = await generateQrCodeDataUrl(uri);
     const secretEncrypted = encryptMfaSecret(secret);
 

@@ -76,6 +76,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Verify password with secure scrypt
+    if (!user.passwordHash) {
+      return NextResponse.json(
+        { message: 'This account uses OTP verification. Please sign in via Parent Portal.' },
+        { status: 401 }
+      );
+    }
     const isPasswordValid = await verifyPassword(password, user.passwordHash);
     if (!isPasswordValid) {
       await logSecurityAudit({

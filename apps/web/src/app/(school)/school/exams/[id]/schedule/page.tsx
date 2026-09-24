@@ -12,6 +12,9 @@ import {
   CheckCircle2,
   Trash2,
   ShieldAlert,
+  FileText,
+  Save,
+  AlertCircle,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -28,454 +31,531 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import {
-  selectExamById,
-  selectExamPapers,
-  selectExamSchedule,
-  selectCampuses,
-  selectStreams,
-  selectClasses,
-} from '@/shared/selectors';
-import {
-  detectExamScheduleConflicts,
-} from '@/shared/validation/exam-conflict-detector';
-import { ExamScheduleEntry, ExamPaper, Campus, SchoolClass, Stream } from '@/shared/types';
-import { cn } from '@/lib/utils';
 
 export default function ExamScheduleBuilderPage() {
   const params = useParams();
   const examId = params.id as string;
-  const store = useSchoolStore();
 
-  const exam = selectExamById(store, examId);
-  const papers = selectExamPapers(store, examId);
-  const schedule = selectExamSchedule(store, examId);
-  const campuses = selectCampuses(store);
-  const streams = selectStreams(store);
-  const classes = selectClasses(store);
+  const [exam, setExam] = React.useState<any>(null);
+  const [classes, setClasses] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const [isAddSlotOpen, setIsAddSlotOpen] = React.useState(false);
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+  const [conflictMessage, setConflictMessage] = React.useState<string | null>(null);
 
-  // Real-time schedule conflicts
-  const conflicts = React.useMemo(() => {
-    return detectExamScheduleConflicts(store, schedule);
-  }, [store, schedule]);
+  // Exam Rules State (Instructions, Advice, Warnings)
+  const [instructions, setInstructions] = React.useState('');
+  const [advice, setAdvice] = React.useState('');
+  const [warnings, setWarnings] = React.useState('');
+  const [isSavingRules, setIsSavingRules] = React.useState(false);
 
-  // Group schedule entries by date
-  const groupedByDate = React.useMemo(() => {
-    const map = new Map<string, ExamScheduleEntry[]>();
-    schedule.forEach((entry) => {
-      const list = map.get(entry.date) || [];
-      list.push(entry);
-      map.set(entry.date, list);
+  // Form State for Adding/Editing Exam Session
+  const [selectedPaperId, setSelectedPaperId] = React.useState('');
+  const [selectedClassId, setSelectedClassId] = React.useState('');
+  const [selectedSectionId, setSelectedSectionId] = React.useState('');
+  const [selectedStream, setSelectedStream] = React.useState('General');
+  const [examDate, setExamDate] = React.useState('');
+  const [startTime, setStartTime] = React.useState('09:00');
+  const [endTime, setEndTime] = React.useState('11:00');
+  const [reportingTime, setReportingTime] = React.useState('08:30');
+  const [roomNumber, setRoomNumber] = React.useState('Exam Hall 1');
+  const [sessionNotes, setSessionNotes] = React.useState('');
+  const [isSubmittingSlot, setIsSubmittingSlot] = React.useState(false);
+
+  const fetchData = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [examRes, classesRes] = await Promise.all([
+        fetch(`/api/timetable/exam?termId=${examId}`),
+        fetch('/api/classes'),
+      ]);
+
+      if (!examRes.ok) throw new Error('Failed to load examination schedule');
+      const examData = await examRes.json();
+      const currentTerm = examData.examTerms?.[0];
+      if (!currentTerm) throw new Error('Exam cycle not found');
+
+      setExam(currentTerm);
+      setInstructions(currentTerm.instructions || '');
+      setAdvice(currentTerm.advice || '');
+      setWarnings(currentTerm.warnings || '');
+
+      if (classesRes.ok) {
+        const classesData = await classesRes.json();
+        setClasses(classesData.classes || []);
+        if (classesData.classes?.length > 0) {
+          setSelectedClassId(classesData.classes[0].id);
+          setSelectedSectionId(classesData.classes[0].sections?.[0]?.id || '');
+        }
+      }
+
+      if (currentTerm.papers?.length > 0) {
+        setSelectedPaperId(currentTerm.papers[0].id);
+      }
+      if (currentTerm.startDate) {
+        setExamDate(currentTerm.startDate.split('T')[0]);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error loading examination');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [examId]);
+
+  React.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Derived list of all scheduled slots
+  const allSchedules = React.useMemo(() => {
+    if (!exam?.papers) return [];
+    const list: any[] = [];
+    exam.papers.forEach((p: any) => {
+      (p.schedules || []).forEach((s: any) => {
+        list.push({
+          ...s,
+          paperName: p.name,
+          subjectName: p.subject.name,
+          subjectCode: p.subject.code,
+        });
+      });
     });
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [schedule]);
+    return list.sort((a, b) => new Date(a.examDate).getTime() - new Date(b.examDate).getTime());
+  }, [exam]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+  // Save Exam Instructions / Advice / Warnings
+  const handleSaveRules = async () => {
+    setIsSavingRules(true);
+    try {
+      const res = await fetch('/api/timetable/exam', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: examId,
+          instructions,
+          advice,
+          warnings,
+        }),
+      });
+      if (res.ok) {
+        setToastMessage('Exam rules and instructions saved for all printouts.');
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingRules(false);
+    }
   };
 
-  if (!exam) {
+  // Submit Paper Schedule Slot
+  const handleSaveSlot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPaperId || !selectedClassId || !selectedSectionId || !examDate || !startTime || !endTime) {
+      alert('Please fill all required schedule fields.');
+      return;
+    }
+
+    setIsSubmittingSlot(true);
+    setConflictMessage(null);
+    try {
+      const res = await fetch('/api/timetable/exam/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paperId: selectedPaperId,
+          classId: selectedClassId,
+          sectionId: selectedSectionId,
+          streamId: selectedStream !== 'General' ? selectedStream : null,
+          examDate,
+          startTime,
+          endTime,
+          reportingTime,
+          roomNumber,
+          instructions: sessionNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        if (res.status === 409 && errorData.conflict) {
+          setConflictMessage(errorData.message || 'Exam overlap conflict detected.');
+          return;
+        }
+        throw new Error(errorData.message || 'Failed to save exam schedule slot');
+      }
+
+      setIsAddSlotOpen(false);
+      setToastMessage('Examination paper scheduled successfully.');
+      setTimeout(() => setToastMessage(null), 3000);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || 'Submission error');
+    } finally {
+      setIsSubmittingSlot(false);
+    }
+  };
+
+  const handleDeleteSlot = async (slotId: string) => {
+    if (!confirm('Are you sure you want to remove this examination session?')) return;
+    try {
+      const res = await fetch(`/api/timetable/exam/schedule?id=${slotId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setToastMessage('Schedule slot deleted.');
+        setTimeout(() => setToastMessage(null), 3000);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  if (isLoading) {
     return (
       <PageContainer>
-        <div className="py-20 text-center">
-          <p className="text-xs text-muted-foreground">Exam cycle not found.</p>
+        <div className="py-24 text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto" />
+          <p className="mt-4 text-xs text-muted-foreground">Loading examination schedule...</p>
         </div>
       </PageContainer>
     );
   }
 
+  if (error || !exam) {
+    return (
+      <PageContainer>
+        <div className="py-20 text-center space-y-3">
+          <AlertCircle className="h-10 w-10 text-destructive mx-auto" />
+          <p className="text-sm font-semibold">{error || 'Exam cycle not found'}</p>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/school/exams">Return to Exams</Link>
+          </Button>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  const currentClassObj = classes.find((c) => c.id === selectedClassId) || classes[0];
+
   return (
     <PageContainer>
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Link href={`/school/exams/${exam.id}`} className="hover:text-foreground flex items-center gap-1">
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Exam 360 ({exam.name})
-          </Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">Schedule Builder</span>
-        </div>
-
-        <PageHeader
-          title="Exam Schedule Builder"
-          description={`Configure multi-paper shifts, room allocation, and stream timetables for ${exam.name}.`}
-          icon={Calendar}
-          badge={`${schedule.length} Slots`}
-          actions={
-            <Button
-              size="sm"
-              className="text-xs h-8.5 gap-1.5 bg-primary text-primary-foreground"
-              onClick={() => setIsAddSlotOpen(true)}
-              disabled={papers.length === 0}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Schedule Timeslot
-            </Button>
-          }
-        />
-      </div>
-
+      {/* Toast Notification */}
       {toastMessage && (
-        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-lg text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="h-4 w-4" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* 1. Conflict Warning Box if any conflicts detected */}
-      {conflicts.length > 0 && (
-        <div className="rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-4 text-xs text-rose-900 dark:text-rose-200 space-y-2">
-          <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400">
-            <ShieldAlert className="h-5 w-5 shrink-0" />
-            <span>{conflicts.length} Operational Conflicts Detected in Timetable</span>
-          </div>
-          <div className="space-y-1.5 pt-1">
-            {conflicts.map((c) => (
-              <div key={c.id} className="p-2.5 rounded bg-background/80 border border-rose-200 dark:border-rose-800 flex items-start justify-between gap-2">
-                <div>
-                  <span className="font-semibold text-rose-600 block">{c.title}</span>
-                  <p className="text-[11px] text-muted-foreground">{c.description}</p>
-                  <p className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">
-                    <strong>Suggestion:</strong> {c.suggestion}
-                  </p>
-                </div>
-                <Badge variant="destructive" className="text-[9px] shrink-0">
-                  {c.severity}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 2. Grouped Schedule View (Multi-exam per day) */}
-      <div className="space-y-4 pt-1">
-        {groupedByDate.length === 0 ? (
-          <Card className="p-12 text-center text-muted-foreground">
-            <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-            <p className="text-xs">No exam slots scheduled yet.</p>
-            <p className="text-[11px] text-muted-foreground">
-              Click &ldquo;Add Schedule Timeslot&rdquo; to build morning and afternoon shifts.
-            </p>
-          </Card>
-        ) : (
-          groupedByDate.map(([date, entries]) => (
-            <Card key={date} className="overflow-hidden border">
-              <div className="bg-muted/40 px-3.5 py-2 border-b flex items-center justify-between text-xs">
-                <div className="font-semibold text-foreground flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-primary" />
-                  <span>{new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                  <span className="font-mono text-muted-foreground">({date})</span>
-                </div>
-                <Badge variant="outline" className="text-[10px]">
-                  {entries.length} {entries.length === 1 ? 'Exam Shift' : 'Exam Shifts (Multi-Paper Day)'}
-                </Badge>
-              </div>
-
-              <div className="divide-y divide-border">
-                {entries.map((slot) => {
-                  const paper = papers.find((p) => p.id === slot.paperId);
-                  const subject = store.subjects.find((s) => s.id === paper?.subjectId);
-                  const classLabels = slot.classIds.map((c: string) => c.replace('cls-', 'Class ')).join(', ');
-                  const streamLabels = slot.streamIds
-                    ?.map((id: string) => streams.find((s) => s.id === id)?.code || id)
-                    .join(', ');
-
-                  return (
-                    <div key={slot.id} className="p-3 hover:bg-muted/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-start gap-3">
-                        <div className="h-9 w-24 rounded bg-primary/10 border border-primary/20 text-primary font-mono font-bold flex items-center justify-center shrink-0">
-                          {slot.startTime}–{slot.endTime}
-                        </div>
-                        <div>
-                          <div className="font-bold text-foreground flex items-center gap-2">
-                            <span>{subject?.name || 'Subject'}</span>
-                            <Badge variant="outline" className="text-[10px] font-mono">
-                              {paper?.paperCode}
-                            </Badge>
-                          </div>
-                          <div className="text-muted-foreground text-[11px] mt-0.5 flex flex-wrap items-center gap-2">
-                            <span>Classes: <strong className="text-foreground">{classLabels}</strong></span>
-                            {streamLabels && (
-                              <Badge variant="secondary" className="text-[9px]">
-                                {streamLabels}
-                              </Badge>
-                            )}
-                            <span>• Room: {slot.room}</span>
-                            <span>• {slot.campusIds.length} Campuses</span>
-                          </div>
-                          {slot.instructions && (
-                            <p className="text-[10px] text-muted-foreground italic mt-0.5">
-                              Note: {slot.instructions}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => {
-                            schoolStore.deleteExamScheduleEntry(slot.id);
-                            showToast('Exam slot removed.');
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          ))
-        )}
+      {/* Breadcrumb Navigation */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+        <Link href={`/school/exams/${examId}`} className="hover:text-foreground flex items-center gap-1 transition-colors">
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Exam 360 ({exam.name})
+        </Link>
+        <span>/</span>
+        <span className="text-foreground font-medium">Schedule Builder</span>
       </div>
 
-      {/* 3. Add Slot Dialog */}
-      {isAddSlotOpen && (
-        <AddSlotDialog
-          examId={exam.id}
-          papers={papers}
-          campuses={campuses}
-          classes={classes}
-          streams={streams}
-          existingSchedule={schedule}
-          isOpen={isAddSlotOpen}
-          onClose={() => setIsAddSlotOpen(false)}
-          onSuccess={() => {
-            setIsAddSlotOpen(false);
-            showToast('New exam slot added to timetable.');
-          }}
-        />
-      )}
-    </PageContainer>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ADD SLOT DIALOG WITH LIVE CONFLICT DETECTION PREVIEW
-// ---------------------------------------------------------------------------
-function AddSlotDialog({
-  examId,
-  papers,
-  campuses,
-  classes,
-  streams,
-  existingSchedule,
-  isOpen,
-  onClose,
-  onSuccess,
-}: {
-  examId: string;
-  papers: ExamPaper[];
-  campuses: Campus[];
-  classes: SchoolClass[];
-  streams: Stream[];
-  existingSchedule: ExamScheduleEntry[];
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: (entry: ExamScheduleEntry) => void;
-}) {
-  const store = useSchoolStore();
-  const [paperId, setPaperId] = React.useState<string>(papers[0]?.id || '');
-  const [date, setDate] = React.useState('2025-09-16');
-  const [startTime, setStartTime] = React.useState('09:00');
-  const [endTime, setEndTime] = React.useState('12:00');
-  const [room, setRoom] = React.useState('Examination Hall 1');
-  const [instructions, setInstructions] = React.useState('Standard stationery and admit card mandatory.');
-  const [selectedCampusIds, setSelectedCampusIds] = React.useState<string[]>(campuses.map((c) => c.id));
-  const [selectedClassIds, setSelectedClassIds] = React.useState<string[]>(['cls-10']);
-  const [selectedStreamIds, setSelectedStreamIds] = React.useState<string[]>([]);
-
-  // Live conflict preview
-  const previewConflicts = React.useMemo(() => {
-    return detectExamScheduleConflicts(store, existingSchedule, {
-      id: 'candidate-new',
-      examId,
-      paperId,
-      date,
-      startTime,
-      endTime,
-      campusIds: selectedCampusIds,
-      classIds: selectedClassIds,
-      streamIds: selectedStreamIds,
-      room,
-    });
-  }, [store, existingSchedule, examId, paperId, date, startTime, endTime, selectedCampusIds, selectedClassIds, selectedStreamIds, room]);
-
-  const handleSubmit = () => {
-    if (!paperId || !date || !startTime || !endTime) return;
-
-    const newEntry = schoolStore.createExamScheduleEntry({
-      examId,
-      paperId,
-      date,
-      startTime,
-      endTime,
-      campusIds: selectedCampusIds,
-      classIds: selectedClassIds,
-      streamIds: selectedStreamIds.length > 0 ? selectedStreamIds : undefined,
-      room,
-      instructions,
-    });
-
-    onSuccess(newEntry);
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <PageHeader
+        title={`Exam Date-sheet & Schedule: ${exam.name}`}
+        description="Schedule examination papers, set duration and reporting times, and prevent overlapping exam conflicts across cohorts."
+        icon={Calendar}
+        badge={exam.isPublished ? 'Published' : 'Draft Schedule'}
+        actions={
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
-              <Clock className="h-4 w-4" />
-            </div>
-            <div>
-              <DialogTitle className="text-base font-bold">Add Examination Timeslot</DialogTitle>
-              <DialogDescription className="text-xs">
-                Schedule a morning or afternoon paper session with live conflict detection.
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-3.5 pt-2 text-xs">
-          <FormField label="Curriculum Paper" required>
-            <select
-              value={paperId}
-              onChange={(e) => setPaperId(e.target.value)}
-              className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs"
-            >
-              {papers.map((p) => {
-                const subj = store.subjects.find((s) => s.id === p.subjectId);
-                return (
-                  <option key={p.id} value={p.id}>
-                    {subj?.name} ({p.paperCode}) — Max {p.maxMarks}m
-                  </option>
-                );
-              })}
-            </select>
-          </FormField>
-
-          <div className="grid grid-cols-3 gap-2">
-            <FormField label="Exam Date" required>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8.5 text-xs font-mono" />
-            </FormField>
-            <FormField label="Start Time" required>
-              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-8.5 text-xs font-mono" />
-            </FormField>
-            <FormField label="End Time" required>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-8.5 text-xs font-mono" />
-            </FormField>
-          </div>
-
-          <FormField label="Examination Room / Hall" required>
-            <Input value={room} onChange={(e) => setRoom(e.target.value)} placeholder="Hall 1 or Auditorium" className="h-8.5 text-xs" />
-          </FormField>
-
-          <FormField label="Candidate Instructions">
-            <Input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Stationery, timings, reporting notes" className="h-8.5 text-xs" />
-          </FormField>
-
-          <div className="p-2.5 rounded border bg-muted/20 space-y-2">
-            <span className="font-semibold text-[11px] block">Applicable Campus Sites</span>
-            <div className="flex flex-wrap gap-2">
-              {campuses.map((c) => (
-                <label key={c.id} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedCampusIds.includes(c.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedCampusIds([...selectedCampusIds, c.id]);
-                      else setSelectedCampusIds(selectedCampusIds.filter((id) => id !== c.id));
-                    }}
-                    className="rounded h-3.5 w-3.5"
-                  />
-                  <span>{c.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-2.5 rounded border bg-muted/20 space-y-2">
-            <span className="font-semibold text-[11px] block">Applicable Class Cohort</span>
-            <div className="flex flex-wrap gap-2">
-              {classes.map((c) => (
-                <label key={c.id} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedClassIds.includes(c.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedClassIds([...selectedClassIds, c.id]);
-                      else setSelectedClassIds(selectedClassIds.filter((id) => id !== c.id));
-                    }}
-                    className="rounded h-3.5 w-3.5"
-                  />
-                  <span>{c.className}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* If class 11 or 12 selected, show stream option */}
-          {(selectedClassIds.includes('cls-11') || selectedClassIds.includes('cls-12')) && (
-            <div className="p-2.5 rounded border bg-indigo-500/10 border-indigo-500/20 space-y-1.5">
-              <span className="font-semibold text-[11px] text-indigo-950 dark:text-indigo-200 block">
-                Stream Specialization (Optional)
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {streams.map((s) => (
-                  <label key={s.id} className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedStreamIds.includes(s.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedStreamIds([...selectedStreamIds, s.id]);
-                        else setSelectedStreamIds(selectedStreamIds.filter((id) => id !== s.id));
-                      }}
-                      className="rounded h-3.5 w-3.5"
-                    />
-                    <span>{s.name} ({s.code})</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Live conflict warnings preview */}
-          {previewConflicts.length > 0 && (
-            <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-rose-600" />
-                <span>Conflict Detected With Current Settings</span>
-              </div>
-              <p className="text-[11px]">{previewConflicts[0].description}</p>
-            </div>
-          )}
-
-          <DialogFooter className="pt-2 border-t">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
+            <Link href={`/school/exams/${examId}/documents`}>
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8.5">
+                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Print Center</span>
+              </Button>
+            </Link>
             <Button
-              type="button"
               size="sm"
-              className={cn('text-xs text-white', previewConflicts.length > 0 ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary')}
-              onClick={handleSubmit}
+              onClick={() => {
+                setConflictMessage(null);
+                setIsAddSlotOpen(true);
+              }}
+              className="gap-1.5 text-xs h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-xs"
             >
-              {previewConflicts.length > 0 ? 'Schedule Anyway' : 'Commit Slot to Timetable'}
+              <Plus className="h-3.5 w-3.5" />
+              <span>Schedule Paper</span>
             </Button>
-          </DialogFooter>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 my-6">
+        {/* Left Column: Scheduled Sessions List */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-800">Scheduled Examination Papers</h3>
+            <Badge variant="outline" className="text-xs">
+              {allSchedules.length} Sessions
+            </Badge>
+          </div>
+
+          {allSchedules.length === 0 ? (
+            <Card className="p-12 text-center border-dashed border-2 border-slate-200">
+              <Calendar className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+              <h4 className="text-sm font-semibold text-slate-700">No Papers Scheduled Yet</h4>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                Click &quot;Schedule Paper&quot; above to configure dates, session times, and room allocations.
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {allSchedules.map((slot: any) => (
+                <Card key={slot.id} className="p-4 border-slate-200 hover:border-slate-300 transition-colors shadow-2xs">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-foreground">{slot.subjectName}</span>
+                        <Badge variant="secondary" className="text-[10px] font-mono">
+                          {slot.className} ({slot.section.name})
+                        </Badge>
+                        {slot.streamId && (
+                          <Badge variant="outline" className="text-[10px] text-primary border-primary/30">
+                            {slot.streamId}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                        <span className="flex items-center gap-1 font-medium text-slate-700">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          {slot.examDate.split('T')[0]}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono font-semibold text-foreground">
+                          <Clock className="h-3.5 w-3.5 text-slate-400" />
+                          {slot.startTime} – {slot.endTime} ({slot.durationMinutes || 120} mins)
+                        </span>
+                        <span>Hall: {slot.roomNumber || 'Main Hall'}</span>
+                        {slot.reportingTime && <span>Reporting: {slot.reportingTime}</span>}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteSlot(slot.id)}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Right Column: Persistent Exam Rules, Advice & Warnings */}
+        <div className="space-y-4">
+          <Card className="p-5 border-slate-200 shadow-xs space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" />
+                Persistent Exam Instructions
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                These rules automatically appear on student admit cards and printed timetables.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <FormField label="General Instructions">
+                <textarea
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="e.g. Bring authorized stationery and arrive 30 mins early..."
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </FormField>
+
+              <FormField label="Candidate Advice">
+                <textarea
+                  value={advice}
+                  onChange={(e) => setAdvice(e.target.value)}
+                  placeholder="e.g. Read each question carefully before attempting..."
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </FormField>
+
+              <FormField label="Disciplinary Warnings">
+                <textarea
+                  value={warnings}
+                  onChange={(e) => setWarnings(e.target.value)}
+                  placeholder="e.g. Mobile phones and smartwatches are strictly prohibited..."
+                  rows={2}
+                  className="w-full rounded-md border border-red-200 bg-red-50/30 p-2.5 text-xs text-red-900 focus:outline-none focus:ring-1 focus:ring-red-400"
+                />
+              </FormField>
+            </div>
+
+            <Button
+              onClick={handleSaveRules}
+              disabled={isSavingRules}
+              size="sm"
+              className="w-full text-xs h-8.5 gap-1.5 cursor-pointer"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span>{isSavingRules ? 'Saving Rules...' : 'Save Instructions for Prints'}</span>
+            </Button>
+          </Card>
+        </div>
+      </div>
+
+      {/* Add / Edit Exam Session Modal */}
+      <Dialog open={isAddSlotOpen} onOpenChange={setIsAddSlotOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Schedule Examination Paper</DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure session timings, cohort targeting, and room allocation.
+            </DialogDescription>
+          </DialogHeader>
+
+          {conflictMessage && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs flex items-start gap-2 animate-in fade-in">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-red-950">Cohort Exam Overlap Detected</p>
+                <p className="mt-0.5">{conflictMessage}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveSlot} className="space-y-3.5 text-xs">
+            <FormField label="Examination Paper" required>
+              <select
+                value={selectedPaperId}
+                onChange={(e) => setSelectedPaperId(e.target.value)}
+                className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {exam.papers?.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.subject.name})
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Target Class" required>
+                <select
+                  value={selectedClassId}
+                  onChange={(e) => {
+                    setSelectedClassId(e.target.value);
+                    const cls = classes.find((c) => c.id === e.target.value);
+                    if (cls?.sections?.length > 0) setSelectedSectionId(cls.sections[0].id);
+                  }}
+                  className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Target Section" required>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId(e.target.value)}
+                  className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {currentClassObj?.sections?.map((sec: any) => (
+                    <option key={sec.id} value={sec.id}>
+                      Section {sec.name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+
+            <FormField label="Academic Stream (For Classes 11/12)">
+              <select
+                value={selectedStream}
+                onChange={(e) => setSelectedStream(e.target.value)}
+                className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="General">General / All Streams</option>
+                <option value="Science">Science (PCM / PCB)</option>
+                <option value="Commerce">Commerce</option>
+                <option value="Arts">Humanities / Arts</option>
+              </select>
+            </FormField>
+
+            <div className="grid grid-cols-3 gap-3">
+              <FormField label="Exam Date" required>
+                <Input
+                  type="date"
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </FormField>
+
+              <FormField label="Start Time" required>
+                <Input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </FormField>
+
+              <FormField label="End Time" required>
+                <Input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Reporting Time">
+                <Input
+                  type="text"
+                  placeholder="e.g. 08:30 AM"
+                  value={reportingTime}
+                  onChange={(e) => setReportingTime(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </FormField>
+
+              <FormField label="Examination Room / Hall">
+                <Input
+                  type="text"
+                  placeholder="e.g. Hall A, Room 102"
+                  value={roomNumber}
+                  onChange={(e) => setRoomNumber(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </FormField>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsAddSlotOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmittingSlot} size="sm" className="bg-primary text-white">
+                {isSubmittingSlot ? 'Validating Overlaps...' : 'Save Paper Session'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </PageContainer>
   );
 }

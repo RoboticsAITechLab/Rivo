@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 
-// GET /api/teachers/[id] - Fetch single teacher profile with assignments
+// GET /api/teachers/[id] - Fetch single teacher profile with assignments & schedule details
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -43,8 +43,9 @@ export async function GET(
       className: a.class.name,
       sectionId: a.sectionId,
       sectionName: a.section.name,
+      streamId: a.streamId,
       subjectId: a.subjectId,
-      subjectName: a.subject?.name || 'General',
+      subjectName: a.subject?.name || 'Class Teacher',
       isClassTeacher: a.isClassTeacher,
       sessionName: a.academicSession?.name || '',
     }));
@@ -59,6 +60,17 @@ export async function GET(
         lastName: teacher.user.lastName,
         email: teacher.user.email,
         phone: teacher.phone || '',
+        photoUrl: teacher.photoUrl || null,
+        gender: teacher.gender || null,
+        dateOfBirth: teacher.dateOfBirth ? teacher.dateOfBirth.toISOString().split('T')[0] : null,
+        joiningDate: teacher.joiningDate ? teacher.joiningDate.toISOString().split('T')[0] : null,
+        employmentType: teacher.employmentType || 'FULL_TIME',
+        experienceYears: teacher.experienceYears || 0,
+        specialization: teacher.specialization || null,
+        emergencyContactName: teacher.emergencyContactName || null,
+        emergencyContactPhone: teacher.emergencyContactPhone || null,
+        emergencyContactRelation: teacher.emergencyContactRelation || null,
+        address: teacher.address || null,
         status: teacher.status,
         department: teacher.department || 'General',
         designation: teacher.designation || 'Faculty Member',
@@ -106,6 +118,17 @@ export async function PATCH(
       qualification,
       status,
       campusId,
+      photoUrl,
+      gender,
+      dateOfBirth,
+      joiningDate,
+      employmentType,
+      experienceYears,
+      specialization,
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactRelation,
+      address,
     } = body;
 
     // Validate campus if changed
@@ -135,25 +158,39 @@ export async function PATCH(
         where: { id },
         data: {
           ...(phone !== undefined ? { phone: phone.trim() } : {}),
-          ...(department ? { department: department.trim() } : {}),
-          ...(designation ? { designation: designation.trim() } : {}),
-          ...(qualification !== undefined ? { qualification: qualification.trim() } : {}),
+          ...(department !== undefined ? { department: department ? department.trim() : null } : {}),
+          ...(designation !== undefined ? { designation: designation ? designation.trim() : null } : {}),
+          ...(qualification !== undefined ? { qualification: qualification ? qualification.trim() : null } : {}),
           ...(status ? { status } : {}),
-          ...(campusId ? { campusId } : {}),
+          ...(campusId !== undefined ? { campusId: campusId || null } : {}),
+          ...(photoUrl !== undefined ? { photoUrl: photoUrl || null } : {}),
+          ...(gender !== undefined ? { gender: gender || null } : {}),
+          ...(dateOfBirth !== undefined ? { dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null } : {}),
+          ...(joiningDate !== undefined ? { joiningDate: joiningDate ? new Date(joiningDate) : null } : {}),
+          ...(employmentType !== undefined ? { employmentType: employmentType || 'FULL_TIME' } : {}),
+          ...(experienceYears !== undefined ? { experienceYears: parseInt(String(experienceYears), 10) || 0 } : {}),
+          ...(specialization !== undefined ? { specialization: specialization ? specialization.trim() : null } : {}),
+          ...(emergencyContactName !== undefined ? { emergencyContactName: emergencyContactName ? emergencyContactName.trim() : null } : {}),
+          ...(emergencyContactPhone !== undefined ? { emergencyContactPhone: emergencyContactPhone ? emergencyContactPhone.trim() : null } : {}),
+          ...(emergencyContactRelation !== undefined ? { emergencyContactRelation: emergencyContactRelation ? emergencyContactRelation.trim() : null } : {}),
+          ...(address !== undefined ? { address: address ? address.trim() : null } : {}),
         },
-        include: { user: true },
+        include: { user: true, campus: true },
       });
 
       return teacher;
     });
 
     return NextResponse.json({
+      success: true,
+      message: 'Teacher profile updated successfully.',
       teacher: {
         id: updated.id,
         name: `${updated.user.firstName} ${updated.user.lastName}`.trim(),
         status: updated.status,
         department: updated.department,
         designation: updated.designation,
+        photoUrl: updated.photoUrl,
       },
     });
   } catch (error) {
@@ -191,7 +228,7 @@ export async function DELETE(
         where: { id },
         data: { status: 'INACTIVE' },
       });
-      return NextResponse.json({ message: 'Teacher marked as inactive (archived)' });
+      return NextResponse.json({ success: true, message: 'Teacher marked as inactive (archived)' });
     }
 
     // Clean delete if no assignments
@@ -199,7 +236,7 @@ export async function DELETE(
       where: { id },
     });
 
-    return NextResponse.json({ message: 'Teacher profile successfully deleted' });
+    return NextResponse.json({ success: true, message: 'Teacher profile successfully deleted' });
   } catch (error) {
     console.error('Error deleting teacher:', error);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });

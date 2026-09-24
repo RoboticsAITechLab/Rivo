@@ -496,7 +496,7 @@ export class ResultsService {
       });
 
       return results;
-    });
+    }, { maxWait: 15000, timeout: 60000 });
 
     return {
       success: true,

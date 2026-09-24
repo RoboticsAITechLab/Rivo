@@ -135,7 +135,9 @@ function TeacherFormWizard({
   const [middleName, setMiddleName] = React.useState(teacherToEdit?.personal.middleName || '');
   const [lastName, setLastName] = React.useState(teacherToEdit?.personal.lastName || '');
   const [dob, setDob] = React.useState(teacherToEdit?.personal.dateOfBirth || '');
-  const [gender, setGender] = React.useState<'Male' | 'Female' | 'Other'>(teacherToEdit?.personal.gender || 'Male');
+  const [gender, setGender] = React.useState<'Male' | 'Female' | 'Other'>(
+    (teacherToEdit?.personal.gender as 'Male' | 'Female' | 'Other') || 'Male'
+  );
   const [bloodGroup, setBloodGroup] = React.useState(teacherToEdit?.personal.bloodGroup || 'O+');
   const [phone, setPhone] = React.useState(teacherToEdit?.personal.phone || '');
   const [email, setEmail] = React.useState(teacherToEdit?.personal.email || '');

@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   KeyRound,
   CheckCircle2,
+  Phone,
+  Smartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,10 +30,22 @@ function LoginFormContent() {
 
   const { login, verifyMfaChallenge, user, authState } = useAuth();
 
+  const [authMode, setAuthMode] = useState<'STAFF' | 'PARENT'>('STAFF');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  // Parent OTP State
+  const [parentType, setParentType] = useState<'PHONE' | 'EMAIL'>('PHONE');
+  const [parentPhone, setParentPhone] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [maskedTarget, setMaskedTarget] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
   // Field validation errors
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -49,6 +63,15 @@ function LoginFormContent() {
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
 
+  // Countdown timer for OTP cooldown
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((c) => (c > 0 ? c - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
   // Redirect if already authenticated
   useEffect(() => {
     if (authState === 'AUTHENTICATED' && user) {
@@ -57,6 +80,8 @@ function LoginFormContent() {
       } else if (user.roleType === 'TEACHER') {
         const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
         router.replace(dest);
+      } else if (user.roleType === 'PARENT') {
+        router.replace('/parent');
       } else if (
         user.roleType === 'DIRECTOR' ||
         user.roleType === 'PRINCIPAL' ||
@@ -132,6 +157,8 @@ function LoginFormContent() {
         if (result.user.roleType === 'TEACHER') {
           const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
           window.location.href = dest;
+        } else if (result.user.roleType === 'PARENT') {
+          window.location.href = '/parent';
         } else if (
           result.user.roleType === 'SCHOOL_ADMIN' ||
           result.user.roleType === 'ADMIN' ||
@@ -161,6 +188,83 @@ function LoginFormContent() {
     }
   };
 
+  const handleSendParentOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setServerError(null);
+    const identifier = parentType === 'PHONE' ? parentPhone.trim() : parentEmail.trim();
+    if (!identifier) {
+      setServerError(`Please enter your registered ${parentType === 'PHONE' ? 'mobile number' : 'email address'}.`);
+      return;
+    }
+
+    setIsSendingOtp(true);
+    try {
+      const res = await fetch('/api/auth/parent/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parentType === 'PHONE' ? { phone: identifier } : { email: identifier }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setServerError(data.message || 'Failed to send verification code.');
+      } else {
+        setOtpSent(true);
+        setMaskedTarget(data.identifier || identifier);
+        setCooldown(data.cooldownSeconds || 60);
+      }
+    } catch {
+      setServerError('Network error while requesting verification code.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyParentOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setServerError(null);
+    const cleanOtp = otpCode.trim();
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setServerError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const identifier = parentType === 'PHONE' ? parentPhone.trim() : parentEmail.trim();
+      const res = await fetch('/api/auth/parent/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(parentType === 'PHONE' ? { phone: identifier } : { email: identifier }),
+          code: cleanOtp,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setServerError(data.message || 'Invalid or expired verification code.');
+        return;
+      }
+
+      // Check if MFA is required
+      if (data.mfaRequired && data.challengeToken) {
+        setMfaChallengeToken(data.challengeToken);
+        setMfaStep(true);
+        setOtpCode('');
+        setMfaError(null);
+        return;
+      }
+
+      if (data.success) {
+        window.location.href = '/parent';
+      }
+    } catch {
+      setServerError('Network error while verifying code.');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mfaChallengeToken || isVerifyingMfa) return;
@@ -181,6 +285,8 @@ function LoginFormContent() {
         if (result.user.roleType === 'TEACHER') {
           const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
           window.location.href = dest;
+        } else if (result.user.roleType === 'PARENT') {
+          window.location.href = '/parent';
         } else if (
           result.user.roleType === 'SCHOOL_ADMIN' ||
           result.user.roleType === 'ADMIN' ||
@@ -337,18 +443,262 @@ function LoginFormContent() {
   // STEP 1: CREDENTIALS CARD
   return (
     <Card className="shadow-sm border-slate-200/80 bg-white">
-      <CardHeader className="space-y-1.5 pb-4">
+      <CardHeader className="space-y-3 pb-3">
         <div className="space-y-1">
           <CardTitle className="text-xl font-bold tracking-tight text-slate-900">
-            Welcome back
+            {authMode === 'PARENT' ? 'Parent Portal' : 'Welcome back'}
           </CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Sign in to your school account.
+            {authMode === 'PARENT'
+              ? 'Sign in with your registered mobile number or email using one-time verification.'
+              : 'Sign in to your school staff or administrator account.'}
           </CardDescription>
+        </div>
+
+        {/* Portal Switcher Tabs */}
+        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('STAFF');
+              setServerError(null);
+            }}
+            className={`py-1.5 rounded-md transition-all ${
+              authMode === 'STAFF'
+                ? 'bg-white shadow text-slate-900 font-bold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Staff Login
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('PARENT');
+              setServerError(null);
+            }}
+            className={`py-1.5 rounded-md transition-all ${
+              authMode === 'PARENT'
+                ? 'bg-white shadow text-primary font-bold'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Parent Portal (OTP)
+          </button>
         </div>
       </CardHeader>
 
-      <form onSubmit={handleCredentialsSubmit} noValidate>
+      {/* PARENT LOGIN FORM */}
+      {authMode === 'PARENT' ? (
+        <form onSubmit={otpSent ? handleVerifyParentOtp : handleSendParentOtp} noValidate>
+          <CardContent className="space-y-4">
+            {serverError && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in-0 duration-200"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+                <div className="space-y-0.5">
+                  <p className="font-semibold text-red-800">Authentication failed</p>
+                  <p>{serverError}</p>
+                </div>
+              </div>
+            )}
+
+            {!otpSent ? (
+              <>
+                <div className="flex items-center gap-2 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setParentType('PHONE');
+                      setServerError(null);
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border flex items-center justify-center gap-1.5 transition-colors ${
+                      parentType === 'PHONE'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Phone Number
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setParentType('EMAIL');
+                      setServerError(null);
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border flex items-center justify-center gap-1.5 transition-colors ${
+                      parentType === 'EMAIL'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Email Address
+                  </button>
+                </div>
+
+                {parentType === 'PHONE' ? (
+                  <div className="space-y-1.5">
+                    <label htmlFor="parentPhone" className="block text-xs font-semibold text-slate-700">
+                      Registered Mobile Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                      <Input
+                        id="parentPhone"
+                        type="tel"
+                        inputMode="tel"
+                        disabled={isSendingOtp}
+                        value={parentPhone}
+                        onChange={(e) => {
+                          setParentPhone(e.target.value);
+                          if (serverError) setServerError(null);
+                        }}
+                        placeholder="e.g. 9876543210 or +91 98765 43210"
+                        className="pl-9 text-xs sm:text-sm border-slate-200"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Standard Indian mobile numbers will automatically resolve to +91 format.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label htmlFor="parentEmail" className="block text-xs font-semibold text-slate-700">
+                      Registered Email Address <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                      <Input
+                        id="parentEmail"
+                        type="email"
+                        inputMode="email"
+                        disabled={isSendingOtp}
+                        value={parentEmail}
+                        onChange={(e) => {
+                          setParentEmail(e.target.value);
+                          if (serverError) setServerError(null);
+                        }}
+                        placeholder="parent@example.com"
+                        className="pl-9 text-xs sm:text-sm border-slate-200"
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Code Dispatched</p>
+                    <p className="text-[11px] opacity-90">
+                      We sent a 6-digit verification code to <span className="font-mono font-bold">{maskedTarget}</span>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="otpCode" className="block text-xs font-semibold text-slate-700">
+                    Enter 6-Digit OTP <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                    <Input
+                      id="otpCode"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      autoFocus
+                      disabled={isVerifyingOtp}
+                      value={otpCode}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setOtpCode(val);
+                        if (serverError) setServerError(null);
+                      }}
+                      placeholder="000000"
+                      className="pl-9 text-center font-mono font-bold text-base sm:text-lg tracking-widest h-11 border-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpSent(false);
+                      setOtpCode('');
+                      setServerError(null);
+                    }}
+                    className="text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
+                  >
+                    Change {parentType === 'PHONE' ? 'phone' : 'email'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={cooldown > 0 || isSendingOtp}
+                    onClick={() => handleSendParentOtp()}
+                    className={`font-semibold ${
+                      cooldown > 0
+                        ? 'text-slate-400 cursor-not-allowed'
+                        : 'text-primary hover:underline cursor-pointer'
+                    }`}
+                  >
+                    {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+
+          <CardFooter className="flex flex-col space-y-4 pt-2">
+            {!otpSent ? (
+              <Button
+                type="submit"
+                disabled={isSendingOtp}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
+              >
+                {isSendingOtp ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Sending verification code...
+                  </>
+                ) : (
+                  'Send Verification Code'
+                )}
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={isVerifyingOtp || otpCode.length !== 6}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
+              >
+                {isVerifyingOtp ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Verifying code...
+                  </>
+                ) : (
+                  'Verify & Sign In'
+                )}
+              </Button>
+            )}
+
+            <div className="w-full text-center border-t border-slate-100 pt-3">
+              <p className="text-[11px] text-slate-500">
+                School-enrolled parent accounts are pre-registered by school administration.
+              </p>
+            </div>
+          </CardFooter>
+        </form>
+      ) : (
+        <form onSubmit={handleCredentialsSubmit} noValidate>
         <CardContent className="space-y-4">
           {/* Server / Auth Error Alert */}
           {serverError && (
@@ -532,6 +882,7 @@ function LoginFormContent() {
           </div>
         </CardFooter>
       </form>
+      )}
     </Card>
   );
 }

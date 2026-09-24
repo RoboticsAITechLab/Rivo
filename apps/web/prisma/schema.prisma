@@ -5,7 +5,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  output   = "./generated_temp"
 }
 
 enum PlatformRole {
@@ -22,7 +22,7 @@ enum Role {
   STUDENT
   PARENT
   SCHOOL_ADMIN // Preserved for backward-compatible migration
-  OWNER        // Preserved for backward-compatible migration
+  OWNER // Preserved for backward-compatible migration
 }
 
 enum UserStatus {
@@ -153,6 +153,12 @@ model School {
   status                  SchoolStatus             @default(TRIAL)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
+  logoUrl                 String?                  @map("logo_url")
+  address                 String?
+  phone                   String?
+  email                   String?
+  website                 String?
+  timetableConfigs        TimetableConfig[]
   memberships             SchoolMembership[]
   campuses                Campus[]
   students                Student[]
@@ -188,8 +194,8 @@ model School {
 
 model User {
   id                      String                   @id @default(uuid())
-  email                   String                   @unique
-  passwordHash            String
+  email                   String?                  @unique
+  passwordHash            String?
   firstName               String
   lastName                String
   phone                   String?
@@ -217,6 +223,7 @@ model User {
   deviceTokens            DeviceToken[]
   noticeReadStatuses      NoticeReadStatus[]
 
+  @@index([phone])
   @@map("users")
 }
 
@@ -310,6 +317,8 @@ model Parent {
   parentStudents ParentStudent[]
 
   @@index([schoolId])
+  @@index([schoolId, phone])
+  @@index([schoolId, email])
   @@index([userId])
   @@map("parents")
 }
@@ -332,23 +341,34 @@ model ParentStudent {
 }
 
 model Teacher {
-  id             String              @id @default(uuid())
-  schoolId       String
-  campusId       String?             @map("campus_id")
-  userId         String
-  employeeId     String?
-  phone          String?
-  department     String?
-  designation    String?
-  qualification  String?
-  status         TeacherStatus       @default(ACTIVE)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  school         School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  campus         Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
-  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  assignments    TeacherAssignment[]
-  timetableSlots TimetableSlot[]
+  id                       String              @id @default(uuid())
+  schoolId                 String
+  campusId                 String?             @map("campus_id")
+  userId                   String
+  employeeId               String?
+  phone                    String?
+  department               String?
+  designation              String?
+  qualification            String?
+  photoUrl                 String?             @map("photo_url")
+  gender                   String?
+  dateOfBirth              DateTime?           @map("date_of_birth")
+  joiningDate              DateTime?           @map("joining_date")
+  employmentType           String?             @default("FULL_TIME") @map("employment_type")
+  experienceYears          Int?                @default(0) @map("experience_years")
+  specialization           String?
+  emergencyContactName     String?             @map("emergency_contact_name")
+  emergencyContactPhone    String?             @map("emergency_contact_phone")
+  emergencyContactRelation String?             @map("emergency_contact_relation")
+  address                  String?
+  status                   TeacherStatus       @default(ACTIVE)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  school                   School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campus                   Campus?             @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  user                     User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments              TeacherAssignment[]
+  timetableSlots           TimetableSlot[]
 
   @@unique([schoolId, userId])
   @@index([schoolId])
@@ -359,19 +379,20 @@ model Teacher {
 }
 
 model AcademicSession {
-  id                  String               @id @default(uuid())
+  id                  String                @id @default(uuid())
   schoolId            String
   name                String
   startDate           DateTime
   endDate             DateTime
   status              AcademicSessionStatus @default(ACTIVE)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  school              School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  school              School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   enrollments         StudentEnrollment[]
   teacherAssignments  TeacherAssignment[]
   attendanceRegisters AttendanceRegister[]
   timetableSlots      TimetableSlot[]
+  timetableConfigs    TimetableConfig[]
   examTerms           ExamTerm[]
   examMarks           ExamMark[]
   examResults         ExamResult[]
@@ -454,6 +475,7 @@ model StudentEnrollment {
   classId           String
   sectionId         String
   status            EnrollmentStatus @default(ACTIVE)
+  rollNumber        String?          @map("roll_number")
   enrolledAt        DateTime         @default(now())
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
@@ -478,6 +500,7 @@ model TeacherAssignment {
   academicSessionId String
   classId           String
   sectionId         String
+  streamId          String?         @map("stream_id")
   subjectId         String?
   isClassTeacher    Boolean         @default(false)
   createdAt         DateTime        @default(now())
@@ -564,21 +587,23 @@ model AttendanceAuditLog {
 // ==========================================
 
 model Campus {
-  id        String    @id @default(uuid())
-  schoolId  String    @map("school_id")
-  name      String
-  code      String?
-  address   String?
-  city      String?
-  state     String?
-  phone     String?
-  email     String?
-  isMain    Boolean   @default(false) @map("is_main")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  students  Student[]
-  teachers  Teacher[]
+  id               String            @id @default(uuid())
+  schoolId         String            @map("school_id")
+  name             String
+  code             String?
+  address          String?
+  city             String?
+  state            String?
+  phone            String?
+  email            String?
+  isMain           Boolean           @default(false) @map("is_main")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  school           School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students         Student[]
+  teachers         Teacher[]
+  timetableConfigs TimetableConfig[]
+  examTerms        ExamTerm[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -599,8 +624,8 @@ enum PermissionScope {
 model Permission {
   id          String   @id @default(uuid())
   code        String   @unique // e.g. "attendance.view", "school_timetable.edit", "exam_timetable.view"
-  module      String   // e.g. "attendance", "school_timetable", "exam_timetable", "students", "teachers"
-  action      String   // e.g. "view", "create", "edit", "delete", "take", "publish"
+  module      String // e.g. "attendance", "school_timetable", "exam_timetable", "students", "teachers"
+  action      String // e.g. "view", "create", "edit", "delete", "take", "publish"
   name        String
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
@@ -614,15 +639,15 @@ model Permission {
 model CustomRole {
   id          String   @id @default(uuid())
   schoolId    String   @map("school_id")
-  name        String   // e.g. "Department Head", "Timetable Coordinator", "Senior Teacher"
-  code        String   // e.g. "TIMETABLE_COORD", "SENIOR_TEACHER"
+  name        String // e.g. "Department Head", "Timetable Coordinator", "Senior Teacher"
+  code        String // e.g. "TIMETABLE_COORD", "SENIOR_TEACHER"
   baseRole    Role     @map("base_role")
   description String?
   isSystem    Boolean  @default(false) @map("is_system")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school           School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   rolePermissions  RolePermission[]
   memberships      SchoolMembership[]
   staffInvitations StaffInvitation[]
@@ -673,20 +698,21 @@ model UserPermissionOverride {
 // ==========================================
 
 model TimetableSlot {
-  id                String          @id @default(uuid())
-  schoolId          String          @map("school_id")
-  academicSessionId String          @map("academic_session_id")
-  classId           String          @map("class_id")
-  sectionId         String          @map("section_id")
-  subjectId         String          @map("subject_id")
-  teacherId         String          @map("teacher_id")
-  dayOfWeek         String          @map("day_of_week") // MONDAY, TUESDAY, WEDNESDAY, etc.
-  periodNumber      Int             @map("period_number")
-  startTime         String          @map("start_time") // e.g. "08:30"
-  endTime           String          @map("end_time") // e.g. "09:15"
-  roomNumber        String?         @map("room_number")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  id                String   @id @default(uuid())
+  schoolId          String   @map("school_id")
+  academicSessionId String   @map("academic_session_id")
+  classId           String   @map("class_id")
+  sectionId         String   @map("section_id")
+  streamId          String?  @map("stream_id")
+  subjectId         String   @map("subject_id")
+  teacherId         String   @map("teacher_id")
+  dayOfWeek         String   @map("day_of_week") // MONDAY, TUESDAY, WEDNESDAY, etc.
+  periodNumber      Int      @map("period_number")
+  startTime         String   @map("start_time") // e.g. "08:30"
+  endTime           String   @map("end_time") // e.g. "09:15"
+  roomNumber        String?  @map("room_number")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
@@ -703,24 +729,78 @@ model TimetableSlot {
   @@map("timetable_slots")
 }
 
+enum PeriodType {
+  TEACHING
+  BREAK
+  LUNCH
+  ASSEMBLY
+  ACTIVITY
+}
+
+model TimetableConfig {
+  id                String   @id @default(uuid())
+  schoolId          String   @map("school_id")
+  academicSessionId String   @map("academic_session_id")
+  campusId          String?  @map("campus_id")
+  name              String   @default("Default Bell Schedule")
+  workingDays       String[] @default(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]) @map("working_days")
+  isDefault         Boolean  @default(true) @map("is_default")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  school          School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession    @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  campus          Campus?            @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  periods         PeriodDefinition[]
+
+  @@unique([schoolId, academicSessionId, campusId, name])
+  @@index([schoolId])
+  @@index([academicSessionId])
+  @@map("timetable_configs")
+}
+
+model PeriodDefinition {
+  id              String     @id @default(uuid())
+  configId        String     @map("config_id")
+  periodNumber    Int        @map("period_number")
+  name            String
+  type            PeriodType @default(TEACHING)
+  startTime       String     @map("start_time")
+  endTime         String     @map("end_time")
+  durationMinutes Int?       @map("duration_minutes")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  config TimetableConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, periodNumber])
+  @@index([configId])
+  @@map("period_definitions")
+}
+
 // ==========================================
 // FORMAL EXAM TIMETABLE (SEPARATE SYSTEM)
 // ==========================================
 
 model ExamTerm {
-  id                String          @id @default(uuid())
-  schoolId          String          @map("school_id")
-  academicSessionId String          @map("academic_session_id")
-  name              String          // e.g. "Mid-Term Examination 2026", "Annual Final Exam 2027"
+  id                String   @id @default(uuid())
+  schoolId          String   @map("school_id")
+  academicSessionId String   @map("academic_session_id")
+  campusId          String?  @map("campus_id")
+  name              String // e.g. "Mid-Term Examination 2026", "Annual Final Exam 2027"
   code              String?
-  startDate         DateTime        @map("start_date")
-  endDate           DateTime        @map("end_date")
-  isPublished       Boolean         @default(false) @map("is_published")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  startDate         DateTime @map("start_date")
+  endDate           DateTime @map("end_date")
+  isPublished       Boolean  @default(false) @map("is_published")
+  instructions      String?
+  advice            String?
+  warnings          String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession  @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  campus          Campus?          @relation(fields: [campusId], references: [id], onDelete: SetNull)
   papers          ExamPaper[]
   marks           ExamMark[]
   results         ExamResult[]
@@ -729,18 +809,19 @@ model ExamTerm {
   @@unique([schoolId, academicSessionId, name])
   @@index([schoolId])
   @@index([academicSessionId])
+  @@index([campusId])
   @@map("exam_terms")
 }
 
 model ExamPaper {
-  id           String         @id @default(uuid())
-  examTermId   String         @map("exam_term_id")
-  subjectId    String         @map("subject_id")
-  name         String         // e.g. "Mathematics Paper 1"
-  maxMarks     Float          @default(100) @map("max_marks")
-  passingMarks Float          @default(35) @map("passing_marks")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  examTermId   String   @map("exam_term_id")
+  subjectId    String   @map("subject_id")
+  name         String // e.g. "Mathematics Paper 1"
+  maxMarks     Float    @default(100) @map("max_marks")
+  passingMarks Float    @default(35) @map("passing_marks")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   examTerm       ExamTerm            @relation(fields: [examTermId], references: [id], onDelete: Cascade)
   subject        Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
@@ -754,16 +835,20 @@ model ExamPaper {
 }
 
 model ExamSchedule {
-  id         String    @id @default(uuid())
-  paperId    String    @map("paper_id")
-  classId    String    @map("class_id")
-  sectionId  String    @map("section_id")
-  examDate   DateTime  @map("exam_date")
-  startTime  String    @map("start_time") // e.g. "09:00"
-  endTime    String    @map("end_time") // e.g. "12:00"
-  roomNumber String?   @map("room_number")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  paperId         String   @map("paper_id")
+  classId         String   @map("class_id")
+  sectionId       String   @map("section_id")
+  streamId        String?  @map("stream_id")
+  examDate        DateTime @map("exam_date")
+  startTime       String   @map("start_time") // e.g. "09:00"
+  endTime         String   @map("end_time") // e.g. "12:00"
+  durationMinutes Int?     @map("duration_minutes")
+  reportingTime   String?  @map("reporting_time")
+  instructions    String?
+  roomNumber      String?  @map("room_number")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   paper   ExamPaper @relation(fields: [paperId], references: [id], onDelete: Cascade)
   class   Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -877,9 +962,9 @@ model ResultAuditLog {
   id                String   @id @default(uuid())
   schoolId          String   @map("school_id")
   examTermId        String   @map("exam_term_id")
-  action            String   // MARKS_ENTERED, MARKS_UPDATED, RESULT_CALCULATED, RESULT_PUBLISHED, RESULT_WITHDRAWN
+  action            String // MARKS_ENTERED, MARKS_UPDATED, RESULT_CALCULATED, RESULT_PUBLISHED, RESULT_WITHDRAWN
   performedByUserId String   @map("performed_by_user_id")
-  details           String?  // JSON metadata
+  details           String? // JSON metadata
   createdAt         DateTime @default(now()) @map("created_at")
 
   school   School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -895,21 +980,21 @@ model ResultAuditLog {
 // ==========================================
 
 model Notice {
-  id           String             @id @default(uuid())
-  schoolId     String             @map("school_id")
-  title        String
-  body         String
-  status       NoticeStatus       @default(DRAFT)
-  priority     NoticePriority     @default(NORMAL)
-  targetType   NoticeTargetType   @default(ALL_SCHOOL) @map("target_type")
-  classId      String?            @map("class_id")
-  sectionId    String?            @map("section_id")
-  authorId     String             @map("author_id")
-  publishedAt  DateTime?          @map("published_at")
-  scheduledAt  DateTime?          @map("scheduled_at")
-  expiresAt    DateTime?          @map("expires_at")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
+  id          String           @id @default(uuid())
+  schoolId    String           @map("school_id")
+  title       String
+  body        String
+  status      NoticeStatus     @default(DRAFT)
+  priority    NoticePriority   @default(NORMAL)
+  targetType  NoticeTargetType @default(ALL_SCHOOL) @map("target_type")
+  classId     String?          @map("class_id")
+  sectionId   String?          @map("section_id")
+  authorId    String           @map("author_id")
+  publishedAt DateTime?        @map("published_at")
+  scheduledAt DateTime?        @map("scheduled_at")
+  expiresAt   DateTime?        @map("expires_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
 
   school       School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   class        Class?             @relation(fields: [classId], references: [id], onDelete: SetNull)
@@ -943,9 +1028,9 @@ model NoticeAuditLog {
   id                String   @id @default(uuid())
   schoolId          String   @map("school_id")
   noticeId          String   @map("notice_id")
-  action            String   // NOTICE_CREATED, NOTICE_EDITED, NOTICE_PUBLISHED, NOTICE_ARCHIVED
+  action            String // NOTICE_CREATED, NOTICE_EDITED, NOTICE_PUBLISHED, NOTICE_ARCHIVED
   performedByUserId String   @map("performed_by_user_id")
-  details           String?  // JSON metadata
+  details           String? // JSON metadata
   createdAt         DateTime @default(now()) @map("created_at")
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -981,9 +1066,9 @@ model DeviceToken {
   userId    String   @map("user_id")
   token     String
   platform  String   @default("web") // web, ios, android
-  isActive  Boolean  @default(true)  @map("is_active")
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt      @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -991,7 +1076,6 @@ model DeviceToken {
   @@index([userId])
   @@map("device_tokens")
 }
-
 
 // ==========================================
 // AUTHENTICATION & SECURITY MODELS
@@ -1063,10 +1147,10 @@ model SecurityAuditLog {
   id        String   @id @default(uuid())
   schoolId  String?  @map("school_id")
   userId    String?  @map("user_id")
-  event     String   // LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_ALL, etc.
+  event     String // LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_ALL, etc.
   ipAddress String?  @map("ip_address")
   userAgent String?  @map("user_agent")
-  details   String?  // Sanitized JSON metadata
+  details   String? // Sanitized JSON metadata
   createdAt DateTime @default(now()) @map("created_at")
 
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1157,3 +1241,28 @@ model IdFormatConfig {
   @@map("id_format_configs")
 }
 
+// ==========================================
+// PARENT IDENTITY & OTP AUTHENTICATION
+// ==========================================
+
+enum OtpType {
+  PHONE
+  EMAIL
+}
+
+model AuthOtp {
+  id           String    @id @default(uuid())
+  identifier   String // Normalized phone (e.g. +919876543210) or lowercase email
+  type         OtpType
+  codeHash     String    @map("code_hash")
+  expiresAt    DateTime  @map("expires_at")
+  attemptCount Int       @default(0) @map("attempt_count")
+  maxAttempts  Int       @default(5) @map("max_attempts")
+  consumedAt   DateTime? @map("consumed_at")
+  ipAddress    String?   @map("ip_address")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([identifier, type])
+  @@index([expiresAt])
+  @@map("auth_otps")
+}

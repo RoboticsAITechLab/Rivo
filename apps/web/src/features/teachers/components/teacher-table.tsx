@@ -64,9 +64,17 @@ export function TeacherTable({
               onViewTeacher(row);
             }}
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold transition-transform group-hover:scale-105">
-              {initials}
-            </div>
+            {row.personal.photoUrl ? (
+              <img
+                src={row.personal.photoUrl}
+                alt={`${row.personal.firstName} ${row.personal.lastName}`}
+                className="h-8 w-8 shrink-0 rounded-full object-cover border border-slate-200"
+              />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold transition-transform group-hover:scale-105">
+                {initials}
+              </div>
+            )}
             <div className="min-w-0">
               <div className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                 {row.personal.firstName} {row.personal.lastName}
@@ -177,9 +185,15 @@ export function TeacherTable({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem asChild>
+              <a href={`/school/teachers/${row.id}`} className="flex items-center w-full cursor-pointer">
+                <Eye className="h-3.5 w-3.5 mr-2 text-primary" />
+                View Full Profile
+              </a>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onViewTeacher(row)}>
-              <Eye className="h-3.5 w-3.5 mr-2" />
-              View Profile (360)
+              <Eye className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+              Quick Summary Sheet
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEditTeacher(row)}>
               <Edit3 className="h-3.5 w-3.5 mr-2" />

@@ -14,7 +14,7 @@ export interface CachedSessionData {
   };
   user: {
     id: string;
-    email: string;
+    email: string | null;
     firstName: string;
     lastName: string;
     status: string;

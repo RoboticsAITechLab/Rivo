@@ -129,6 +129,20 @@ export function TimetableViewToggle({
                 ))}
               </select>
             </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-muted-foreground">Stream:</label>
+              <select
+                value={filters.streamId || 'ALL'}
+                onChange={(e) => onFilterChange({ streamId: e.target.value })}
+                className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="ALL">All Streams</option>
+                <option value="Science">Science</option>
+                <option value="Commerce">Commerce</option>
+                <option value="Arts">Arts</option>
+              </select>
+            </div>
           </>
         )}
 

@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Verify current password
-    const isPasswordValid = await verifyPassword(password, user.passwordHash);
-    if (!isPasswordValid) {
-      return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
+    if (user.passwordHash) {
+      const isPasswordValid = await verifyPassword(password, user.passwordHash);
+      if (!isPasswordValid) {
+        return NextResponse.json({ message: 'Invalid password.' }, { status: 401 });
+      }
     }
 
     // 2. Verify second factor (TOTP or recovery code)

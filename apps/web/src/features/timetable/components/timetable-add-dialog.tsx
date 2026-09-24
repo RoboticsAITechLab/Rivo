@@ -23,8 +23,10 @@ interface TimetableAddDialogProps {
   defaultDay?: DayOfWeek;
   defaultPeriodId?: string;
   onSavePeriod: (payload: {
+    slotId?: string;
     classId: string;
     sectionId: string;
+    streamId?: string | null;
     subjectId: string;
     teacherId: string;
     dayOfWeek: DayOfWeek;
@@ -91,8 +93,10 @@ function TimetableAddForm({
   defaultDay?: DayOfWeek;
   defaultPeriodId?: string;
   onSavePeriod: (payload: {
+    slotId?: string;
     classId: string;
     sectionId: string;
+    streamId?: string | null;
     subjectId: string;
     teacherId: string;
     dayOfWeek: DayOfWeek;
@@ -128,6 +132,7 @@ function TimetableAddForm({
     return currentClass?.sections[0]?.id || '';
   });
 
+  const [streamId, setStreamId] = React.useState<string>(periodToEdit?.streamId || '');
   const [subjectId, setSubjectId] = React.useState<string>(() => {
     if (periodToEdit?.subjectId) return periodToEdit.subjectId;
     return subjects[0]?.id || '';
@@ -169,8 +174,10 @@ function TimetableAddForm({
     setFormError(null);
     try {
       await onSavePeriod({
+        slotId: periodToEdit?.id,
         classId,
         sectionId,
+        streamId: streamId.trim() ? streamId.trim() : null,
         subjectId,
         teacherId,
         dayOfWeek: day,
@@ -274,6 +281,20 @@ function TimetableAddForm({
                   Section {s.name}
                 </option>
               ))}
+            </select>
+          </FormField>
+
+          <FormField label="Academic Stream (Optional)">
+            <select
+              value={streamId}
+              onChange={(e) => setStreamId(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">General / All Streams</option>
+              <option value="Science">Science (PCM/PCB)</option>
+              <option value="Commerce">Commerce</option>
+              <option value="Arts">Humanities / Arts</option>
+              <option value="Vocational">Vocational</option>
             </select>
           </FormField>
         </div>

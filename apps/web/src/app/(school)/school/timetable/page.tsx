@@ -31,6 +31,8 @@ export default function TimetablePage() {
     subjects,
     isLoading,
     errorMessage,
+    serverConflict,
+    dismissConflict,
     displayedPeriods,
     filters,
     metrics,
@@ -112,6 +114,42 @@ export default function TimetablePage() {
           </div>
         }
       />
+
+      {/* Prominent Server Conflict Notification */}
+      {serverConflict && (
+        <div className="p-4 bg-red-50 dark:bg-red-950/40 border-2 border-red-300 dark:border-red-800 rounded-xl text-red-900 dark:text-red-200 flex items-start justify-between gap-4 animate-in fade-in slide-in-from-top-2 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-1.5 bg-red-100 dark:bg-red-900/60 rounded-lg text-red-700 dark:text-red-300 shrink-0 mt-0.5">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-red-950 dark:text-red-100 flex items-center gap-2">
+                <span>
+                  {serverConflict.type === 'TEACHER_CONFLICT'
+                    ? 'Faculty Double-Booking Conflict'
+                    : serverConflict.type === 'ROOM_CONFLICT'
+                    ? 'Classroom Double-Booking Conflict'
+                    : 'Schedule Conflict Detected'}
+                </span>
+                <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300 text-[10px] font-mono">
+                  HTTP 409
+                </Badge>
+              </h4>
+              <p className="text-xs text-red-800 dark:text-red-300 mt-1 leading-relaxed">
+                {serverConflict.message}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={dismissConflict}
+            className="text-xs h-7 text-red-800 hover:bg-red-100 dark:text-red-300 dark:hover:bg-red-900 shrink-0"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {exportNotice && (
         <div className="p-3 text-xs bg-primary/10 text-primary border border-primary/20 rounded-lg flex items-center justify-between animate-fade-in">

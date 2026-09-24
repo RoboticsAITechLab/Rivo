@@ -15,7 +15,7 @@ export interface ActiveSessionContext {
   userId: string;
   scope: 'PLATFORM' | 'SCHOOL';
   schoolId: string | null;
-  email: string;
+  email: string | null;
   role: string;
   platformRole?: 'OWNER' | 'PLATFORM_ADMIN' | null;
   teacherId?: string;
@@ -231,7 +231,7 @@ export async function getAuthSessionAsync(
 
   return {
     userId: activeSession.userId,
-    email: activeSession.email,
+    email: activeSession.email || '',
     role: activeSession.role,
     schoolId: activeSession.schoolId,
     teacherId: activeSession.teacherId,
@@ -322,3 +322,5 @@ export function clearSessionCookie(response: NextResponse): void {
     maxAge: 0,
   });
 }
+
+export { getValidSession as getSession };

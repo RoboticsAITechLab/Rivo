@@ -37,20 +37,31 @@ export default function ParentLayout({
 
   const [childrenList, setChildrenList] = React.useState<Child[]>([]);
   const [selectedChildId, setSelectedChildId] = React.useState<string>('');
+  const [schools, setSchools] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [activeSchool, setActiveSchool] = React.useState<{ id: string; name: string } | null>(null);
   const [unreadNoticesCount, setUnreadNoticesCount] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  // Fetch linked children on load
+  // Fetch parent context (active school, all schools, and linked children)
   React.useEffect(() => {
-    async function loadChildren() {
+    async function loadParentContext() {
       try {
-        const res = await fetch('/api/parent/children');
-        if (res.ok) {
-          const data = await res.json();
-          const list = data.children || [];
+        const [meRes, childRes] = await Promise.all([
+          fetch('/api/auth/parent/me').catch(() => null),
+          fetch('/api/parent/children').catch(() => null),
+        ]);
+
+        if (meRes && meRes.ok) {
+          const meData = await meRes.json();
+          if (meData.schools) setSchools(meData.schools);
+          if (meData.activeSchool) setActiveSchool(meData.activeSchool);
+        }
+
+        if (childRes && childRes.ok) {
+          const childData = await childRes.json();
+          const list = childData.children || [];
           setChildrenList(list);
           if (list.length > 0) {
-            // Restore from localStorage or default to first child
             const saved = localStorage.getItem('rivo_parent_selected_child');
             const valid = list.find((c: Child) => c.id === saved);
             const activeId = valid ? valid.id : list[0].id;
@@ -59,13 +70,39 @@ export default function ParentLayout({
           }
         }
       } catch (err) {
-        console.error('Failed to load parent children:', err);
+        console.error('Failed to load parent context:', err);
       } finally {
         setIsLoading(false);
       }
     }
-    loadChildren();
+    loadParentContext();
   }, []);
+
+  const handleSelectSchool = async (schoolId: string) => {
+    try {
+      const res = await fetch('/api/auth/parent/select-school', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveSchool(data.activeSchool);
+        if (data.children) {
+          setChildrenList(data.children);
+          if (data.children.length > 0) {
+            const firstId = data.children[0].id;
+            setSelectedChildId(firstId);
+            localStorage.setItem('rivo_parent_selected_child', firstId);
+            window.dispatchEvent(new CustomEvent('parentChildSwitched', { detail: { childId: firstId } }));
+          }
+        }
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error('Failed switching school:', err);
+    }
+  };
 
   const handleSelectChild = (childId: string) => {
     setSelectedChildId(childId);
@@ -103,7 +140,20 @@ export default function ParentLayout({
           </div>
           <div>
             <div className="text-xs font-bold leading-none text-foreground flex items-center gap-1.5">
-              <span>Rivo Parent Portal</span>
+              <span>{activeSchool?.name || 'Rivo Parent Portal'}</span>
+              {schools.length > 1 && (
+                <select
+                  value={activeSchool?.id}
+                  onChange={(e) => handleSelectSchool(e.target.value)}
+                  className="text-[10px] bg-muted/60 border rounded px-1.5 py-0.5 font-normal cursor-pointer"
+                >
+                  {schools.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div className="text-[10px] text-muted-foreground">Digital School Communication</div>
           </div>

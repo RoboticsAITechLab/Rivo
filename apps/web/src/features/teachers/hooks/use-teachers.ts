@@ -10,6 +10,7 @@ const defaultFilters: TeacherFilterState = {
   className: 'ALL',
   status: 'ALL',
   employmentType: 'ALL',
+  campusId: 'ALL',
 };
 
 function mapApiTeacherToDetail(t: any): TeacherDetail {
@@ -19,6 +20,7 @@ function mapApiTeacherToDetail(t: any): TeacherDetail {
     className: a.className,
     sectionId: a.sectionId,
     sectionName: a.sectionName,
+    streamId: a.streamId || null,
     subjectId: a.subjectId,
     subjectName: a.subjectName,
     periodsPerWeek: a.periodsPerWeek || 5,
@@ -27,9 +29,8 @@ function mapApiTeacherToDetail(t: any): TeacherDetail {
   const totalPeriodsCount = assignments.reduce((acc: number, a: any) => acc + (a.periodsPerWeek || 0), 0);
   const totalClassesCount = new Set(assignments.map((a: any) => a.className)).size;
 
-  const names = (t.name || '').split(' ');
-  const firstName = t.firstName || names[0] || 'Teacher';
-  const lastName = t.lastName || names.slice(1).join(' ') || '';
+  const firstName = t.firstName || t.name?.split(' ')[0] || '';
+  const lastName = t.lastName || t.name?.split(' ').slice(1).join(' ') || '';
 
   return {
     id: t.id,
@@ -39,35 +40,38 @@ function mapApiTeacherToDetail(t: any): TeacherDetail {
       lastName,
       email: t.email || '',
       phone: t.phone || '',
-      gender: 'Male',
-      bloodGroup: 'O+',
-      dateOfBirth: '1985-05-15',
+      photoUrl: t.photoUrl || null,
+      gender: (t.gender as 'Male' | 'Female' | 'Other') || 'Male',
+      dateOfBirth: t.dateOfBirth || '',
     },
     employment: {
       employeeId: t.employeeId || 'TCH-000',
       department: t.department || 'General',
       designation: t.designation || 'Faculty Member',
-      joiningDate: t.createdAt ? t.createdAt.split('T')[0] : '2024-01-01',
-      qualification: t.qualification || 'Master of Education',
-      experienceYears: 5,
-      employmentType: 'FULL_TIME',
+      joiningDate: t.joiningDate || (t.createdAt ? t.createdAt.split('T')[0] : ''),
+      qualification: t.qualification || 'B.Ed / Masters',
+      specialization: t.specialization || '',
+      experienceYears: typeof t.experienceYears === 'number' ? t.experienceYears : 0,
+      employmentType: t.employmentType || 'FULL_TIME',
+      campusId: t.campusId || null,
+      campusName: t.campusName || 'Main Campus',
     },
     address: {
-      street: '',
+      street: t.address || '',
       city: '',
       state: '',
       postalCode: '',
     },
     emergencyContact: {
-      name: '',
-      relationship: '',
-      phone: '',
+      name: t.emergencyContactName || '',
+      relationship: t.emergencyContactRelation || '',
+      phone: t.emergencyContactPhone || '',
     },
     assignments,
     totalClassesCount: totalClassesCount || t.totalClassesCount || 0,
     weeklyPeriods: totalPeriodsCount,
     totalStudentsCount: 0,
-    attendanceRate: 96,
+    attendanceRate: 100,
     createdAt: t.createdAt || new Date().toISOString(),
     updatedAt: t.createdAt || new Date().toISOString(),
   };
@@ -91,6 +95,9 @@ export function useTeachers() {
       if (filters.status && filters.status !== 'ALL') {
         params.set('status', filters.status);
       }
+      if (filters.campusId && filters.campusId !== 'ALL') {
+        params.set('campusId', filters.campusId);
+      }
 
       const res = await fetch(`/api/teachers?${params.toString()}`);
       if (!res.ok) {
@@ -105,7 +112,7 @@ export function useTeachers() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters.searchQuery, filters.status]);
+  }, [filters.searchQuery, filters.status, filters.campusId]);
 
   React.useEffect(() => {
     fetchTeachers();
@@ -146,36 +153,47 @@ export function useTeachers() {
       }
 
       // 2. Department
-      if (filters.department !== 'ALL' && teacher.employment.department !== filters.department) {
-        return false;
+      if (filters.department !== 'ALL') {
+        if (teacher.employment.department !== filters.department) {
+          return false;
+        }
       }
 
       // 3. Subject
       if (filters.subject !== 'ALL') {
-        const teachesSubject = teacher.assignments.some((a) => a.subjectName === filters.subject);
-        if (!teachesSubject) return false;
+        const hasSubject = teacher.assignments.some((a) => a.subjectName === filters.subject);
+        if (!hasSubject) {
+          return false;
+        }
       }
 
       // 4. Class
       if (filters.className !== 'ALL') {
-        const teachesClass = teacher.assignments.some((a) => a.className === filters.className);
-        if (!teachesClass) return false;
+        const hasClass = teacher.assignments.some((a) => a.className === filters.className);
+        if (!hasClass) {
+          return false;
+        }
       }
 
       // 5. Status
-      if (filters.status !== 'ALL' && teacher.status !== filters.status) {
-        return false;
+      if (filters.status !== 'ALL') {
+        if (teacher.status !== filters.status) {
+          return false;
+        }
       }
 
       // 6. Employment Type
-      if (filters.employmentType !== 'ALL' && teacher.employment.employmentType !== filters.employmentType) {
-        return false;
+      if (filters.employmentType !== 'ALL') {
+        if (teacher.employment.employmentType !== filters.employmentType) {
+          return false;
+        }
       }
 
       return true;
     });
   }, [teachers, filters]);
 
+  // Action Handlers
   const handleFilterChange = <K extends keyof TeacherFilterState>(key: K, value: TeacherFilterState[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -185,16 +203,18 @@ export function useTeachers() {
   };
 
   const handleSelectRow = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
   };
 
-  const handleSelectAll = () => {
-    const currentIds = filteredTeachers.map((t) => t.id);
-    const allSelected = currentIds.every((id) => selectedIds.includes(id));
-    if (allSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !currentIds.includes(id)));
+  const handleSelectAll = (ids?: string[]) => {
+    if (Array.isArray(ids) && ids.length > 0) {
+      setSelectedIds(ids);
+    } else if (selectedIds.length === teachers.length) {
+      setSelectedIds([]);
     } else {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentIds])));
+      setSelectedIds(teachers.map((t) => t.id));
     }
   };
 
@@ -207,38 +227,48 @@ export function useTeachers() {
     const assignments = teacher.assignments.map((a) => ({
       classId: a.classId,
       sectionId: a.sectionId,
+      streamId: a.streamId || null,
       subjectId: a.subjectId,
       periodsPerWeek: a.periodsPerWeek,
     }));
+
+    const payload = {
+      firstName: teacher.personal.firstName,
+      lastName: teacher.personal.lastName,
+      phone: teacher.personal.phone || null,
+      photoUrl: teacher.personal.photoUrl || null,
+      gender: teacher.personal.gender || null,
+      dateOfBirth: teacher.personal.dateOfBirth || null,
+      joiningDate: teacher.employment.joiningDate || null,
+      employmentType: teacher.employment.employmentType || 'FULL_TIME',
+      experienceYears: teacher.employment.experienceYears || 0,
+      specialization: teacher.employment.specialization || null,
+      department: teacher.employment.department || null,
+      designation: teacher.employment.designation || null,
+      qualification: teacher.employment.qualification || null,
+      campusId: teacher.employment.campusId || null,
+      emergencyContactName: teacher.emergencyContact?.name || null,
+      emergencyContactPhone: teacher.emergencyContact?.phone || null,
+      emergencyContactRelation: teacher.emergencyContact?.relationship || null,
+      address: teacher.address?.street || null,
+      status: teacher.status || 'ACTIVE',
+    };
 
     if (exists) {
       await fetch(`/api/teachers/${teacher.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName: teacher.personal.firstName,
-          lastName: teacher.personal.lastName,
-          phone: teacher.personal.phone,
-          department: teacher.employment.department,
-          designation: teacher.employment.designation,
-          qualification: teacher.employment.qualification,
-          status: teacher.status,
-        }),
+        body: JSON.stringify(payload),
       });
     } else {
       await fetch('/api/teachers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: teacher.personal.firstName,
-          lastName: teacher.personal.lastName,
+          ...payload,
           email: teacher.personal.email,
           password: teacher.personal.password || 'Password@123',
           employeeId: teacher.employment.employeeId,
-          phone: teacher.personal.phone,
-          department: teacher.employment.department,
-          designation: teacher.employment.designation,
-          qualification: teacher.employment.qualification,
           assignments,
         }),
       });
@@ -291,5 +321,6 @@ export function useTeachers() {
     handleSaveTeacher,
     handleUpdateStatus,
     handleArchiveTeacher,
+    refetchTeachers: fetchTeachers,
   };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { TimetablePeriod, TimetableFilterState } from '../types';
+import { TimetablePeriod, TimetableFilterState, TimetableConflict } from '../types';
 import { DayOfWeek } from '@/features/shared/types';
 import { ScheduleBlock } from '@/shared/types';
 
@@ -15,9 +15,9 @@ export const DEFAULT_SCHEDULE_BLOCKS: ScheduleBlock[] = [
   { id: 'blk-p4', scheduleId: 'sch-regular', name: 'Period 4', type: 'TEACHING', order: 5, startTime: '10:35', endTime: '11:20', status: 'ACTIVE' },
   { id: 'blk-p5', scheduleId: 'sch-regular', name: 'Period 5', type: 'TEACHING', order: 6, startTime: '11:20', endTime: '12:05', status: 'ACTIVE' },
   { id: 'blk-lun', scheduleId: 'sch-regular', name: 'Lunch Break', type: 'LUNCH', order: 7, startTime: '12:05', endTime: '12:45', status: 'ACTIVE' },
-  { id: 'blk-p6', scheduleId: 'sch-regular', name: 'Period 6', type: 'TEACHING', order: 8, startTime: '12:45', endTime: '01:30', status: 'ACTIVE' },
-  { id: 'blk-p7', scheduleId: 'sch-regular', name: 'Period 7', type: 'TEACHING', order: 9, startTime: '01:30', endTime: '02:15', status: 'ACTIVE' },
-  { id: 'blk-p8', scheduleId: 'sch-regular', name: 'Period 8', type: 'TEACHING', order: 10, startTime: '02:15', endTime: '03:00', status: 'ACTIVE' },
+  { id: 'blk-p6', scheduleId: 'sch-regular', name: 'Period 6', type: 'TEACHING', order: 8, startTime: '12:45', endTime: '13:30', status: 'ACTIVE' },
+  { id: 'blk-p7', scheduleId: 'sch-regular', name: 'Period 7', type: 'TEACHING', order: 9, startTime: '13:30', endTime: '14:15', status: 'ACTIVE' },
+  { id: 'blk-p8', scheduleId: 'sch-regular', name: 'Period 8', type: 'TEACHING', order: 10, startTime: '14:15', endTime: '15:00', status: 'ACTIVE' },
 ];
 
 export interface TimetableClass {
@@ -43,14 +43,18 @@ export function useTimetable() {
   const [classes, setClasses] = React.useState<TimetableClass[]>([]);
   const [teachers, setTeachers] = React.useState<TimetableTeacher[]>([]);
   const [subjects, setSubjects] = React.useState<TimetableSubject[]>([]);
+  const [scheduleBlocks, setScheduleBlocks] = React.useState<ScheduleBlock[]>(DEFAULT_SCHEDULE_BLOCKS);
   const [isLoading, setIsLoading] = React.useState(true);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [serverConflict, setServerConflict] = React.useState<TimetableConflict | null>(null);
 
   const [filters, setFilters] = React.useState<TimetableFilterState>({
     academicSession: '2025-26',
     viewMode: 'CLASS',
+    campusId: 'ALL',
     classId: '',
     sectionId: '',
+    streamId: 'ALL',
     teacherId: '',
     room: 'Room 204',
     selectedWeek: 'Current Week',
@@ -58,16 +62,17 @@ export function useTimetable() {
 
   const [allPeriods, setAllPeriods] = React.useState<TimetablePeriod[]>([]);
 
-  // 1. Initial metadata loading (classes, teachers, subjects)
+  // 1. Initial metadata loading (classes, teachers, subjects, and dynamic period config)
   React.useEffect(() => {
     let isMounted = true;
     async function initMetadata() {
       setIsLoading(true);
       try {
-        const [classesRes, teachersRes, subjectsRes] = await Promise.all([
+        const [classesRes, teachersRes, subjectsRes, configRes] = await Promise.all([
           fetch('/api/classes'),
           fetch('/api/teachers'),
           fetch('/api/subjects'),
+          fetch('/api/timetable/config'),
         ]);
 
         if (isMounted) {
@@ -93,7 +98,7 @@ export function useTimetable() {
             const data = await teachersRes.json();
             const tchList: TimetableTeacher[] = (data.teachers || []).map((t: any) => ({
               id: t.id,
-              name: `${t.user?.firstName || ''} ${t.user?.lastName || ''}`.trim() || t.id,
+              name: t.name || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.id,
               department: t.department || 'General',
             }));
             setTeachers(tchList);
@@ -114,6 +119,23 @@ export function useTimetable() {
             }));
             setSubjects(subList);
           }
+
+          if (configRes.ok) {
+            const configData = await configRes.json();
+            if (configData.config?.periods && configData.config.periods.length > 0) {
+              const blocks: ScheduleBlock[] = configData.config.periods.map((p: any) => ({
+                id: p.id,
+                scheduleId: configData.config.id,
+                name: p.name,
+                type: p.type as 'TEACHING' | 'BREAK' | 'LUNCH',
+                order: p.periodNumber,
+                startTime: p.startTime,
+                endTime: p.endTime,
+                status: 'ACTIVE' as const,
+              }));
+              setScheduleBlocks(blocks);
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load timetable metadata:', err);
@@ -130,7 +152,13 @@ export function useTimetable() {
   // 2. Fetch live timetable slots from /api/timetable/school
   const fetchSlots = React.useCallback(async () => {
     try {
-      const res = await fetch('/api/timetable/school');
+      const params = new URLSearchParams();
+      if (filters.classId && filters.classId !== 'ALL') params.set('classId', filters.classId);
+      if (filters.sectionId && filters.sectionId !== 'ALL') params.set('sectionId', filters.sectionId);
+      if (filters.streamId && filters.streamId !== 'ALL') params.set('streamId', filters.streamId);
+      if (filters.teacherId && filters.teacherId !== 'ALL') params.set('teacherId', filters.teacherId);
+
+      const res = await fetch(`/api/timetable/school?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         const mapped: TimetablePeriod[] = (data.slots || []).map((s: any) => ({
@@ -144,6 +172,7 @@ export function useTimetable() {
           className: s.className || '',
           sectionId: s.sectionId || '',
           sectionName: s.sectionName || '',
+          streamId: s.streamId || null,
           subjectId: s.subjectId || '',
           subjectName: s.subjectName || '',
           teacherId: s.teacherId || '',
@@ -155,7 +184,7 @@ export function useTimetable() {
     } catch (err) {
       console.error('Failed to fetch timetable slots:', err);
     }
-  }, []);
+  }, [filters.classId, filters.sectionId, filters.streamId, filters.teacherId]);
 
   React.useEffect(() => {
     fetchSlots();
@@ -165,12 +194,13 @@ export function useTimetable() {
   const displayedPeriods = React.useMemo(() => {
     return allPeriods.filter((p) => {
       if (filters.viewMode === 'CLASS') {
-        const classMatch = !filters.classId || p.classId === filters.classId;
-        const sectionMatch = !filters.sectionId || p.sectionId === filters.sectionId;
-        return classMatch && sectionMatch;
+        const classMatch = !filters.classId || filters.classId === 'ALL' || p.classId === filters.classId;
+        const sectionMatch = !filters.sectionId || filters.sectionId === 'ALL' || p.sectionId === filters.sectionId;
+        const streamMatch = !filters.streamId || filters.streamId === 'ALL' || p.streamId === filters.streamId;
+        return classMatch && sectionMatch && streamMatch;
       }
       if (filters.viewMode === 'TEACHER') {
-        return !filters.teacherId || p.teacherId === filters.teacherId;
+        return !filters.teacherId || filters.teacherId === 'ALL' || p.teacherId === filters.teacherId;
       }
       if (filters.viewMode === 'ROOM') {
         return !filters.room || p.room.toLowerCase().trim() === filters.room.toLowerCase().trim();
@@ -184,8 +214,10 @@ export function useTimetable() {
   };
 
   const handleSavePeriod = async (payload: {
+    slotId?: string;
     classId: string;
     sectionId: string;
+    streamId?: string | null;
     subjectId: string;
     teacherId: string;
     dayOfWeek: DayOfWeek;
@@ -194,6 +226,8 @@ export function useTimetable() {
     endTime: string;
     roomNumber: string;
   }) => {
+    setErrorMessage(null);
+    setServerConflict(null);
     try {
       const res = await fetch('/api/timetable/school', {
         method: 'POST',
@@ -202,8 +236,19 @@ export function useTimetable() {
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Failed to save timetable slot' }));
-        throw new Error(err.message || 'Failed to save timetable slot');
+        const errorData = await res.json().catch(() => ({ message: 'Failed to save timetable slot' }));
+
+        if (res.status === 409 && errorData.conflict) {
+          // Prominent server conflict detected
+          setServerConflict({
+            type: errorData.type || 'TEACHER_CONFLICT',
+            message: errorData.message || 'Timetable scheduling conflict detected.',
+            details: errorData.details,
+          });
+          return false;
+        }
+
+        throw new Error(errorData.message || 'Failed to save timetable slot');
       }
 
       await fetchSlots();
@@ -239,6 +284,7 @@ export function useTimetable() {
       await handleSavePeriod({
         classId: period.classId,
         sectionId: period.sectionId,
+        streamId: period.streamId,
         subjectId: period.subjectId,
         teacherId: period.teacherId,
         dayOfWeek: nextDay,
@@ -254,7 +300,9 @@ export function useTimetable() {
 
   // Metrics summary
   const metrics = React.useMemo(() => {
-    const teachingCount = DEFAULT_SCHEDULE_BLOCKS.filter((b) => b.type === 'TEACHING').length;
+    const teachingCount = (scheduleBlocks.length > 0 ? scheduleBlocks : [{ id: '1', type: 'TEACHING' }]).filter(
+      (b) => b.type === 'TEACHING'
+    ).length;
     const daysCount = DEFAULT_WORKING_DAYS.length;
     const totalWeeklySlots = teachingCount * daysCount;
 
@@ -268,7 +316,7 @@ export function useTimetable() {
       uniqueSubjects,
       totalSlots: totalWeeklySlots,
     };
-  }, [displayedPeriods]);
+  }, [displayedPeriods, scheduleBlocks]);
 
   return {
     classes,
@@ -276,11 +324,13 @@ export function useTimetable() {
     subjects,
     isLoading,
     errorMessage,
+    serverConflict,
+    dismissConflict: () => setServerConflict(null),
     allPeriods,
     displayedPeriods,
     filters,
     metrics,
-    scheduleBlocks: DEFAULT_SCHEDULE_BLOCKS,
+    scheduleBlocks,
     workingDays: DEFAULT_WORKING_DAYS,
     setFilters: handleUpdateFilters,
     savePeriod: handleSavePeriod,
