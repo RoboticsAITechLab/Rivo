@@ -19,6 +19,9 @@ out/
 *.tsbuildinfo
 src/generated/
 **/src/generated/
+generated_temp/
+**/generated_temp/
+*.node
 
 # Logs
 logs/

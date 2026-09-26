@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 
-if (process.platform === 'win32' && !process.env.PRISMA_QUERY_ENGINE_LIBRARY) {
+if (process.env.NODE_ENV !== 'production' && process.platform === 'win32' && !process.env.PRISMA_QUERY_ENGINE_LIBRARY) {
   const candidates = [
     path.join(process.cwd(), 'apps/web/src/generated/prisma/query_engine-windows.dll.node'),
     path.join(process.cwd(), 'src/generated/prisma/query_engine-windows.dll.node'),
@@ -11,7 +11,7 @@ if (process.platform === 'win32' && !process.env.PRISMA_QUERY_ENGINE_LIBRARY) {
     path.join(process.cwd(), 'prisma/generated_temp/query_engine-windows.dll.node'),
   ];
   for (const c of candidates) {
-    if (fs.existsSync(c)) {
+    if (fs.existsSync(/*turbopackIgnore: true*/ c)) {
       process.env.PRISMA_QUERY_ENGINE_LIBRARY = c;
       break;
     }

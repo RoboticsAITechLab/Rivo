@@ -74,10 +74,10 @@ export async function POST(
     const secureToken = crypto.randomBytes(16).toString('hex');
     const filename = `${teacher.schoolId}-${teacher.id}-${Date.now()}-${secureToken}.${ext}`;
 
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'teachers');
+    const uploadDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', 'uploads', 'teachers');
     await fs.mkdir(uploadDir, { recursive: true });
 
-    const filePath = path.join(uploadDir, filename);
+    const filePath = path.join(/*turbopackIgnore: true*/ uploadDir, filename);
     await fs.writeFile(filePath, buffer);
 
     const publicUrl = `/uploads/teachers/${filename}`;
@@ -122,7 +122,7 @@ export async function DELETE(
     // Remove photo file if local
     if (teacher.photoUrl && teacher.photoUrl.startsWith('/uploads/teachers/')) {
       try {
-        const localPath = path.join(process.cwd(), 'public', teacher.photoUrl);
+        const localPath = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public', teacher.photoUrl);
         await fs.unlink(localPath);
       } catch (err) {
         // File may already be absent, continue safely
