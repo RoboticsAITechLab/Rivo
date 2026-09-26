@@ -16,7 +16,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:validate": "prisma validate",
     "lint": "npm run lint --workspace=web",
-    "build": "npm run build --workspace=web",
+    "build": "prisma generate && npm run build --workspace=web",
     "test:auth": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/auth-matrix.test.ts",
     "test:id": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/id-generator.test.ts",
     "test:phase": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/phase-results-notices-communication.test.ts",
