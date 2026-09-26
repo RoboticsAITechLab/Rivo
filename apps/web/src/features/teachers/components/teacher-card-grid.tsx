@@ -42,9 +42,17 @@ export function TeacherCardGrid({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold">
-                  {initials}
-                </div>
+                {teacher.personal.photoUrl ? (
+                  <img
+                    src={teacher.personal.photoUrl}
+                    alt={`${teacher.personal.firstName} ${teacher.personal.lastName}`}
+                    className="h-10 w-10 shrink-0 rounded-full object-cover border border-primary/20"
+                  />
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold">
+                    {initials}
+                  </div>
+                )}
                 <div>
                   <h4 className="text-sm font-bold text-foreground">
                     {teacher.personal.firstName} {teacher.personal.lastName}

@@ -22,7 +22,9 @@
     "test:phase": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/phase-results-notices-communication.test.ts",
     "test:parent": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/parent-identity-otp-mfa.test.ts",
     "test:academic": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/teacher-timetable-exam.test.ts",
-    "test": "npm run test:auth && npm run test:id && npm run test:phase && npm run test:parent && npm run test:academic"
+    "test:fee": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/fee-management-foundation.test.ts",
+    "test:media": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/media-storage-azure.test.ts",
+    "test": "npm run test:auth && npm run test:id && npm run test:phase && npm run test:parent && npm run test:academic && npm run test:fee && npm run test:media"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

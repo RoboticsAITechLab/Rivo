@@ -60,6 +60,7 @@ export async function GET(
         sectionId: activeEnrollment?.sectionId || null,
         sessionName: activeEnrollment?.academicSession?.name || null,
         academicSessionId: activeEnrollment?.academicSessionId || null,
+        photoUrl: student.photoUrl || null,
         createdAt: student.createdAt.toISOString(),
       },
     });
@@ -105,6 +106,7 @@ export async function PATCH(
       classId,
       sectionId,
       rollNumber,
+      photoUrl,
     } = body;
 
     // Validate campus if changed
@@ -148,6 +150,7 @@ export async function PATCH(
           ...(emergencyContact !== undefined ? { emergencyContact } : {}),
           ...(status ? { status } : {}),
           ...(campusId ? { campusId } : {}),
+          ...(photoUrl !== undefined ? { photoUrl: photoUrl || null } : {}),
         },
       });
 

@@ -302,3 +302,168 @@ export async function generateNextStaffId(
   const paddedNumber = String(seq.lastNumber).padStart(config.staffPadding, '0');
   return `${config.studentPrefix}-${config.staffPrefix}-${paddedNumber}`;
 }
+
+/**
+ * Atomically generates the next receipt number for a school fee payment.
+ * Format: {PREFIX}-RCT-{YEAR}-{SEQUENCE} (e.g. GIS-RCT-2026-0001)
+ * Scoped by school and year. Safe against race conditions and collisions.
+ */
+export async function generateNextReceiptNumber(
+  schoolId: string,
+  options?: { year?: number; tx?: any }
+): Promise<string> {
+  const client = options?.tx || prisma;
+  const config = await getIdFormatConfig(schoolId, client);
+  const currentYear = options?.year || new Date().getFullYear();
+  const yearKey = currentYear;
+  const padding = 4;
+
+  let attempts = 0;
+  const maxAttempts = 100;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+
+    const seq = await client.idSequence.upsert({
+      where: {
+        schoolId_entityType_year: {
+          schoolId,
+          entityType: 'RECEIPT',
+          year: yearKey,
+        },
+      },
+      update: {
+        lastNumber: { increment: 1 },
+      },
+      create: {
+        schoolId,
+        entityType: 'RECEIPT',
+        year: yearKey,
+        lastNumber: 1,
+      },
+    });
+
+    const paddedNumber = String(seq.lastNumber).padStart(padding, '0');
+    const generatedId = `${config.studentPrefix}-RCT-${currentYear}-${paddedNumber}`;
+
+    // Collision check
+    const existing = await client.feeReceipt.findFirst({
+      where: {
+        schoolId,
+        receiptNumber: generatedId,
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return generatedId;
+    }
+  }
+
+  return `${config.studentPrefix}-RCT-${currentYear}-${Date.now().toString().slice(-4)}`;
+}
+
+/**
+ * Atomically generates the next payment tracking number for a school fee payment.
+ * Format: {PREFIX}-PAY-{YEAR}-{SEQUENCE} (e.g. GIS-PAY-2026-0001)
+ * Scoped by school and year. Safe against race conditions and collisions.
+ */
+export async function generateNextPaymentNumber(
+  schoolId: string,
+  options?: { year?: number; tx?: any }
+): Promise<string> {
+  const client = options?.tx || prisma;
+  const config = await getIdFormatConfig(schoolId, client);
+  const currentYear = options?.year || new Date().getFullYear();
+  const yearKey = currentYear;
+  const padding = 4;
+
+  let attempts = 0;
+  const maxAttempts = 100;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+
+    const seq = await client.idSequence.upsert({
+      where: {
+        schoolId_entityType_year: {
+          schoolId,
+          entityType: 'PAYMENT',
+          year: yearKey,
+        },
+      },
+      update: {
+        lastNumber: { increment: 1 },
+      },
+      create: {
+        schoolId,
+        entityType: 'PAYMENT',
+        year: yearKey,
+        lastNumber: 1,
+      },
+    });
+
+    const paddedNumber = String(seq.lastNumber).padStart(padding, '0');
+    const generatedId = `${config.studentPrefix}-PAY-${currentYear}-${paddedNumber}`;
+
+    // Collision check
+    const existing = await client.feePayment.findFirst({
+      where: {
+        schoolId,
+        paymentNumber: generatedId,
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return generatedId;
+    }
+  }
+
+  return `${config.studentPrefix}-PAY-${currentYear}-${Date.now().toString().slice(-4)}`;
+}
+
+/**
+ * Generates an optional public human-readable code for a fee plan.
+ * Format: {PREFIX}-FP-{CLASS}-{STREAM?}-{YEAR} (e.g. GIS-FP-CLS10-SCI-2026)
+ */
+export async function generateNextFeePlanCode(
+  schoolId: string,
+  classIdentifier: string,
+  streamIdentifier?: string | null,
+  options?: { year?: number; tx?: any }
+): Promise<string> {
+  const client = options?.tx || prisma;
+  const config = await getIdFormatConfig(schoolId, client);
+  const currentYear = options?.year || new Date().getFullYear();
+  const cleanClass = classIdentifier.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const cleanStream = streamIdentifier ? streamIdentifier.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4) : null;
+
+  const baseCode = cleanStream
+    ? `${config.studentPrefix}-FP-${cleanClass}-${cleanStream}-${currentYear}`
+    : `${config.studentPrefix}-FP-${cleanClass}-${currentYear}`;
+
+  const existing = await client.feePlan.findFirst({
+    where: { schoolId, code: baseCode },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return baseCode;
+  }
+
+  // If already exists for this school/class/stream/year, append sequence
+  const seq = await client.idSequence.upsert({
+    where: {
+      schoolId_entityType_year: {
+        schoolId,
+        entityType: 'FEE_PLAN',
+        year: currentYear,
+      },
+    },
+    update: { lastNumber: { increment: 1 } },
+    create: { schoolId, entityType: 'FEE_PLAN', year: currentYear, lastNumber: 1 },
+  });
+
+  return `${baseCode}-V${seq.lastNumber}`;
+}

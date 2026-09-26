@@ -350,6 +350,16 @@ async function main() {
     { code: 'results.view', module: 'results', action: 'view', name: 'View Results' },
     { code: 'results.enter_marks', module: 'results', action: 'enter_marks', name: 'Enter Marks' },
     { code: 'results.publish', module: 'results', action: 'publish', name: 'Publish Results' },
+    { code: 'fees.view', module: 'fees', action: 'view', name: 'View Fee Plans & Statistics' },
+    { code: 'fees.plan_create', module: 'fees', action: 'create_plan', name: 'Create Fee Plans & Heads' },
+    { code: 'fees.plan_edit', module: 'fees', action: 'edit_plan', name: 'Edit Fee Plans' },
+    { code: 'fees.plan_publish', module: 'fees', action: 'publish_plan', name: 'Publish Fee Plans' },
+    { code: 'fees.assign', module: 'fees', action: 'assign', name: 'Assign Fee Plans to Students' },
+    { code: 'fees.concession_create', module: 'fees', action: 'create_concession', name: 'Create Fee Concessions' },
+    { code: 'fees.concession_approve', module: 'fees', action: 'approve_concession', name: 'Approve Fee Concessions' },
+    { code: 'fees.payment_record', module: 'fees', action: 'record_payment', name: 'Record Fee Payments' },
+    { code: 'fees.payment_reverse', module: 'fees', action: 'reverse_payment', name: 'Reverse Fee Payments' },
+    { code: 'fees.receipt_view', module: 'fees', action: 'view_receipt', name: 'View & Print Receipts' },
   ];
 
   for (const p of permissionDefs) {

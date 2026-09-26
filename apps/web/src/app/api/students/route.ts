@@ -125,6 +125,7 @@ export async function GET(req: NextRequest) {
         sessionName: activeEnrollment?.academicSession?.name || null,
         guardianName: primaryGuardian ? `${primaryGuardian.parent.firstName} ${primaryGuardian.parent.lastName}` : null,
         guardianPhone: primaryGuardian?.parent.phone || null,
+        photoUrl: s.photoUrl || null,
         createdAt: s.createdAt.toISOString(),
       };
     });
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
       classId,
       sectionId,
       campusId,
+      photoUrl,
       guardian,
     } = body;
 
@@ -226,6 +228,7 @@ export async function POST(req: NextRequest) {
           phone: phone || null,
           email: email || null,
           address: address || null,
+          photoUrl: photoUrl || null,
           status: 'ACTIVE',
         },
       });

@@ -11,55 +11,61 @@ interface PhotoUploadBoxProps {
 }
 
 export function PhotoUploadBox({ photoUrl, onChange, disabled }: PhotoUploadBoxProps) {
-  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'error'>(
-    photoUrl ? 'idle' : 'idle'
-  );
-  const [progress, setProgress] = useState(0);
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSimulateUpload = (file: File) => {
-    // Basic validation
-    if (file.size > 5 * 1024 * 1024) {
+  const handleRealUpload = async (file: File) => {
+    // Basic client validation
+    if (file.size > 2 * 1024 * 1024) {
       setUploadState('error');
-      setErrorMessage('File size exceeds maximum allowed 5MB.');
+      setErrorMessage('File size exceeds maximum allowed 2MB limit.');
+      return;
+    }
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setUploadState('error');
+      setErrorMessage('Invalid format. Please upload JPEG, PNG, or WebP.');
       return;
     }
 
     setUploadState('uploading');
-    setProgress(15);
     setErrorMessage('');
 
-    // Simulate realistic upload progress in frontend mock
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          setTimeout(() => {
-            // Create a local object URL for preview
-            const objectUrl = URL.createObjectURL(file);
-            onChange(objectUrl);
-            setUploadState('idle');
-            setProgress(100);
-          }, 400);
-          return 90;
-        }
-        return prev + 25;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/students/photo/upload', {
+        method: 'POST',
+        body: formData,
       });
-    }, 200);
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Photo upload failed');
+      }
+
+      onChange(data.photoUrl);
+      setUploadState('idle');
+    } catch (err: any) {
+      setUploadState('error');
+      setErrorMessage(err.message || 'Network error during upload');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleSimulateUpload(file);
+      handleRealUpload(file);
     }
   };
 
   const handleRemove = () => {
     onChange(undefined);
     setUploadState('idle');
-    setProgress(0);
+    setErrorMessage('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -73,7 +79,7 @@ export function PhotoUploadBox({ photoUrl, onChange, disabled }: PhotoUploadBoxP
         accept="image/png, image/jpeg, image/webp"
         onChange={handleFileChange}
         className="hidden"
-        disabled={disabled}
+        disabled={disabled || uploadState === 'uploading'}
       />
 
       {/* AVATAR DISPLAY */}
@@ -94,7 +100,7 @@ export function PhotoUploadBox({ photoUrl, onChange, disabled }: PhotoUploadBoxP
           )}
         </div>
 
-        {photoUrl && !disabled && (
+        {photoUrl && !disabled && uploadState !== 'uploading' && (
           <button
             type="button"
             onClick={handleRemove}
@@ -111,25 +117,14 @@ export function PhotoUploadBox({ photoUrl, onChange, disabled }: PhotoUploadBoxP
         <div>
           <h4 className="text-xs font-bold text-slate-800">Student Profile Photograph</h4>
           <p className="text-[11px] text-slate-500">
-            JPG, PNG, or WebP. Recommended square aspect ratio (min 400x400px), up to 5MB.
+            JPG, PNG, or WebP. Recommended square aspect ratio (min 400x400px), up to 2MB.
           </p>
         </div>
 
         {uploadState === 'uploading' && (
-          <div className="space-y-1.5 max-w-xs">
-            <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
-              <span className="flex items-center gap-1.5">
-                <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                Optimizing &amp; Uploading...
-              </span>
-              <span>{progress}%</span>
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
-              <div
-                className="h-full bg-emerald-600 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+          <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>Uploading to cloud storage...</span>
           </div>
         )}
 

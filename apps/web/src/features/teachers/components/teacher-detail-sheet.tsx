@@ -108,9 +108,17 @@ export function TeacherDetailSheet({
 
           {/* Teacher Profile Identity Hero */}
           <div className="rounded-xl border bg-muted/30 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xl font-bold shadow-xs">
-              {initials}
-            </div>
+            {teacher.personal.photoUrl ? (
+              <img
+                src={teacher.personal.photoUrl}
+                alt={`${teacher.personal.firstName} ${teacher.personal.lastName}`}
+                className="h-16 w-16 shrink-0 rounded-full object-cover border-2 border-primary/20 shadow-xs"
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xl font-bold shadow-xs">
+                {initials}
+              </div>
+            )}
 
             <div className="space-y-1.5 flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
