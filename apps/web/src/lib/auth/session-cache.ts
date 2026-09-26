@@ -1,6 +1,6 @@
 import { getRedisClient, isRedisHealthy } from '@/lib/redis/client';
 import { RedisKeys } from '@/lib/redis/keys';
-import { Session, User, SchoolMembership, Teacher } from '@/generated/prisma';
+import { Session, User, SchoolMembership, Teacher } from '@prisma/client';
 
 export interface CachedSessionData {
   session: {

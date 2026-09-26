@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import {
   NoticeTargetType,
   NotificationCategory,
-} from '@/generated/prisma';
+} from '@prisma/client';
 import { getResendClient, getEmailSender } from '@/lib/email/resend';
 
 export interface DispatchParams {

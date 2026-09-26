@@ -3,7 +3,7 @@ import {
   NoticeStatus,
   NoticePriority,
   NoticeTargetType,
-} from '@/generated/prisma';
+} from '@prisma/client';
 import { AudienceResolver, NotificationDispatcher } from '@/lib/communication/communication-service';
 
 export interface CreateNoticeInput {

@@ -18,7 +18,7 @@ if (process.env.NODE_ENV !== 'production' && process.platform === 'win32' && !pr
   }
 }
 
-import { PrismaClient } from '@/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -31,4 +31,4 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-export * from '@/generated/prisma';
+export * from '@prisma/client';

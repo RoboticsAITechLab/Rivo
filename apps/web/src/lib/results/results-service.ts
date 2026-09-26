@@ -4,7 +4,7 @@ import {
   ExamResultOverallStatus,
   ResultPublicationStatus,
   SubjectResultStatus,
-} from '@/generated/prisma';
+} from '@prisma/client';
 
 export interface GradingBand {
   minPercentage: number;

@@ -9,8 +9,8 @@ import {
   SchoolStatus,
   StudentStatus,
   TeacherStatus,
-} from '../apps/web/src/generated/prisma';
-import { PrismaClient } from '../apps/web/src/generated/prisma';
+  PrismaClient,
+} from '@prisma/client';
 import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();

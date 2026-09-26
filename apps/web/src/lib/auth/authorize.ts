@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { PermissionScope, Role } from '@/generated/prisma';
+import { PermissionScope, Role } from '@prisma/client';
 import { getValidSession, ActiveSessionContext } from '@/lib/auth/session';
 
 export interface AuthorizationResult {
