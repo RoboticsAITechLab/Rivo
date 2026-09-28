@@ -263,6 +263,64 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     description: 'Send multi-channel announcements and alerts',
   },
 
+  // Fee Management
+  {
+    code: 'fees.view',
+    module: 'fees',
+    action: 'view',
+    name: 'View Fees & Ledgers',
+    description: 'Inspect fee plans, obligations, ledgers, and financial statistics',
+  },
+  {
+    code: 'fees.plan_create',
+    module: 'fees',
+    action: 'plan_create',
+    name: 'Create & Manage Fee Plans',
+    description: 'Create fee heads, configure draft fee plans and installment schedules',
+  },
+  {
+    code: 'fees.plan_publish',
+    module: 'fees',
+    action: 'plan_publish',
+    name: 'Publish Fee Plans',
+    description: 'Publish and permanently lock fee plan versions',
+  },
+  {
+    code: 'fees.assign',
+    module: 'fees',
+    action: 'assign',
+    name: 'Assign Fee Plans',
+    description: 'Assign fee plan versions to student cohorts and apply concessions',
+  },
+  {
+    code: 'fees.payment_record',
+    module: 'fees',
+    action: 'payment_record',
+    name: 'Record Fee Payments',
+    description: 'Collect student fee payments, apply allocation and issue receipts',
+  },
+  {
+    code: 'fees.payment_reverse',
+    module: 'fees',
+    action: 'payment_reverse',
+    name: 'Reverse Fee Payments',
+    description: 'Roll back recorded payments, restore obligations and cancel receipts',
+  },
+  {
+    code: 'fees.receipt_view',
+    module: 'fees',
+    action: 'receipt_view',
+    name: 'View & Print Receipts',
+    description: 'Inspect and print official institutional fee receipts',
+  },
+  {
+    code: 'fees.audit_view',
+    module: 'fees',
+    action: 'audit_view',
+    name: 'View Fee Audit Logs',
+    description: 'Inspect immutable financial event and state mutation audit logs',
+  },
+
   // Users Management
   {
     code: 'users.view',

@@ -13,13 +13,20 @@ export async function checkRedisHealth(): Promise<RedisHealthStatus> {
 
   const start = Date.now();
   try {
-    const result = await redis.ping();
+    const result = await Promise.race([
+      redis.ping(),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('Redis ping timeout')), 3000)
+      ),
+    ]);
     const latencyMs = Date.now() - start;
     if (result === 'PONG') {
       return { status: 'connected', latencyMs };
     }
     return { status: 'unavailable' };
-  } catch {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[REDIS_HEALTH_ERROR]:', msg);
     return { status: 'unavailable' };
   }
 }

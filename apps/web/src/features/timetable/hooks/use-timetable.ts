@@ -337,5 +337,28 @@ export function useTimetable() {
     deletePeriod: handleDeletePeriod,
     duplicatePeriod: handleDuplicatePeriod,
     refreshSlots: fetchSlots,
+    refetchConfig: async () => {
+      try {
+        const res = await fetch('/api/timetable/config');
+        if (res.ok) {
+          const configData = await res.json();
+          if (configData.config?.periods && configData.config.periods.length > 0) {
+            const blocks: ScheduleBlock[] = configData.config.periods.map((p: any) => ({
+              id: p.id,
+              scheduleId: configData.config.id,
+              name: p.name,
+              type: p.type as 'TEACHING' | 'BREAK' | 'LUNCH',
+              order: p.periodNumber,
+              startTime: p.startTime,
+              endTime: p.endTime,
+              status: 'ACTIVE' as const,
+            }));
+            setScheduleBlocks(blocks);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to reload timetable config:', err);
+      }
+    },
   };
 }

@@ -42,6 +42,7 @@ export default function TimetablePage() {
     savePeriod,
     deletePeriod,
     duplicatePeriod,
+    refetchConfig,
   } = useTimetable();
 
   const [isAddOpen, setIsAddOpen] = React.useState(false);
@@ -268,6 +269,7 @@ export default function TimetablePage() {
       <TimetableScheduleSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onSaved={refetchConfig}
       />
     </PageContainer>
   );

@@ -445,6 +445,78 @@ async function runTests() {
   }
 
   // --------------------------------------------------------------------------
+  // GROUP 6: DIRECT BROWSER-TO-BLOB SAS GENERATION (29-33)
+  // --------------------------------------------------------------------------
+  console.log('\nGROUP 6: DIRECT BROWSER-TO-BLOB SAS GENERATION (29-33)');
+
+  try {
+    const storageService = getMediaStorageService();
+
+    // 29. Generate Direct Upload SAS for private student photo
+    const sasResult = await storageService.generateDirectUploadSas({
+      schoolId: 'sch_test_sas_99',
+      category: 'students',
+      entityId: 'std_99',
+      subCategory: 'profile',
+      mimeType: 'image/jpeg',
+      scope: 'private',
+    });
+
+    assert.ok(sasResult.uploadUrl, 'uploadUrl returned');
+    assert.strictEqual(sasResult.scope, 'private');
+    assert.strictEqual(sasResult.storageKey.startsWith('schools/sch_test_sas_99/students/std_99/profile/'), true);
+    assert.strictEqual(sasResult.maxSizeBytes, 2 * 1024 * 1024);
+    testPass('Direct upload SAS generates deterministic tenant-isolated path and size ceiling');
+
+    // 30. Invalid MIME rejected
+    let mimeRejected = false;
+    try {
+      await storageService.generateDirectUploadSas({
+        schoolId: 'sch_test_sas_99',
+        category: 'students',
+        entityId: 'std_99',
+        mimeType: 'application/x-msdownload',
+        scope: 'private',
+      });
+    } catch {
+      mimeRejected = true;
+    }
+    assert.strictEqual(mimeRejected, true, 'Executable mime rejected for SAS generation');
+    testPass('Direct upload SAS generation rejects invalid MIME types');
+
+    // 31. Document category gets 10MB ceiling
+    const docSas = await storageService.generateDirectUploadSas({
+      schoolId: 'sch_test_sas_99',
+      category: 'documents',
+      entityId: 'std_99',
+      subCategory: 'transfer_cert',
+      mimeType: 'application/pdf',
+      scope: 'private',
+    });
+    assert.strictEqual(docSas.maxSizeBytes, 10 * 1024 * 1024);
+    assert.strictEqual(docSas.storageKey.endsWith('.pdf'), true);
+    testPass('Direct upload SAS accurately assigns 10MB limit and .pdf extension for documents');
+
+    // 32. Path traversal injection sanitized in direct upload key
+    const traversalSas = await storageService.generateDirectUploadSas({
+      schoolId: '../../../etc/passwd',
+      category: 'students',
+      entityId: '../../root',
+      subCategory: '../sneaky',
+      mimeType: 'image/png',
+      scope: 'private',
+    });
+    assert.strictEqual(traversalSas.storageKey.includes('..'), false, 'Traversal removed from SAS key');
+    testPass('Direct upload SAS key generation completely strips path traversal sequences');
+
+    // 33. Cross-school isolation in SAS key
+    assert.strictEqual(docSas.storageKey.startsWith('schools/sch_test_sas_99/'), true);
+    testPass('Direct upload SAS keys strictly enforce school-level root isolation');
+  } catch (err: any) {
+    testFail('Direct upload SAS tests failed', err);
+  }
+
+  // --------------------------------------------------------------------------
   // SUMMARY
   // --------------------------------------------------------------------------
   console.log('\n===============================================================');

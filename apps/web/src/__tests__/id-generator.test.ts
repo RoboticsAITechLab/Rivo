@@ -65,6 +65,24 @@ async function runIdGeneratorTests() {
   assert(updated.teacherPrefix === 'FAC', `Updated teacher prefix to FAC: ${updated.teacherPrefix}`);
   assert(updated.studentPadding === 5, `Updated padding to 5: ${updated.studentPadding}`);
 
+  // Test Tier-1 / Tier-2 Cache Hit
+  const cachedConfig = await getIdFormatConfig(school.id);
+  assert(cachedConfig.studentPrefix === 'DPSN', 'Cache hit returns updated configuration immediately');
+
+  // Test Cross-School Cache Isolation
+  const schoolB = await prisma.school.create({
+    data: {
+      name: 'St Marys High School',
+      slug: `test-id-school-b-${Date.now()}`,
+      status: 'ACTIVE',
+    },
+  });
+  const configB = await getIdFormatConfig(schoolB.id);
+  assert(configB.studentPrefix === 'SMHS', `Tenant isolation: School B config has distinct prefix: ${configB.studentPrefix}`);
+  assert(configB.studentPrefix !== cachedConfig.studentPrefix, 'School A and School B caches remain completely isolated');
+  await prisma.idFormatConfig.deleteMany({ where: { schoolId: schoolB.id } });
+  await prisma.school.delete({ where: { id: schoolB.id } });
+
   // 3. Student ID Generation
   console.log('\n--- GROUP 3: STUDENT ID GENERATION ---');
   const currentYear = new Date().getFullYear();

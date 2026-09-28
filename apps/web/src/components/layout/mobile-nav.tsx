@@ -4,8 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GraduationCap } from 'lucide-react';
-import { mockCurrentUser } from '@/data/mock-data';
-import { APP_NAV_GROUPS } from '@/config/navigation';
+import { APP_NAV_GROUPS, getNavForRole } from '@/config/navigation';
 import { NavIcon } from '@/components/navigation/nav-icon';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -27,7 +26,13 @@ export function MobileNav({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const schoolDisplayName = user?.schoolName || mockCurrentUser.schoolName;
+  const schoolDisplayName = user?.schoolName || 'Rivo Institution';
+  const navGroups = React.useMemo(() => {
+    if (user?.roleType) {
+      return getNavForRole(user.roleType as any);
+    }
+    return APP_NAV_GROUPS;
+  }, [user?.roleType]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -47,7 +52,7 @@ export function MobileNav({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-          {APP_NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.group} className="space-y-1">
               <div className="px-3 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase">
                 {group.group}
@@ -100,7 +105,7 @@ export function MobileNav({
         </div>
 
         <div className="border-t p-4 text-xs text-muted-foreground">
-          Academic Session: <span className="font-semibold text-foreground">{mockCurrentUser.sessionName}</span>
+          Academic Session: <span className="font-semibold text-foreground">2026–27</span>
         </div>
       </SheetContent>
     </Sheet>

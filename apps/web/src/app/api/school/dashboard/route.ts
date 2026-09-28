@@ -56,15 +56,16 @@ export async function GET(req: NextRequest) {
       }),
       prisma.attendanceRegister.findMany({
         where: { schoolId, date: today },
-        include: {
+        select: {
+          id: true,
           records: {
             select: { status: true },
           },
           class: {
-            select: { id: true, name: true },
+            select: { name: true },
           },
           section: {
-            select: { id: true, name: true },
+            select: { name: true },
           },
         },
       }),
@@ -75,7 +76,13 @@ export async function GET(req: NextRequest) {
         },
         take: 4,
         orderBy: { startDate: 'asc' },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          startDate: true,
+          endDate: true,
+          isPublished: true,
           papers: {
             select: { id: true },
           },

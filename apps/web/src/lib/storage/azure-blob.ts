@@ -10,12 +10,16 @@ import {
   UploadOptions,
   UploadResult,
   StorageScope,
+  DirectUploadSasOptions,
+  DirectUploadSasResult,
 } from './types';
 import {
   validateFileSize,
   validateMimeType,
   validateMagicBytes,
   generateStorageKey,
+  getMaxCategorySizeBytes,
+  getExtensionFromMime,
 } from './validation';
 import { isProductionMode } from '../redis/client';
 
@@ -172,6 +176,85 @@ export class AzureBlobStorageService implements MediaStorageService {
       fileSize: options.fileBuffer.length,
       mimeType: options.mimeType,
       scope: options.scope,
+    };
+  }
+
+  /**
+   * Generates a short-lived, write-only SAS URL for direct browser-to-Azure-Blob upload.
+   * Completely bypasses Vercel/serverless memory, eliminating bandwidth & timeout bottlenecks.
+   */
+  public async generateDirectUploadSas(
+    options: DirectUploadSasOptions
+  ): Promise<DirectUploadSasResult> {
+    const { schoolId, category, entityId, subCategory, mimeType, scope, expiresInSeconds = 900 } = options;
+
+    // 1. MIME type validation
+    const mimeCheck = validateMimeType(mimeType, category);
+    if (!mimeCheck.valid) {
+      throw new Error(mimeCheck.error || 'Invalid file format');
+    }
+
+    const extension = getExtensionFromMime(mimeType);
+    const maxSizeBytes = getMaxCategorySizeBytes(category);
+
+    // 2. Generate deterministic, tenant-isolated storage key
+    const storageKey = generateStorageKey({
+      schoolId,
+      category,
+      entityId,
+      subCategory,
+      extension,
+    });
+
+    const now = new Date();
+    const startTime = new Date(now.getTime() - 5 * 60 * 1000); // 5 min clock skew tolerance
+    const expiryTime = new Date(now.getTime() + expiresInSeconds * 1000);
+    const expiresAt = expiryTime.toISOString();
+
+    // 3. Azure Cloud Mode: Generate write-only SAS for block blob
+    if (this.isConfigured() && this.sharedKeyCredential && this.accountName) {
+      try {
+        const containerName = scope === 'public' ? this.publicContainerName : this.privateContainerName;
+
+        // Write-only permissions: 'c' (create) + 'w' (write) without read or delete
+        const sasToken = generateBlobSASQueryParameters(
+          {
+            containerName,
+            blobName: storageKey,
+            permissions: BlobSASPermissions.parse('cw'),
+            startsOn: startTime,
+            expiresOn: expiryTime,
+          },
+          this.sharedKeyCredential
+        ).toString();
+
+        const uploadUrl = `https://${this.accountName}.blob.core.windows.net/${containerName}/${storageKey}?${sasToken}`;
+
+        return {
+          storageKey,
+          uploadUrl,
+          scope,
+          expiresAt,
+          maxSizeBytes,
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[STORAGE_SAS_UPLOAD_ERROR] Failed generating direct upload SAS:', msg);
+        throw new Error('Failed to generate direct upload authorization');
+      }
+    }
+
+    if (isProductionMode()) {
+      throw new Error('Production storage service is not configured');
+    }
+
+    // Local development mock SAS URL (fallback to local mock handler)
+    return {
+      storageKey,
+      uploadUrl: `/api/media/dev-upload?key=${encodeURIComponent(storageKey)}&mime=${encodeURIComponent(mimeType)}`,
+      scope,
+      expiresAt,
+      maxSizeBytes,
     };
   }
 

@@ -1,6 +1,6 @@
 import { UserRole } from '@/types';
 
-export type NavGroupId = 'OVERVIEW' | 'PEOPLE' | 'ACADEMICS' | 'ASSESSMENT' | 'COMMUNICATION' | 'SYSTEM';
+export type NavGroupId = 'OVERVIEW' | 'PEOPLE' | 'ACADEMICS' | 'ASSESSMENT' | 'COMMUNICATION' | 'FINANCE' | 'SYSTEM';
 
 export interface AppNavItem {
   title: string;
@@ -19,6 +19,8 @@ export interface AppNavGroup {
   items: AppNavItem[];
 }
 
+const ADMIN_ROLES: UserRole[] = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'];
+
 export const APP_NAVIGATION: AppNavItem[] = [
   // OVERVIEW
   {
@@ -27,7 +29,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'LayoutDashboard',
     group: 'OVERVIEW',
     description: 'Executive overview, metrics & operational activity',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
     keywords: ['home', 'overview', 'analytics', 'kpi', 'stats', 'control center'],
   },
 
@@ -38,7 +40,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'GraduationCap',
     group: 'PEOPLE',
     description: 'Student directory, admissions, enrollment & parent contacts',
-    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF'],
     keywords: ['pupil', 'admission', 'enrollment', 'directory', 'children', 'guardian'],
   },
   {
@@ -47,7 +49,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Users',
     group: 'PEOPLE',
     description: 'Faculty roster, department assignments & teaching workloads',
-    roles: ['SCHOOL_ADMIN'],
+    roles: ADMIN_ROLES,
     keywords: ['faculty', 'staff', 'instructors', 'educators', 'workload'],
   },
 
@@ -58,7 +60,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Layers',
     group: 'ACADEMICS',
     description: 'Academic grade levels, division sections & class teachers',
-    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    roles: [...ADMIN_ROLES, 'TEACHER'],
     keywords: ['grades', 'sections', 'divisions', 'classrooms', 'roster'],
   },
   {
@@ -67,7 +69,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'BookOpen',
     group: 'ACADEMICS',
     description: 'Curriculum subjects, codes & assigned instructors',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
     keywords: ['courses', 'curriculum', 'syllabus', 'department', 'codes'],
   },
   {
@@ -76,7 +78,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Clock',
     group: 'ACADEMICS',
     description: 'Weekly schedule matrix, room allocations & conflict detection',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
     keywords: ['schedule', 'periods', 'routine', 'calendar', 'slots', 'rooms'],
   },
   {
@@ -85,7 +87,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'CalendarCheck',
     group: 'ACADEMICS',
     description: 'Daily roll call registers, punch times & absence summaries',
-    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    roles: [...ADMIN_ROLES, 'TEACHER'],
     keywords: ['roll call', 'present', 'absent', 'registers', 'leave', 'punctuality'],
   },
   {
@@ -94,7 +96,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'FileText',
     group: 'ACADEMICS',
     description: 'Class assignments, submission trackers & teacher review queue',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
     keywords: ['assignments', 'tasks', 'coursework', 'projects', 'review queue'],
   },
 
@@ -105,7 +107,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Award',
     group: 'ASSESSMENT',
     description: 'Examination datesheets, examination halls & invigilation',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
     keywords: ['tests', 'assessments', 'midterm', 'finals', 'halls', 'invigilator'],
   },
   {
@@ -114,7 +116,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'BarChart2',
     group: 'ASSESSMENT',
     description: 'Academic mark entry, moderation review & report card publishing',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
     keywords: ['grades', 'marks', 'report cards', 'scores', 'gpa', 'moderation'],
   },
 
@@ -125,7 +127,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Bell',
     group: 'COMMUNICATION',
     description: 'Official circulars, administrative alerts & school broadcasts',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
     keywords: ['announcements', 'circulars', 'bulletins', 'news', 'broadcast'],
   },
   {
@@ -134,7 +136,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Users',
     group: 'COMMUNICATION',
     description: 'Dynamic parent, class, and faculty communication groups',
-    roles: ['SCHOOL_ADMIN', 'TEACHER'],
+    roles: [...ADMIN_ROLES, 'TEACHER'],
     keywords: ['groups', 'audiences', 'parents', 'teachers', 'cohorts'],
   },
   {
@@ -143,8 +145,19 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Inbox',
     group: 'COMMUNICATION',
     description: 'Administrative notification stream & operational alerts',
-    roles: ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'],
+    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
     keywords: ['alerts', 'inbox', 'messages', 'updates', 'unread'],
+  },
+
+  // FINANCE
+  {
+    title: 'Fees',
+    href: '/school/fees',
+    iconName: 'CreditCard',
+    group: 'FINANCE',
+    description: 'Fee collection, plans, student ledgers & financial receipts',
+    roles: [...ADMIN_ROLES, 'STAFF'],
+    keywords: ['fees', 'payments', 'receipts', 'installments', 'dues', 'finance', 'ledger', 'concessions', 'bursar', 'cashier'],
   },
 
   // SYSTEM
@@ -154,7 +167,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Settings',
     group: 'SYSTEM',
     description: 'School institutional profile, academic sessions & security',
-    roles: ['SCHOOL_ADMIN'],
+    roles: ADMIN_ROLES,
     keywords: ['configuration', 'preferences', 'session', 'tenant', 'setup', 'profile'],
   },
 ];
@@ -184,6 +197,11 @@ export const APP_NAV_GROUPS: AppNavGroup[] = [
     group: 'COMMUNICATION',
     label: 'Communication',
     items: APP_NAVIGATION.filter((item) => item.group === 'COMMUNICATION'),
+  },
+  {
+    group: 'FINANCE',
+    label: 'Finance',
+    items: APP_NAVIGATION.filter((item) => item.group === 'FINANCE'),
   },
   {
     group: 'SYSTEM',

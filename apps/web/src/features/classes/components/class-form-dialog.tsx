@@ -150,7 +150,7 @@ function ClassFormContent({
     const numericGrade = parseInt(className.replace(/\D/g, ''), 10) || 10;
     const totalStudents = sectionsPayload.reduce((acc, s) => acc + s.studentCount, 0);
 
-    const classId = classToEdit?.id || `cls-${Math.random().toString(36).substring(2, 9)}`;
+    const classId = classToEdit?.id || '';
 
     const updatedItem: ClassItem = {
       id: classId,
@@ -246,11 +246,18 @@ function ClassFormContent({
                   onChange={(e) => handleSectionTeacherChange(idx, e.target.value)}
                   className="flex-1 h-7 rounded border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 >
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.personal.firstName} {t.personal.lastName} ({t.employment.department})
-                    </option>
-                  ))}
+                  <option value="">Select section teacher...</option>
+                  {teachers.map((t) => {
+                    const firstName = t.personal?.firstName || t.firstName || '';
+                    const lastName = t.personal?.lastName || t.lastName || '';
+                    const fullName = t.name || `${firstName} ${lastName}`.trim() || t.email || t.id;
+                    const dept = t.department || t.employment?.department || t.designation || '';
+                    return (
+                      <option key={t.id} value={t.id}>
+                        {fullName}{dept ? ` (${dept})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
 
                 <Button
@@ -303,11 +310,17 @@ function ClassFormContent({
             className="w-full text-xs h-9 px-3 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
           >
             <option value="">Select lead teacher...</option>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name || `${t.firstName} ${t.lastName}`} ({t.email})
-              </option>
-            ))}
+            {teachers.map((t) => {
+              const firstName = t.personal?.firstName || t.firstName || '';
+              const lastName = t.personal?.lastName || t.lastName || '';
+              const fullName = t.name || `${firstName} ${lastName}`.trim() || t.email || t.id;
+              const info = t.department || t.employment?.department || t.email || '';
+              return (
+                <option key={t.id} value={t.id}>
+                  {fullName}{info ? ` (${info})` : ''}
+                </option>
+              );
+            })}
           </select>
         </div>
 

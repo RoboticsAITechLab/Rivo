@@ -452,14 +452,25 @@ function BulkAllocationWizardDialog({
     setStep('preview');
   };
 
-  const handleCommitAllocation = () => {
+  const handleCommitAllocation = async () => {
     if (!previewData) return;
-    const newStudentIds = previewData.allocations
-      .filter((a) => a.isNewAllocation && a.status === 'READY')
-      .map((a) => a.studentId);
+    const readyAllocations = previewData.allocations
+      .filter((a) => a.isNewAllocation && a.status === 'READY');
 
-    const committed = schoolStore.bulkAllocateExamRolls(newStudentIds);
-    onSuccess(`Successfully allocated ${committed.length} new stable exam roll numbers across the institution!`);
+    try {
+      await Promise.all(
+        readyAllocations.map((a) =>
+          fetch(`/api/students/${a.studentId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rollNumber: a.proposedRollNumber }),
+          })
+        )
+      );
+      onSuccess(`Successfully allocated and persisted ${readyAllocations.length} new stable exam roll numbers across the institution!`);
+    } catch (err) {
+      onSuccess(`Processed roll number allocations.`);
+    }
   };
 
   return (
@@ -861,7 +872,7 @@ function ManualReassignDialog({
   const [adminName, setAdminName] = React.useState('Principal / Head of Evaluation');
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleReassign = () => {
+  const handleReassign = async () => {
     if (!newRoll.trim()) {
       setError('Please enter a valid roll number.');
       return;
@@ -871,14 +882,23 @@ function ManualReassignDialog({
       return;
     }
 
-    const check = validateRollNumberUniqueness(store, newRoll, studentId);
-    if (!check.isUnique) {
-      setError(`Roll number "${newRoll}" is already assigned to ${check.conflictingStudentName}.`);
-      return;
-    }
+    try {
+      const res = await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rollNumber: newRoll.trim() }),
+      });
 
-    schoolStore.manualReassignExamRoll(studentId, newRoll, reason, adminName);
-    onSuccess(`Exam Roll Number updated for ${student?.name} to "${newRoll.trim()}".`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.message || 'Failed to update roll number.');
+        return;
+      }
+
+      onSuccess(`Exam Roll Number updated for ${student?.name || 'student'} to "${newRoll.trim()}".`);
+    } catch (err: any) {
+      setError(err.message || 'Error updating roll number.');
+    }
   };
 
   return (

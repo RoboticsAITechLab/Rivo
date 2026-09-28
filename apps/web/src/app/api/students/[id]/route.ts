@@ -163,6 +163,7 @@ export async function PATCH(
             data: {
               ...(classId ? { classId } : {}),
               ...(sectionId ? { sectionId } : {}),
+              ...(rollNumber !== undefined ? { rollNumber: rollNumber ? String(rollNumber).trim() : null } : {}),
             },
           });
         }

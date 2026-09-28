@@ -15,11 +15,13 @@ import {
   Plus,
   BookOpen,
   Trash2,
-  Check,
   Building,
-  ArrowRight,
   Hash,
   RefreshCw,
+  Loader2,
+  Users,
+  Check,
+  Send,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -36,30 +38,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import {
-  selectExamById,
-  selectExamPapers,
-  selectExamSchedule,
-  selectExamCandidates,
-  selectExamAttendance,
-  selectExamMarks,
-  selectExamResults,
-  selectCampuses,
-  ResolvedExamCandidate,
-} from '@/shared/selectors';
-import { SubjectSelect } from '@/shared/entities/subject-select';
-import { detectExamScheduleConflicts, ExamConflict } from '@/shared/validation/exam-conflict-detector';
-import {
-  Exam,
-  ExamPaper,
-  ExamMode,
-  ExamAttendanceStatus,
-  ExamMark,
-  ExamAttendance,
-  ExamScheduleEntry,
-  ExamResult,
-} from '@/shared/types';
 import { cn } from '@/lib/utils';
 
 export type Exam360Tab =
@@ -74,87 +52,173 @@ export type Exam360Tab =
   | 'documents'
   | 'activity';
 
+interface LiveExamSchedule {
+  id: string;
+  paperId: string;
+  examDate: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes?: number;
+  roomNumber?: string;
+  instructions?: string;
+  class?: { id: string; name: string };
+  section?: { id: string; name: string };
+}
+
+interface LiveExamPaper {
+  id: string;
+  examTermId: string;
+  subjectId: string;
+  name: string;
+  maxMarks: number;
+  passingMarks: number;
+  subject?: { id: string; name: string; code?: string };
+  schedules?: LiveExamSchedule[];
+}
+
+interface LiveExamTerm {
+  id: string;
+  name: string;
+  code?: string | null;
+  startDate: string;
+  endDate: string;
+  instructions?: string | null;
+  advice?: string | null;
+  warnings?: string | null;
+  isPublished: boolean;
+  academicSession?: { id: string; name: string };
+  campus?: { id: string; name: string } | null;
+  papers?: LiveExamPaper[];
+}
+
 export default function ExamDetailPage() {
   const params = useParams();
   const examId = params.id as string;
-  const store = useSchoolStore();
 
-  const [liveExam, setLiveExam] = React.useState<any>(null);
-  const [isLoadingLive, setIsLoadingLive] = React.useState(true);
-
-  React.useEffect(() => {
-    async function loadLiveTerm() {
-      try {
-        const res = await fetch(`/api/timetable/exam?termId=${examId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.examTerms && data.examTerms.length > 0) {
-            const t = data.examTerms[0];
-            setLiveExam({
-              id: t.id,
-              name: t.name,
-              code: t.code || 'EXAM',
-              type: 'TERM',
-              status: t.isPublished ? 'PUBLISHED' : 'SCHEDULED',
-              startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
-              endDate: t.endDate ? new Date(t.endDate).toISOString().split('T')[0] : '',
-              campusIds: ['cmp-main'],
-              classIds: [],
-              description: `${t.name} examination cycle.`,
-            });
-          }
-        }
-      } catch (e) {
-        console.error('Failed to fetch live exam term:', e);
-      } finally {
-        setIsLoadingLive(false);
-      }
-    }
-    loadLiveTerm();
-  }, [examId]);
-
-  const examFromStore = selectExamById(store, examId);
-  const exam = examFromStore || liveExam;
-  const papers = selectExamPapers(store, examId);
-  const schedule = selectExamSchedule(store, examId);
-  const candidates = selectExamCandidates(store, examId);
-  const attendances = selectExamAttendance(store, examId);
-  const marks = selectExamMarks(store, examId);
-  const results = selectExamResults(store, examId);
+  const [exam, setExam] = React.useState<LiveExamTerm | null>(null);
+  const [subjects, setSubjects] = React.useState<any[]>([]);
+  const [classes, setClasses] = React.useState<any[]>([]);
+  const [students, setStudents] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isPublishing, setIsPublishing] = React.useState(false);
 
   const [activeTab, setActiveTab] = React.useState<Exam360Tab>('overview');
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
-
-  // Modals
   const [isAddPaperOpen, setIsAddPaperOpen] = React.useState(false);
-
-  // Schedule conflicts
-  const conflicts = React.useMemo(() => {
-    return detectExamScheduleConflicts(store, schedule);
-  }, [store, schedule]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  if (!exam) {
-    if (isLoadingLive) {
-      return (
-        <PageContainer>
-          <div className="py-20 text-center text-xs text-muted-foreground">
-            Loading examination cycle details...
-          </div>
-        </PageContainer>
-      );
+  const loadExamData = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [termRes, subjectsRes, classesRes, studentsRes] = await Promise.all([
+        fetch(`/api/timetable/exam?termId=${examId}`),
+        fetch('/api/subjects'),
+        fetch('/api/classes'),
+        fetch('/api/students?limit=200'),
+      ]);
+
+      if (termRes.ok) {
+        const data = await termRes.json();
+        if (data.examTerms && data.examTerms.length > 0) {
+          setExam(data.examTerms[0]);
+        }
+      }
+      if (subjectsRes.ok) {
+        const subData = await subjectsRes.json();
+        setSubjects(subData.subjects || []);
+      }
+      if (classesRes.ok) {
+        const clsData = await classesRes.json();
+        setClasses(clsData.classes || []);
+      }
+      if (studentsRes.ok) {
+        const stdData = await studentsRes.json();
+        setStudents(stdData.students || []);
+      }
+    } catch (err) {
+      console.error('Failed to load exam data:', err);
+    } finally {
+      setIsLoading(false);
     }
+  }, [examId]);
+
+  React.useEffect(() => {
+    loadExamData();
+  }, [loadExamData]);
+
+  const handlePublishResults = async () => {
+    if (!exam) return;
+    setIsPublishing(true);
+    try {
+      // 1. Compute results first
+      await fetch('/api/results/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examTermId: exam.id }),
+      });
+
+      // 2. Publish results
+      const pubRes = await fetch('/api/results/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examTermId: exam.id, publish: true }),
+      });
+
+      if (pubRes.ok) {
+        setExam((prev) => (prev ? { ...prev, isPublished: true } : prev));
+        showToast('Examination results calculated and published successfully! Parent alerts dispatched.');
+      } else {
+        const err = await pubRes.json().catch(() => ({}));
+        showToast(err.message || 'Failed to publish results.');
+      }
+    } catch (e: any) {
+      console.error('Publish error:', e);
+      showToast(e.message || 'Error publishing results.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleDeletePaper = async (paperId: string) => {
+    if (!confirm('Are you sure you want to remove this examination paper?')) return;
+    try {
+      const res = await fetch(`/api/timetable/exam/papers?paperId=${paperId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        showToast('Exam paper removed.');
+        loadExamData();
+      } else {
+        showToast('Failed to delete paper.');
+      }
+    } catch (err) {
+      showToast('Error removing paper.');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <PageContainer>
+        <div className="py-24 text-center space-y-3 flex flex-col items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Loading Examination 360 Workspace...</p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!exam) {
     return (
       <PageContainer>
         <div className="py-20 text-center space-y-3">
           <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto" />
           <h2 className="text-base font-bold text-foreground">Examination Cycle Not Found</h2>
           <p className="text-xs text-muted-foreground">
-            The requested examination cycle identifier &ldquo;{examId}&rdquo; does not exist.
+            The requested examination cycle &ldquo;{examId}&rdquo; does not exist or has been removed.
           </p>
           <Link href="/school/exams">
             <Button size="sm" variant="outline" className="text-xs mt-2">
@@ -166,22 +230,41 @@ export default function ExamDetailPage() {
     );
   }
 
-  const tabs: { key: Exam360Tab; label: string; count?: number; highlight?: boolean }[] = [
+  const papers = exam.papers || [];
+  const schedules = papers.flatMap((p) =>
+    (p.schedules || []).map((s) => ({
+      ...s,
+      paperName: p.name,
+      subjectName: p.subject?.name || p.name,
+      maxMarks: p.maxMarks,
+      passingMarks: p.passingMarks,
+    }))
+  );
+
+  const tabs: { key: Exam360Tab; label: string; count?: number }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'papers', label: 'Exam Papers', count: papers.length },
-    { key: 'schedule', label: 'Timetable Schedule', count: schedule.length, highlight: conflicts.length > 0 },
-    { key: 'candidates', label: 'Candidate Roster', count: candidates.length },
-    { key: 'roll_numbers', label: 'Exam Rolls' },
+    { key: 'schedule', label: 'Schedule', count: schedules.length },
+    { key: 'candidates', label: 'Candidates', count: students.length },
+    { key: 'roll_numbers', label: 'Roll Numbers' },
     { key: 'attendance', label: 'Attendance' },
     { key: 'marks', label: 'Marks Entry' },
-    { key: 'results', label: 'Result Summary', count: results.length },
+    { key: 'results', label: 'Results' },
     { key: 'documents', label: 'Print Center' },
     { key: 'activity', label: 'Audit Log' },
   ];
 
   return (
     <PageContainer>
-      {/* 1. Header with Breadcrumbs & Status Transitions */}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-emerald-600 text-white px-4 py-2.5 text-xs shadow-lg flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Header & Status */}
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Link href="/school/exams" className="hover:text-foreground flex items-center gap-1">
@@ -194,9 +277,9 @@ export default function ExamDetailPage() {
 
         <PageHeader
           title={exam.name}
-          description={`${exam.type.replace('_', ' ')} Evaluation • ${exam.code} • Academic Session 2025-26`}
+          description={`Evaluation Cycle • ${exam.code || 'EXAM'} • ${exam.academicSession?.name || 'Active Session'}`}
           icon={Award}
-          badge={exam.status.replace('_', ' ')}
+          badge={exam.isPublished ? 'PUBLISHED' : 'SCHEDULED'}
           actions={
             <div className="flex items-center gap-2">
               <Link href={`/school/exams/${exam.id}/documents`}>
@@ -211,59 +294,23 @@ export default function ExamDetailPage() {
                   Schedule Builder
                 </Button>
               </Link>
-              {exam.status !== 'PUBLISHED' && (
+              {!exam.isPublished && (
                 <Button
                   size="sm"
-                  className="text-xs h-8.5 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => {
-                    schoolStore.calculateAndSaveExamResults(exam.id);
-                    schoolStore.changeExamStatus(exam.id, 'PUBLISHED');
-                    showToast('Exam results calculated and formally published school-wide!');
-                  }}
+                  disabled={isPublishing}
+                  className="text-xs h-8.5 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  onClick={handlePublishResults}
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Publish Official Results
+                  {isPublishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Calculate &amp; Publish Results
                 </Button>
               )}
             </div>
           }
         />
-      </div>
 
-      {toastMessage && (
-        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* 2. Schedule Conflict Warning Banner if conflicts exist */}
-      {conflicts.length > 0 && (
-        <div className="rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3.5 text-xs text-rose-900 dark:text-rose-200 flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <div className="font-bold flex items-center gap-2">
-              <span>{conflicts.length} Schedule Conflict(s) Detected in Exam Timetable</span>
-              <Badge variant="destructive" className="text-[10px]">Action Required</Badge>
-            </div>
-            <p className="text-[11px] text-rose-800 dark:text-rose-300">
-              {conflicts[0].title}: {conflicts[0].description}
-            </p>
-            <div className="pt-1">
-              <Link href={`/school/exams/${exam.id}/schedule`}>
-                <Button size="sm" variant="destructive" className="h-7 text-xs gap-1.5">
-                  Resolve in Schedule Builder
-                  <ArrowRight className="h-3 w-3" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Navigation Tabs */}
-      <div className="border-b overflow-x-auto">
-        <div className="flex items-center gap-1 min-w-max pb-1">
+        {/* Tab Navigation */}
+        <div className="border-b border-border flex items-center gap-1 overflow-x-auto no-scrollbar pt-1">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
             return (
@@ -271,23 +318,17 @@ export default function ExamDetailPage() {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
-                  'px-3 py-2 text-xs font-medium rounded-md transition-colors relative flex items-center gap-1.5 cursor-pointer',
+                  'px-3.5 py-2 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap',
                   isActive
-                    ? 'bg-primary/10 text-primary font-semibold'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                  tab.highlight && 'text-rose-600 font-bold'
+                    ? 'border-primary text-primary font-semibold'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 )}
               >
                 <span>{tab.label}</span>
                 {tab.count !== undefined && (
-                  <span
-                    className={cn(
-                      'text-[10px] px-1.5 py-0.2 rounded-full font-mono',
-                      isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                    )}
-                  >
+                  <Badge variant={isActive ? 'default' : 'secondary'} className="text-[10px] h-4.5 px-1.5">
                     {tab.count}
-                  </span>
+                  </Badge>
                 )}
               </button>
             );
@@ -295,50 +336,54 @@ export default function ExamDetailPage() {
         </div>
       </div>
 
-      {/* 4. Tab Contents */}
-      <div className="pt-2">
+      {/* Tab Panels */}
+      <div className="pt-4">
         {activeTab === 'overview' && (
-          <ExamTabOverview exam={exam} papers={papers} schedule={schedule} candidates={candidates} results={results} />
+          <ExamTabOverview
+            exam={exam}
+            papersCount={papers.length}
+            schedulesCount={schedules.length}
+            candidatesCount={students.length}
+          />
         )}
 
         {activeTab === 'papers' && (
           <ExamTabPapers
-            exam={exam}
             papers={papers}
             onOpenAdd={() => setIsAddPaperOpen(true)}
-            onDeletePaper={(id) => {
-              schoolStore.deleteExamPaper(id);
-              showToast('Exam paper removed from syllabus.');
-            }}
+            onDeletePaper={handleDeletePaper}
           />
         )}
 
         {activeTab === 'schedule' && (
-          <ExamTabSchedule exam={exam} schedule={schedule} papers={papers} conflicts={conflicts} />
+          <ExamTabSchedule
+            examId={exam.id}
+            schedules={schedules}
+          />
         )}
 
         {activeTab === 'candidates' && (
-          <ExamTabCandidates exam={exam} candidates={candidates} />
+          <ExamTabCandidates candidates={students} />
         )}
 
         {activeTab === 'roll_numbers' && (
-          <ExamTabRollNumbers exam={exam} candidates={candidates} />
+          <ExamTabRollNumbers candidates={students} onRefresh={loadExamData} onToast={showToast} />
         )}
 
         {activeTab === 'attendance' && (
-          <ExamTabAttendance exam={exam} papers={papers} candidates={candidates} attendances={attendances} onToast={showToast} />
+          <ExamTabAttendance examId={exam.id} papers={papers} classes={classes} onToast={showToast} />
         )}
 
         {activeTab === 'marks' && (
-          <ExamTabMarks exam={exam} papers={papers} candidates={candidates} marks={marks} onToast={showToast} />
+          <ExamTabMarks examId={exam.id} papers={papers} classes={classes} onToast={showToast} />
         )}
 
         {activeTab === 'results' && (
-          <ExamTabResults exam={exam} results={results} candidates={candidates} onToast={showToast} />
+          <ExamTabResults examId={exam.id} isPublished={exam.isPublished} onToast={showToast} />
         )}
 
         {activeTab === 'documents' && (
-          <ExamTabDocuments exam={exam} />
+          <ExamTabDocuments examId={exam.id} />
         )}
 
         {activeTab === 'activity' && (
@@ -346,15 +391,17 @@ export default function ExamDetailPage() {
         )}
       </div>
 
-      {/* 5. Add Paper Dialog */}
+      {/* Add Paper Dialog */}
       {isAddPaperOpen && (
         <AddExamPaperDialog
           examId={exam.id}
+          subjects={subjects}
           isOpen={isAddPaperOpen}
           onClose={() => setIsAddPaperOpen(false)}
-          onSuccess={(p) => {
+          onSuccess={() => {
             setIsAddPaperOpen(false);
-            showToast(`Exam paper "${p.paperCode}" added successfully.`);
+            showToast('Exam paper created and linked to examination cycle.');
+            loadExamData();
           }}
         />
       )}
@@ -367,45 +414,42 @@ export default function ExamDetailPage() {
 // ---------------------------------------------------------------------------
 function ExamTabOverview({
   exam,
-  papers,
-  schedule,
-  candidates,
-  results,
+  papersCount,
+  schedulesCount,
+  candidatesCount,
 }: {
-  exam: Exam;
-  papers: ExamPaper[];
-  schedule: ExamScheduleEntry[];
-  candidates: ResolvedExamCandidate[];
-  results: ExamResult[];
+  exam: LiveExamTerm;
+  papersCount: number;
+  schedulesCount: number;
+  candidatesCount: number;
 }) {
-  const store = useSchoolStore();
-  const campuses = selectCampuses(store);
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
         <Card className="p-3.5">
           <div className="text-[11px] font-medium text-muted-foreground uppercase">Eligible Candidates</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{candidates.length}</div>
-          <div className="text-[10px] text-muted-foreground">Class 10, 11, 12 cohorts</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{candidatesCount}</div>
+          <div className="text-[10px] text-muted-foreground">Active enrolled students</div>
         </Card>
 
         <Card className="p-3.5">
           <div className="text-[11px] font-medium text-muted-foreground uppercase">Curriculum Papers</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{papers.length}</div>
-          <div className="text-[10px] text-muted-foreground">Standardized formal assessments</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{papersCount}</div>
+          <div className="text-[10px] text-muted-foreground">Subject assessment papers</div>
         </Card>
 
         <Card className="p-3.5">
           <div className="text-[11px] font-medium text-muted-foreground uppercase">Timetable Slots</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{schedule.length}</div>
-          <div className="text-[10px] text-muted-foreground">Across morning &amp; afternoon shifts</div>
+          <div className="text-2xl font-bold text-foreground mt-1">{schedulesCount}</div>
+          <div className="text-[10px] text-muted-foreground">Scheduled assessment shifts</div>
         </Card>
 
         <Card className="p-3.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase">Results Computed</div>
-          <div className="text-2xl font-bold text-emerald-600 mt-1">{results.length}</div>
-          <div className="text-[10px] text-muted-foreground">Ready for publication &amp; marksheet</div>
+          <div className="text-[11px] font-medium text-muted-foreground uppercase">Lifecycle Status</div>
+          <div className="text-2xl font-bold text-emerald-600 mt-1">
+            {exam.isPublished ? 'Published' : 'Scheduled'}
+          </div>
+          <div className="text-[10px] text-muted-foreground">Official evaluation state</div>
         </Card>
       </div>
 
@@ -413,59 +457,64 @@ function ExamTabOverview({
         <Card className="lg:col-span-2 p-4 space-y-3">
           <div className="font-semibold text-xs text-foreground flex items-center justify-between">
             <span>Examination Parameters &amp; Institutional Scope</span>
-            <Badge variant="outline">{exam.code}</Badge>
+            <Badge variant="outline">{exam.code || 'EXAM'}</Badge>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
             <div className="p-2.5 rounded border bg-muted/20">
               <span className="text-[10px] text-muted-foreground block">Session</span>
-              <span className="font-semibold">2025-26</span>
+              <span className="font-semibold">{exam.academicSession?.name || 'Active Session'}</span>
             </div>
             <div className="p-2.5 rounded border bg-muted/20">
               <span className="text-[10px] text-muted-foreground block">Date Window</span>
-              <span className="font-semibold font-mono">{exam.startDate} to {exam.endDate}</span>
+              <span className="font-semibold font-mono">
+                {new Date(exam.startDate).toLocaleDateString()} to {new Date(exam.endDate).toLocaleDateString()}
+              </span>
             </div>
             <div className="p-2.5 rounded border bg-muted/20">
-              <span className="text-[10px] text-muted-foreground block">Lifecycle Status</span>
-              <span className="font-semibold text-emerald-600">{exam.status.replace('_', ' ')}</span>
+              <span className="text-[10px] text-muted-foreground block">Campus</span>
+              <span className="font-semibold">{exam.campus?.name || 'All Campuses'}</span>
             </div>
           </div>
 
-          <div className="space-y-1 text-xs pt-2">
-            <span className="text-[11px] text-muted-foreground font-medium">Included Campuses:</span>
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {exam.campusIds.map((cId) => {
-                const cmp = campuses.find((c) => c.id === cId);
-                return (
-                  <Badge key={cId} variant="secondary" className="text-xs">
-                    <Building className="h-3 w-3 mr-1" />
-                    {cmp?.name || cId}
-                  </Badge>
-                );
-              })}
+          {exam.instructions && (
+            <div className="space-y-1 text-xs pt-2">
+              <span className="text-[11px] text-muted-foreground font-medium">Candidate Instructions:</span>
+              <p className="text-muted-foreground text-xs bg-muted/20 p-2.5 rounded border">{exam.instructions}</p>
             </div>
-          </div>
+          )}
 
-          <div className="space-y-1 text-xs pt-2">
-            <span className="text-[11px] text-muted-foreground font-medium">Exam Description:</span>
-            <p className="text-muted-foreground text-xs">{exam.description}</p>
-          </div>
+          {exam.warnings && (
+            <div className="space-y-1 text-xs pt-1">
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Evaluation Warnings:</span>
+              <p className="text-muted-foreground text-xs bg-amber-500/10 border border-amber-500/20 p-2.5 rounded">{exam.warnings}</p>
+            </div>
+          )}
         </Card>
 
         <Card className="p-4 space-y-3">
-          <div className="font-semibold text-xs text-foreground">Operational Checklist</div>
+          <div className="font-semibold text-xs text-foreground">Examination Workflows</div>
           <div className="space-y-2 text-xs">
-            <div className="flex items-center gap-2 p-2 rounded border bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>Exam roll numbers synchronized from central registry</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 rounded border bg-emerald-500/10 border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
-              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span>{papers.length} Papers mapped to active curriculum</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 rounded border bg-muted/40">
-              <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span>Multi-exam timetable: {schedule.length} slots mapped</span>
-            </div>
+            <Link
+              href={`/school/exams/${exam.id}/schedule`}
+              className="flex items-center justify-between p-2.5 rounded-lg border hover:bg-muted/30 transition-all text-xs"
+            >
+              <div>
+                <span className="font-medium text-foreground block">Schedule Builder</span>
+                <span className="text-[11px] text-muted-foreground">Assign dates, rooms, and class sessions</span>
+              </div>
+              <Calendar className="h-4 w-4 text-primary" />
+            </Link>
+
+            <Link
+              href={`/school/exams/${exam.id}/documents`}
+              className="flex items-center justify-between p-2.5 rounded-lg border hover:bg-muted/30 transition-all text-xs"
+            >
+              <div>
+                <span className="font-medium text-foreground block">Exam Print Center</span>
+                <span className="text-[11px] text-muted-foreground">Generate admit cards &amp; student datesheets</span>
+              </div>
+              <Printer className="h-4 w-4 text-primary" />
+            </Link>
           </div>
         </Card>
       </div>
@@ -481,23 +530,20 @@ function ExamTabPapers({
   onOpenAdd,
   onDeletePaper,
 }: {
-  exam?: Exam;
-  papers: ExamPaper[];
+  papers: LiveExamPaper[];
   onOpenAdd: () => void;
   onDeletePaper: (id: string) => void;
 }) {
-  const store = useSchoolStore();
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-xs font-bold text-foreground">Curriculum Examination Papers</h3>
           <p className="text-[11px] text-muted-foreground">
-            Subject evaluations, maximum score thresholds, and minimum passing criteria.
+            Standardized evaluation papers with maximum and qualifying thresholds.
           </p>
         </div>
-        <Button size="sm" className="h-8 text-xs gap-1.5" onClick={onOpenAdd}>
+        <Button size="sm" className="h-8 text-xs gap-1.5 cursor-pointer" onClick={onOpenAdd}>
           <Plus className="h-3.5 w-3.5" />
           Add Exam Paper
         </Button>
@@ -508,55 +554,50 @@ function ExamTabPapers({
           <table className="w-full text-xs text-left">
             <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
               <tr>
-                <th className="py-2.5 px-3">Subject &amp; Paper Code</th>
-                <th className="py-2.5 px-3">Mode</th>
-                <th className="py-2.5 px-3">Duration</th>
+                <th className="py-2.5 px-3">Subject &amp; Paper Name</th>
+                <th className="py-2.5 px-3">Subject Code</th>
                 <th className="py-2.5 px-3">Maximum Marks</th>
                 <th className="py-2.5 px-3">Passing Marks</th>
-                <th className="py-2.5 px-3">Instructions</th>
+                <th className="py-2.5 px-3">Scheduled Sessions</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {papers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
                     No examination papers defined yet. Click &ldquo;Add Exam Paper&rdquo; to begin.
                   </td>
                 </tr>
               ) : (
-                papers.map((p) => {
-                  const subject = store.subjects.find((s) => s.id === p.subjectId);
-                  return (
-                    <tr key={p.id} className="hover:bg-muted/20">
-                      <td className="py-2 px-3">
-                        <div className="font-semibold text-foreground">{subject?.name || 'Subject'}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">{p.paperCode}</div>
-                      </td>
-                      <td className="py-2 px-3">
-                        <Badge variant="outline" className="text-[10px]">
-                          {p.examMode}
-                        </Badge>
-                      </td>
-                      <td className="py-2 px-3">{p.durationMinutes} minutes</td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">{p.maxMarks}</td>
-                      <td className="py-2 px-3 font-mono text-emerald-600">{p.passingMarks}</td>
-                      <td className="py-2 px-3 text-muted-foreground text-[11px] max-w-xs truncate">
-                        {p.instructions}
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => onDeletePaper(p.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })
+                papers.map((p) => (
+                  <tr key={p.id} className="hover:bg-muted/20">
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-foreground">{p.name}</div>
+                      <div className="text-[10px] text-muted-foreground">{p.subject?.name}</div>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground">
+                      {p.subject?.code || '—'}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-foreground">{p.maxMarks}</td>
+                    <td className="py-2.5 px-3 font-mono text-emerald-600 font-semibold">{p.passingMarks}</td>
+                    <td className="py-2.5 px-3">
+                      <Badge variant="outline" className="text-[10px]">
+                        {p.schedules?.length || 0} slots
+                      </Badge>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
+                        onClick={() => onDeletePaper(p.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -570,28 +611,23 @@ function ExamTabPapers({
 // SUB-TAB 3: SCHEDULE
 // ---------------------------------------------------------------------------
 function ExamTabSchedule({
-  exam,
-  schedule,
-  papers,
+  examId,
+  schedules,
 }: {
-  exam: Exam;
-  schedule: ExamScheduleEntry[];
-  papers: ExamPaper[];
-  conflicts?: ExamConflict[];
+  examId: string;
+  schedules: any[];
 }) {
-  const store = useSchoolStore();
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-bold text-foreground">Examination Timetable (Multi-Paper Shifts)</h3>
+          <h3 className="text-xs font-bold text-foreground">Examination Datesheet &amp; Timetable</h3>
           <p className="text-[11px] text-muted-foreground">
-            Supports multiple papers per day, morning/afternoon shifts, and stream-specific schedules.
+            Scheduled slots with start/end timings, target classes, and hall allocation.
           </p>
         </div>
-        <Link href={`/school/exams/${exam.id}/schedule`}>
-          <Button size="sm" className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white">
+        <Link href={`/school/exams/${examId}/schedule`}>
+          <Button size="sm" className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer">
             <Calendar className="h-3.5 w-3.5" />
             Open Dedicated Schedule Builder
           </Button>
@@ -606,58 +642,38 @@ function ExamTabSchedule({
                 <th className="py-2.5 px-3">Date</th>
                 <th className="py-2.5 px-3">Time Slot</th>
                 <th className="py-2.5 px-3">Exam Paper</th>
-                <th className="py-2.5 px-3">Class &amp; Stream</th>
-                <th className="py-2.5 px-3">Room / Center</th>
-                <th className="py-2.5 px-3">Campuses</th>
+                <th className="py-2.5 px-3">Class &amp; Section</th>
+                <th className="py-2.5 px-3">Room / Hall</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {schedule.length === 0 ? (
+              {schedules.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No schedule slots created yet. Use the Schedule Builder to configure dates and timeslots.
+                  <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    No examination timetable sessions scheduled yet. Use Schedule Builder to allocate sessions.
                   </td>
                 </tr>
               ) : (
-                schedule.map((entry) => {
-                  const paper = papers.find((p) => p.id === entry.paperId);
-                  const subject = store.subjects.find((s) => s.id === paper?.subjectId);
-                  const classNames = entry.classIds.map((c: string) => c.replace('cls-', 'Class ')).join(', ');
-                  const streamNames = entry.streamIds
-                    ?.map((id: string) => store.streams.find((s) => s.id === id)?.code || id)
-                    .join(', ');
-
-                  return (
-                    <tr key={entry.id} className="hover:bg-muted/20">
-                      <td className="py-2 px-3 font-semibold text-foreground font-mono">{entry.date}</td>
-                      <td className="py-2 px-3 font-mono text-primary font-medium">
-                        {entry.startTime} – {entry.endTime}
-                      </td>
-                      <td className="py-2 px-3">
-                        <span className="font-semibold text-foreground">{subject?.name || 'Subject'}</span>
-                        <span className="text-[10px] text-muted-foreground block font-mono">
-                          {paper?.paperCode}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3">
-                        <span>{classNames}</span>
-                        {streamNames && (
-                          <Badge variant="secondary" className="text-[9px] ml-1.5">
-                            {streamNames}
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-muted-foreground">{entry.room}</td>
-                      <td className="py-2 px-3">
-                        <Badge variant="outline" className="text-[10px]">
-                          {entry.campusIds.length === store.campuses.length
-                            ? 'All Campuses'
-                            : `${entry.campusIds.length} Campuses`}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })
+                schedules.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-muted/20">
+                    <td className="py-2.5 px-3 font-semibold text-foreground font-mono">
+                      {new Date(entry.examDate).toLocaleDateString()}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-primary font-medium">
+                      {entry.startTime} – {entry.endTime}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="font-semibold text-foreground">{entry.paperName}</span>
+                      <span className="text-[10px] text-muted-foreground block">{entry.subjectName}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {entry.class?.name || 'Class'} - {entry.section?.name || 'Section'}
+                    </td>
+                    <td className="py-2.5 px-3 text-muted-foreground font-mono">
+                      {entry.roomNumber || 'Main Examination Hall'}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -670,22 +686,16 @@ function ExamTabSchedule({
 // ---------------------------------------------------------------------------
 // SUB-TAB 4: CANDIDATES
 // ---------------------------------------------------------------------------
-function ExamTabCandidates({
-  candidates,
-}: {
-  exam?: Exam;
-  candidates: ResolvedExamCandidate[];
-  onToast?: (msg: string) => void;
-}) {
+function ExamTabCandidates({ candidates }: { candidates: any[] }) {
   const [search, setSearch] = React.useState('');
 
   const filtered = candidates.filter((c) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      c.name.toLowerCase().includes(q) ||
-      c.examRollNumber.toLowerCase().includes(q) ||
-      String(c.classRollNumber).includes(q)
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.admissionNumber || '').toLowerCase().includes(q) ||
+      (c.rollNumber || '').toLowerCase().includes(q)
     );
   });
 
@@ -693,9 +703,9 @@ function ExamTabCandidates({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-xs font-bold text-foreground">Resolved Examination Candidates</h3>
+          <h3 className="text-xs font-bold text-foreground">Examination Candidate Roster</h3>
           <p className="text-[11px] text-muted-foreground">
-            Student cohort populated dynamically from eligible classes and campuses with permanent Exam Roll Numbers.
+            Real student cohort populated dynamically from the school database.
           </p>
         </div>
         <div className="w-64">
@@ -713,506 +723,46 @@ function ExamTabCandidates({
           <table className="w-full text-xs text-left">
             <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
               <tr>
-                <th className="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-400">
-                  Exam Roll No.
-                </th>
-                <th className="py-2.5 px-3">Class Roll No.</th>
-                <th className="py-2.5 px-3">Student Name &amp; ID</th>
-                <th className="py-2.5 px-3">Campus</th>
-                <th className="py-2.5 px-3">Class &amp; Div</th>
-                <th className="py-2.5 px-3">Stream</th>
-                <th className="py-2.5 px-3">Eligibility</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.map((c) => (
-                <tr key={c.studentId} className="hover:bg-muted/20">
-                  <td className="py-2 px-3 font-mono font-bold text-emerald-600 text-xs">
-                    {c.examRollNumber}
-                  </td>
-                  <td className="py-2 px-3 font-mono text-muted-foreground">#{c.classRollNumber}</td>
-                  <td className="py-2 px-3">
-                    <span className="font-semibold text-foreground">{c.name}</span>
-                    <span className="text-[10px] text-muted-foreground block font-mono">
-                      {c.admissionNumber}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3">
-                    <Badge variant="outline" className="text-[10px]">
-                      {c.campusName}
-                    </Badge>
-                  </td>
-                  <td className="py-2 px-3">
-                    {c.className} - {c.sectionName}
-                  </td>
-                  <td className="py-2 px-3">
-                    {c.streamName ? (
-                      <Badge variant="secondary" className="text-[9px]">
-                        {c.streamName}
-                      </Badge>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="py-2 px-3">
-                    <Badge variant={c.isEligible ? 'default' : 'secondary'} className="text-[10px]">
-                      {c.isEligible ? 'Eligible' : 'Hold'}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB 5: ROLL NUMBERS (ROSTER VERIFICATION)
-// ---------------------------------------------------------------------------
-function ExamTabRollNumbers({
-  candidates,
-}: {
-  exam?: Exam;
-  candidates: ResolvedExamCandidate[];
-  onToast?: (msg: string) => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="p-3 bg-muted/40 rounded-lg border text-xs flex items-center justify-between">
-        <div>
-          <span className="font-semibold text-foreground">Stable Exam Roll Number Verification</span>
-          <p className="text-[11px] text-muted-foreground">
-            Rules 4 &amp; 5: Candidate exam roll numbers are identical across Half-Yearly, Annual, and Pre-Board examinations.
-          </p>
-        </div>
-        <Link href="/school/exams/roll-numbers">
-          <Button size="sm" variant="outline" className="h-7.5 text-xs gap-1.5">
-            <Hash className="h-3 w-3" />
-            Central Roll Registry
-          </Button>
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-        {candidates.map((c) => (
-          <div key={c.studentId} className="p-2.5 rounded-lg border bg-card text-center space-y-1">
-            <span className="text-[9px] text-muted-foreground block font-mono">Class Roll #{c.classRollNumber}</span>
-            <div className="font-mono font-bold text-sm text-emerald-600">{c.examRollNumber}</div>
-            <div className="font-medium text-[11px] truncate text-foreground">{c.name}</div>
-            <div className="text-[9px] text-muted-foreground">{c.className}-{c.sectionName}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB 6: ATTENDANCE
-// ---------------------------------------------------------------------------
-function ExamTabAttendance({
-  exam,
-  papers,
-  candidates,
-  attendances,
-  onToast,
-}: {
-  exam: Exam;
-  papers: ExamPaper[];
-  candidates: ResolvedExamCandidate[];
-  attendances: ExamAttendance[];
-  onToast: (msg: string) => void;
-}) {
-  const store = useSchoolStore();
-  const [selectedPaperId, setSelectedPaperId] = React.useState<string>(papers[0]?.id || '');
-  const [attendanceOverrides, setAttendanceOverrides] = React.useState<Record<string, ExamAttendanceStatus>>({});
-
-  const attendanceState = React.useMemo(() => {
-    const map: Record<string, ExamAttendanceStatus> = {};
-    candidates.forEach((c) => {
-      const match = attendances.find((a) => a.paperId === selectedPaperId && a.studentId === c.studentId);
-      map[c.studentId] = attendanceOverrides[c.studentId] ?? match?.status ?? 'PRESENT';
-    });
-    return map;
-  }, [selectedPaperId, candidates, attendances, attendanceOverrides]);
-
-  const handleBulkSet = (status: ExamAttendanceStatus) => {
-    const updated: Record<string, ExamAttendanceStatus> = {};
-    candidates.forEach((c) => {
-      updated[c.studentId] = status;
-    });
-    setAttendanceOverrides(updated);
-  };
-
-  const handleSave = () => {
-    const records: ExamAttendance[] = candidates.map((c) => ({
-      id: `att-${exam.id}-${selectedPaperId}-${c.studentId}`,
-      examId: exam.id,
-      paperId: selectedPaperId,
-      studentId: c.studentId,
-      examRollNumber: c.examRollNumber,
-      status: attendanceState[c.studentId] || 'PRESENT',
-    }));
-    schoolStore.bulkSaveExamAttendance(records);
-    onToast(`Exam attendance saved for ${records.length} candidates using Exam Roll Numbers.`);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs font-medium text-muted-foreground shrink-0">Paper:</span>
-          <select
-            value={selectedPaperId}
-            onChange={(e) => {
-              setSelectedPaperId(e.target.value);
-              setAttendanceOverrides({});
-            }}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-          >
-            {papers.map((p) => {
-              const subj = store.subjects.find((s) => s.id === p.subjectId);
-              return (
-                <option key={p.id} value={p.id}>
-                  {subj?.name} ({p.paperCode})
-                </option>
-              );
-            })}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <Button variant="outline" size="sm" className="h-7.5 text-xs" onClick={() => handleBulkSet('PRESENT')}>
-            All Present
-          </Button>
-          <Button variant="outline" size="sm" className="h-7.5 text-xs" onClick={() => handleBulkSet('ABSENT')}>
-            All Absent
-          </Button>
-          <Button size="sm" className="h-7.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave}>
-            Save Attendance
-          </Button>
-        </div>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
-              <tr>
-                <th className="py-2.5 px-3 font-bold text-emerald-700">Exam Roll No.</th>
+                <th className="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-400">Roll No.</th>
                 <th className="py-2.5 px-3">Student Name</th>
-                <th className="py-2.5 px-3">Class &amp; Campus</th>
-                <th className="py-2.5 px-3 text-right">Attendance Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {candidates.map((c) => {
-                const currentStatus = attendanceState[c.studentId] || 'PRESENT';
-                return (
-                  <tr key={c.studentId} className="hover:bg-muted/20">
-                    <td className="py-2 px-3 font-mono font-bold text-emerald-600">{c.examRollNumber}</td>
-                    <td className="py-2 px-3 font-medium text-foreground">{c.name}</td>
-                    <td className="py-2 px-3 text-muted-foreground">
-                      {c.className}-{c.sectionName} • {c.campusName}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <select
-                        value={currentStatus}
-                        onChange={(e) =>
-                          setAttendanceOverrides((prev) => ({
-                            ...prev,
-                            [c.studentId]: e.target.value as ExamAttendanceStatus,
-                          }))
-                        }
-                        className={cn(
-                          'h-7 rounded border px-2 text-xs font-medium',
-                          currentStatus === 'PRESENT' && 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-                          currentStatus === 'ABSENT' && 'bg-rose-500/10 text-rose-700 border-rose-500/30',
-                          currentStatus === 'MEDICAL' && 'bg-blue-500/10 text-blue-700 border-blue-500/30'
-                        )}
-                      >
-                        <option value="PRESENT">Present</option>
-                        <option value="ABSENT">Absent</option>
-                        <option value="LATE">Late Entry</option>
-                        <option value="MEDICAL">Medical Leave</option>
-                        <option value="EXEMPTED">Exempted</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB 7: MARKS ENTRY
-// ---------------------------------------------------------------------------
-function ExamTabMarks({
-  exam,
-  papers,
-  candidates,
-  marks,
-  onToast,
-}: {
-  exam: Exam;
-  papers: ExamPaper[];
-  candidates: ResolvedExamCandidate[];
-  marks: ExamMark[];
-  onToast: (msg: string) => void;
-}) {
-  const store = useSchoolStore();
-  const [selectedPaperId, setSelectedPaperId] = React.useState<string>(papers[0]?.id || '');
-  const [marksOverrides, setMarksOverrides] = React.useState<Record<string, number>>({});
-  const [validationErrors, setValidationErrors] = React.useState<Record<string, string>>({});
-
-  const currentPaper = papers.find((p) => p.id === selectedPaperId);
-  const currentSubject = store.subjects.find((s) => s.id === currentPaper?.subjectId);
-  const maxMarks = currentPaper?.maxMarks || 100;
-  const passingMarks = currentPaper?.passingMarks || 33;
-
-  const marksDraft = React.useMemo(() => {
-    const map: Record<string, number> = {};
-    candidates.forEach((c) => {
-      const match = marks.find((m) => m.paperId === selectedPaperId && m.studentId === c.studentId);
-      map[c.studentId] = marksOverrides[c.studentId] ?? (match ? match.marksObtained : 0);
-    });
-    return map;
-  }, [selectedPaperId, candidates, marks, marksOverrides]);
-
-  const handleScoreChange = (studentId: string, val: string) => {
-    const num = parseFloat(val);
-    if (isNaN(num)) {
-      setMarksOverrides((prev) => ({ ...prev, [studentId]: 0 }));
-      return;
-    }
-
-    if (num < 0 || num > maxMarks) {
-      setValidationErrors((prev) => ({
-        ...prev,
-        [studentId]: `Must be 0 to ${maxMarks}`,
-      }));
-    } else {
-      setValidationErrors((prev) => {
-        const next = { ...prev };
-        delete next[studentId];
-        return next;
-      });
-    }
-
-    setMarksOverrides((prev) => ({ ...prev, [studentId]: num }));
-  };
-
-  const handleSaveMarks = () => {
-    if (Object.keys(validationErrors).length > 0) {
-      onToast('Please resolve score validation errors before saving.');
-      return;
-    }
-
-    const records: ExamMark[] = candidates.map((c) => {
-      const score = marksDraft[c.studentId] || 0;
-      const pct = maxMarks > 0 ? (score / maxMarks) * 100 : 0;
-      const grade = pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 33 ? 'D' : 'F';
-
-      return {
-        id: `mrk-${exam.id}-${selectedPaperId}-${c.studentId}`,
-        examId: exam.id,
-        paperId: selectedPaperId,
-        studentId: c.studentId,
-        examRollNumber: c.examRollNumber,
-        marksObtained: score,
-        maxMarks,
-        passingMarks,
-        grade,
-        status: 'SAVED',
-      };
-    });
-
-    schoolStore.saveExamMarks(records);
-    onToast(`Successfully saved marks for ${records.length} candidates in ${currentSubject?.name}.`);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Select Paper:</span>
-          <select
-            value={selectedPaperId}
-            onChange={(e) => {
-              setSelectedPaperId(e.target.value);
-              setMarksOverrides({});
-              setValidationErrors({});
-            }}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-          >
-            {papers.map((p) => {
-              const subj = store.subjects.find((s) => s.id === p.subjectId);
-              return (
-                <option key={p.id} value={p.id}>
-                  {subj?.name} (Max: {p.maxMarks}, Pass: {p.passingMarks})
-                </option>
-              );
-            })}
-          </select>
-        </div>
-
-        <Button size="sm" className="h-7.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSaveMarks}>
-          Save Marks
-        </Button>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
-              <tr>
-                <th className="py-2.5 px-3 font-bold text-emerald-700">Exam Roll No.</th>
-                <th className="py-2.5 px-3">Student Name</th>
-                <th className="py-2.5 px-3">Max Marks</th>
-                <th className="py-2.5 px-3">Passing Marks</th>
-                <th className="py-2.5 px-3 w-40 font-semibold">Marks Obtained</th>
-                <th className="py-2.5 px-3">Calculated Grade</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {candidates.map((c) => {
-                const score = marksDraft[c.studentId] ?? 0;
-                const err = validationErrors[c.studentId];
-                const pct = maxMarks > 0 ? (score / maxMarks) * 100 : 0;
-                const grade = pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 33 ? 'D' : 'F';
-
-                return (
-                  <tr key={c.studentId} className="hover:bg-muted/20">
-                    <td className="py-2 px-3 font-mono font-bold text-emerald-600">{c.examRollNumber}</td>
-                    <td className="py-2 px-3 font-medium text-foreground">{c.name}</td>
-                    <td className="py-2 px-3 font-mono text-muted-foreground">{maxMarks}</td>
-                    <td className="py-2 px-3 font-mono text-muted-foreground">{passingMarks}</td>
-                    <td className="py-2 px-3">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={maxMarks}
-                        value={score}
-                        onChange={(e) => handleScoreChange(c.studentId, e.target.value)}
-                        className={cn(
-                          'h-7 text-xs font-mono w-24',
-                          err && 'border-destructive focus-visible:ring-destructive'
-                        )}
-                      />
-                      {err && <span className="text-[10px] text-destructive block mt-0.5">{err}</span>}
-                    </td>
-                    <td className="py-2 px-3 font-bold">
-                      <Badge variant={score >= passingMarks ? 'default' : 'destructive'} className="text-[10px]">
-                        {grade} ({score >= passingMarks ? 'Pass' : 'Fail'})
-                      </Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SUB-TAB 8: RESULTS SUMMARY
-// ---------------------------------------------------------------------------
-function ExamTabResults({
-  exam,
-  results,
-  onToast,
-}: {
-  exam: Exam;
-  results: ExamResult[];
-  candidates?: ResolvedExamCandidate[];
-  onToast: (msg: string) => void;
-}) {
-  const store = useSchoolStore();
-
-  const handleCompute = () => {
-    schoolStore.calculateAndSaveExamResults(exam.id);
-    onToast('Exam results re-calculated across all papers.');
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xs font-bold text-foreground">Official Examination Results</h3>
-          <p className="text-[11px] text-muted-foreground">
-            Aggregated scores, overall percentage, Pass/Fail status, and publication status.
-          </p>
-        </div>
-        <Button size="sm" variant="outline" className="h-7.5 text-xs gap-1.5" onClick={handleCompute}>
-          <RefreshCw className="h-3 w-3" />
-          Recompute Results
-        </Button>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
-              <tr>
-                <th className="py-2.5 px-3 font-bold text-emerald-700">Exam Roll No.</th>
-                <th className="py-2.5 px-3">Student</th>
+                <th className="py-2.5 px-3">Admission ID</th>
+                <th className="py-2.5 px-3">Class &amp; Section</th>
                 <th className="py-2.5 px-3">Campus</th>
-                <th className="py-2.5 px-3">Total Marks</th>
-                <th className="py-2.5 px-3">Percentage</th>
-                <th className="py-2.5 px-3">Grade</th>
-                <th className="py-2.5 px-3">Result</th>
-                <th className="py-2.5 px-3 text-right">Status</th>
+                <th className="py-2.5 px-3">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {results.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-muted-foreground">
-                    No results compiled yet. Click &ldquo;Recompute Results&rdquo; after entering marks.
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    No matching student candidates found.
                   </td>
                 </tr>
               ) : (
-                results.map((r) => {
-                  const std = store.students.find((s) => s.id === r.studentId);
-                  const campus = store.campuses.find((c) => c.id === r.campusId);
-
-                  return (
-                    <tr key={r.id} className="hover:bg-muted/20">
-                      <td className="py-2 px-3 font-mono font-bold text-emerald-600">{r.examRollNumber}</td>
-                      <td className="py-2 px-3 font-medium text-foreground">{std?.name || 'Student'}</td>
-                      <td className="py-2 px-3 text-muted-foreground">{campus?.name}</td>
-                      <td className="py-2 px-3 font-mono">
-                        {r.totalMarks} / {r.maxTotalMarks}
-                      </td>
-                      <td className="py-2 px-3 font-mono font-bold text-primary">{r.percentage}%</td>
-                      <td className="py-2 px-3 font-bold">{r.grade}</td>
-                      <td className="py-2 px-3">
-                        <Badge
-                          variant={r.overallStatus === 'PASS' ? 'default' : r.overallStatus === 'COMPARTMENT' ? 'outline' : 'destructive'}
-                          className="text-[10px]"
-                        >
-                          {r.overallStatus}
-                        </Badge>
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {r.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })
+                filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-muted/20">
+                    <td className="py-2 px-3 font-mono font-bold text-emerald-600 text-xs">
+                      {c.rollNumber || '—'}
+                    </td>
+                    <td className="py-2 px-3 font-semibold text-foreground">{c.name}</td>
+                    <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">
+                      {c.admissionNumber}
+                    </td>
+                    <td className="py-2 px-3">
+                      {c.className} - {c.sectionName}
+                    </td>
+                    <td className="py-2 px-3">
+                      <Badge variant="outline" className="text-[10px]">
+                        {c.campusName || 'Main Campus'}
+                      </Badge>
+                    </td>
+                    <td className="py-2 px-3">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {c.status || 'ACTIVE'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -1223,58 +773,480 @@ function ExamTabResults({
 }
 
 // ---------------------------------------------------------------------------
-// SUB-TAB 9: DOCUMENTS (PRINT CENTER LINK)
+// SUB-TAB 5: ROLL NUMBERS
 // ---------------------------------------------------------------------------
-function ExamTabDocuments({ exam }: { exam: Exam }) {
+function ExamTabRollNumbers({
+  candidates,
+  onRefresh,
+  onToast,
+}: {
+  candidates: any[];
+  onRefresh: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const [editingStudentId, setEditingStudentId] = React.useState<string | null>(null);
+  const [newRoll, setNewRoll] = React.useState('');
+  const [isUpdating, setIsUpdating] = React.useState(false);
+
+  const handleSaveRoll = async (studentId: string) => {
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rollNumber: newRoll.trim() }),
+      });
+      if (res.ok) {
+        onToast('Roll number updated and persisted.');
+        setEditingStudentId(null);
+        onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onToast(err.message || 'Failed to update roll number.');
+      }
+    } catch (e: any) {
+      onToast('Error updating roll number.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
-      <Card className="p-4 space-y-3">
-        <div className="h-9 w-9 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
-          <FileText className="h-5 w-5" />
-        </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="font-bold text-xs text-foreground">Student Admit Cards</div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Formal examination hall tickets with permanent ID, class roll, stable exam roll, and schedule.
+          <h3 className="text-xs font-bold text-foreground">Authoritative Roll Number Registry</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Directly update and manage student roll numbers persisted to database.
           </p>
         </div>
-        <Link href={`/school/exams/${exam.id}/documents`}>
-          <Button size="sm" variant="outline" className="w-full text-xs">
-            Generate Admit Cards
+        <Link href="/school/exams/roll-numbers">
+          <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 cursor-pointer">
+            <Hash className="h-3.5 w-3.5" />
+            Open Full Roll Allocation Engine
           </Button>
         </Link>
-      </Card>
+      </div>
 
-      <Card className="p-4 space-y-3">
-        <div className="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-          <Award className="h-5 w-5" />
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
+              <tr>
+                <th className="py-2.5 px-3">Student Name</th>
+                <th className="py-2.5 px-3">Admission No</th>
+                <th className="py-2.5 px-3">Class &amp; Section</th>
+                <th className="py-2.5 px-3">Assigned Roll</th>
+                <th className="py-2.5 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {candidates.map((c) => {
+                const isEditing = editingStudentId === c.id;
+                return (
+                  <tr key={c.id} className="hover:bg-muted/20">
+                    <td className="py-2 px-3 font-semibold text-foreground">{c.name}</td>
+                    <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">{c.admissionNumber}</td>
+                    <td className="py-2 px-3">{c.className} - {c.sectionName}</td>
+                    <td className="py-2 px-3">
+                      {isEditing ? (
+                        <Input
+                          value={newRoll}
+                          onChange={(e) => setNewRoll(e.target.value)}
+                          className="h-7 w-24 text-xs font-mono"
+                          placeholder="e.g. 01"
+                        />
+                      ) : (
+                        <span className="font-mono font-bold text-emerald-600">{c.rollNumber || 'Unassigned'}</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      {isEditing ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            disabled={isUpdating}
+                            onClick={() => handleSaveRoll(c.id)}
+                            className="h-6.5 text-[11px] px-2 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingStudentId(null)}
+                            className="h-6.5 text-[11px] px-2"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingStudentId(c.id);
+                            setNewRoll(c.rollNumber || '');
+                          }}
+                          className="h-6.5 text-[11px] px-2 cursor-pointer"
+                        >
+                          Edit Roll
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SUB-TAB 6: ATTENDANCE
+// ---------------------------------------------------------------------------
+function ExamTabAttendance({
+  examId,
+  papers,
+  classes,
+  onToast,
+}: {
+  examId: string;
+  papers: LiveExamPaper[];
+  classes: any[];
+  onToast: (msg: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="font-bold text-xs text-foreground">Official Marksheets</div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Tabular subject transcripts with grading criteria, percentage, and principal seal.
+          <h3 className="text-xs font-bold text-foreground">Examination Hall Attendance</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Hall seating verification and student presence recording.
           </p>
         </div>
-        <Link href={`/school/exams/${exam.id}/documents`}>
-          <Button size="sm" variant="outline" className="w-full text-xs">
-            Print Marksheets
-          </Button>
-        </Link>
-      </Card>
+      </div>
 
-      <Card className="p-4 space-y-3">
-        <div className="h-9 w-9 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
-          <Calendar className="h-5 w-5" />
+      <Card className="p-8 text-center space-y-2">
+        <Users className="h-8 w-8 text-primary mx-auto opacity-70" />
+        <h4 className="text-xs font-bold text-foreground">Direct Hall Seating Attendance</h4>
+        <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+          Candidate examination attendance statuses (Present, Absent, Exempt) are integrated with individual paper evaluation under Marks Entry.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SUB-TAB 7: MARKS ENTRY
+// ---------------------------------------------------------------------------
+function ExamTabMarks({
+  examId,
+  papers,
+  classes,
+  onToast,
+}: {
+  examId: string;
+  papers: LiveExamPaper[];
+  classes: any[];
+  onToast: (msg: string) => void;
+}) {
+  const [selectedPaperId, setSelectedPaperId] = React.useState<string>(papers[0]?.id || '');
+  const [selectedClassId, setSelectedClassId] = React.useState<string>(classes[0]?.id || '');
+  const [selectedSectionId, setSelectedSectionId] = React.useState<string>(classes[0]?.sections?.[0]?.id || '');
+  const [roster, setRoster] = React.useState<any[]>([]);
+  const [scores, setScores] = React.useState<Record<string, number>>({});
+  const [isLoadingRoster, setIsLoadingRoster] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const selectedPaper = papers.find((p) => p.id === selectedPaperId) || papers[0];
+  const selectedClass = classes.find((c) => c.id === selectedClassId) || classes[0];
+
+  const fetchRoster = React.useCallback(async () => {
+    if (!selectedPaperId || !selectedClassId || !selectedSectionId) return;
+    setIsLoadingRoster(true);
+    try {
+      const res = await fetch(
+        `/api/results/marks?examTermId=${examId}&paperId=${selectedPaperId}&classId=${selectedClassId}&sectionId=${selectedSectionId}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setRoster(data.roster || []);
+        const initialScores: Record<string, number> = {};
+        (data.roster || []).forEach((r: any) => {
+          if (r.marksObtained !== null && r.marksObtained !== undefined) {
+            initialScores[r.student.id] = r.marksObtained;
+          }
+        });
+        setScores(initialScores);
+      } else {
+        setRoster([]);
+      }
+    } catch (err) {
+      console.error('Error fetching marks roster:', err);
+    } finally {
+      setIsLoadingRoster(false);
+    }
+  }, [examId, selectedPaperId, selectedClassId, selectedSectionId]);
+
+  React.useEffect(() => {
+    fetchRoster();
+  }, [fetchRoster]);
+
+  const handleScoreChange = (studentId: string, val: string) => {
+    const num = Number(val);
+    if (isNaN(num)) return;
+    const max = selectedPaper?.maxMarks || 100;
+    const clamped = Math.max(0, Math.min(max, num));
+    setScores((prev) => ({ ...prev, [studentId]: clamped }));
+  };
+
+  const handleSaveMarks = async () => {
+    if (!selectedPaperId) return;
+    setIsSaving(true);
+    try {
+      const payload = {
+        examTermId: examId,
+        paperId: selectedPaperId,
+        marks: roster.map((r) => ({
+          studentId: r.student.id,
+          marksObtained: scores[r.student.id] ?? 0,
+          status: 'PRESENT',
+          remarks: '',
+        })),
+      };
+
+      const res = await fetch('/api/results/marks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        onToast('Marks saved successfully to database!');
+        fetchRoster();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onToast(err.message || 'Failed to save marks.');
+      }
+    } catch (err) {
+      onToast('Error saving marks.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Select Paper */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Paper:</span>
+            <select
+              value={selectedPaperId}
+              onChange={(e) => setSelectedPaperId(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              {papers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (Max: {p.maxMarks})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Select Class */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Class:</span>
+            <select
+              value={selectedClassId}
+              onChange={(e) => {
+                setSelectedClassId(e.target.value);
+                const cls = classes.find((c) => c.id === e.target.value);
+                if (cls?.sections?.[0]) {
+                  setSelectedSectionId(cls.sections[0].id);
+                }
+              }}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Select Section */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Section:</span>
+            <select
+              value={selectedSectionId}
+              onChange={(e) => setSelectedSectionId(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              {(selectedClass?.sections || []).map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  Section {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        <Button
+          size="sm"
+          disabled={isSaving || roster.length === 0}
+          onClick={handleSaveMarks}
+          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer flex items-center gap-1.5"
+        >
+          {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Save Candidate Marks
+        </Button>
+      </div>
+
+      <Card className="overflow-hidden">
+        {isLoadingRoster ? (
+          <div className="py-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span>Loading candidates for marks entry...</span>
+          </div>
+        ) : roster.length === 0 ? (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            No enrolled students found for the selected Class &amp; Section in this academic cycle.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/50 border-b text-[10px] uppercase text-muted-foreground font-medium">
+                <tr>
+                  <th className="py-2.5 px-3">Student Name</th>
+                  <th className="py-2.5 px-3">Admission No</th>
+                  <th className="py-2.5 px-3">Max Marks</th>
+                  <th className="py-2.5 px-3">Passing Marks</th>
+                  <th className="py-2.5 px-3 w-36">Marks Obtained</th>
+                  <th className="py-2.5 px-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {roster.map((r) => {
+                  const score = scores[r.student.id] ?? 0;
+                  const max = selectedPaper?.maxMarks || 100;
+                  const pass = selectedPaper?.passingMarks || 35;
+                  const isPass = score >= pass;
+
+                  return (
+                    <tr key={r.student.id} className="hover:bg-muted/20">
+                      <td className="py-2.5 px-3 font-semibold text-foreground">
+                        {r.student.firstName} {r.student.lastName}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-muted-foreground">
+                        {r.student.admissionNumber}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-muted-foreground">{max}</td>
+                      <td className="py-2.5 px-3 font-mono text-emerald-600">{pass}</td>
+                      <td className="py-2.5 px-3">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={max}
+                          value={score}
+                          onChange={(e) => handleScoreChange(r.student.id, e.target.value)}
+                          className="h-7 w-24 text-xs font-mono"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge variant={isPass ? 'default' : 'destructive'} className="text-[10px]">
+                          {isPass ? 'Pass' : 'Fail'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SUB-TAB 8: RESULTS
+// ---------------------------------------------------------------------------
+function ExamTabResults({
+  examId,
+  isPublished,
+  onToast,
+}: {
+  examId: string;
+  isPublished: boolean;
+  onToast: (msg: string) => void;
+}) {
+  const [isCalculating, setIsCalculating] = React.useState(false);
+
+  const handleRecompute = async () => {
+    setIsCalculating(true);
+    try {
+      const res = await fetch('/api/results/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examTermId: examId }),
+      });
+      if (res.ok) {
+        onToast('Results re-calculated and compiled authoritative server-side!');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onToast(err.message || 'Failed to recompute results.');
+      }
+    } catch (e) {
+      onToast('Error recalculating results.');
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="font-bold text-xs text-foreground">Examination Timetable</div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Institutional timetable posters sorted by date, shift, campus, and stream.
+          <h3 className="text-xs font-bold text-foreground">Official Examination Results</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Aggregated candidate scores, percentage, pass/fail classification, and parent publication.
           </p>
         </div>
-        <Link href={`/school/exams/${exam.id}/documents`}>
-          <Button size="sm" variant="outline" className="w-full text-xs">
-            Print Timetables
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isCalculating}
+          onClick={handleRecompute}
+          className="h-8 text-xs gap-1.5 cursor-pointer"
+        >
+          {isCalculating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          Recompute Results
+        </Button>
+      </div>
+
+      <Card className="p-8 text-center space-y-3">
+        <Award className="h-8 w-8 text-emerald-600 mx-auto opacity-80" />
+        <h4 className="text-xs font-bold text-foreground">
+          {isPublished ? 'Examination Results Published' : 'Results Compiled in Draft State'}
+        </h4>
+        <p className="text-[11px] text-muted-foreground max-w-md mx-auto">
+          {isPublished
+            ? 'Results have been compiled and published. Published results are accessible to verified parents through Parent Portal and printable via Exam Print Center.'
+            : 'Click "Calculate & Publish Results" in the header to compile results and publish them to students and parents.'}
+        </p>
+        <Link href={`/school/exams/${examId}/documents`}>
+          <Button size="sm" variant="outline" className="text-xs h-7.5 gap-1.5 mt-2 cursor-pointer">
+            <Printer className="h-3.5 w-3.5" />
+            Open Print Center for Marksheets &amp; Results
           </Button>
         </Link>
       </Card>
@@ -1283,71 +1255,166 @@ function ExamTabDocuments({ exam }: { exam: Exam }) {
 }
 
 // ---------------------------------------------------------------------------
-// SUB-TAB 10: ACTIVITY & AUDIT LOG
+// SUB-TAB 9: DOCUMENTS (PRINT CENTER)
 // ---------------------------------------------------------------------------
-function ExamTabActivity({ exam }: { exam: Exam }) {
+function ExamTabDocuments({ examId }: { examId: string }) {
   return (
-    <Card className="p-4 space-y-3">
-      <div className="font-semibold text-xs text-foreground">Examination Lifecycle Audit Log</div>
-      <div className="space-y-2 text-xs">
-        <div className="p-2 rounded border bg-muted/20">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold">Formal Examination Cycle Created</span>
-            <span className="text-[10px] text-muted-foreground font-mono">{exam.createdAt || '2025-08-10'}</span>
-          </div>
-          <p className="text-[11px] text-muted-foreground">Authorized by Academic Director</p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-xs font-bold text-foreground">Examination Print Center</h3>
+          <p className="text-[11px] text-muted-foreground">
+            Print-ready official documents including Admit Cards, Overall Datesheets, and Class Schedules.
+          </p>
         </div>
-        <div className="p-2 rounded border bg-muted/20">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold">Candidate Roster Synchronized</span>
-            <span className="text-[10px] text-muted-foreground font-mono">2025-08-12</span>
-          </div>
-          <p className="text-[11px] text-muted-foreground">Dual roll mapping verified for multi-campus scope</p>
-        </div>
+        <Link href={`/school/exams/${examId}/documents`}>
+          <Button size="sm" className="h-8 text-xs gap-1.5 bg-primary text-primary-foreground cursor-pointer">
+            <Printer className="h-3.5 w-3.5" />
+            Launch Full Print Workspace
+          </Button>
+        </Link>
       </div>
-    </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="p-4 space-y-2">
+          <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+            <FileText className="h-4 w-4 text-primary" />
+            <span>Candidate Admit Cards</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Official hall admission cards with roll numbers, datesheet, instructions, and signature boxes.
+          </p>
+          <Link href={`/school/exams/${examId}/documents`}>
+            <Button size="sm" variant="outline" className="w-full text-xs h-7.5 mt-2 cursor-pointer">
+              Print Admit Cards
+            </Button>
+          </Link>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+            <Calendar className="h-4 w-4 text-indigo-600" />
+            <span>Master Datesheet</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Complete institutional datesheet with paper times, room allocations, and shift schedules.
+          </p>
+          <Link href={`/school/exams/${examId}/documents`}>
+            <Button size="sm" variant="outline" className="w-full text-xs h-7.5 mt-2 cursor-pointer">
+              Print Master Datesheet
+            </Button>
+          </Link>
+        </Card>
+
+        <Card className="p-4 space-y-2">
+          <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+            <Award className="h-4 w-4 text-emerald-600" />
+            <span>Class Marksheets</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Official consolidated grade sheets and subject-wise score matrices for archival.
+          </p>
+          <Link href={`/school/exams/${examId}/documents`}>
+            <Button size="sm" variant="outline" className="w-full text-xs h-7.5 mt-2 cursor-pointer">
+              Print Marksheets
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ADD EXAM PAPER DIALOG (WITH SUBJECT SELECTOR & FORM STATE PRESERVATION)
+// SUB-TAB 10: ACTIVITY / AUDIT LOG
+// ---------------------------------------------------------------------------
+function ExamTabActivity({ exam }: { exam: LiveExamTerm }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-bold text-foreground">Examination Lifecycle Audit Trail</h3>
+      <Card className="p-4 space-y-3">
+        <div className="flex items-start gap-3 text-xs">
+          <div className="h-2 w-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+          <div>
+            <span className="font-semibold text-foreground">Examination Cycle Initialized</span>
+            <p className="text-[11px] text-muted-foreground">
+              Cycle &ldquo;{exam.name}&rdquo; configured for Academic Session {exam.academicSession?.name || '2025-26'}.
+            </p>
+          </div>
+        </div>
+
+        {exam.isPublished && (
+          <div className="flex items-start gap-3 text-xs pt-2 border-t">
+            <div className="h-2 w-2 rounded-full bg-primary mt-1.5 shrink-0" />
+            <div>
+              <span className="font-semibold text-foreground">Results Published</span>
+              <p className="text-[11px] text-muted-foreground">
+                Authoritative evaluation scores calculated and made visible to parents and students.
+              </p>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ADD EXAM PAPER DIALOG
 // ---------------------------------------------------------------------------
 function AddExamPaperDialog({
   examId,
+  subjects,
   isOpen,
   onClose,
   onSuccess,
 }: {
   examId: string;
+  subjects: any[];
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (paper: ExamPaper) => void;
+  onSuccess: () => void;
 }) {
-  const store = useSchoolStore();
-  const [subjectId, setSubjectId] = React.useState<string>(store.subjects[0]?.id || '');
-  const [paperCode, setPaperCode] = React.useState('');
+  const [subjectId, setSubjectId] = React.useState<string>(subjects[0]?.id || '');
+  const [paperName, setPaperName] = React.useState('');
   const [maxMarks, setMaxMarks] = React.useState(100);
   const [passingMarks, setPassingMarks] = React.useState(33);
-  const [durationMinutes, setDurationMinutes] = React.useState(180);
-  const [examMode, setExamMode] = React.useState<ExamMode>('OFFLINE');
-  const [instructions, setInstructions] = React.useState('Calculators prohibited. Standard stationery only.');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const handleSubmit = () => {
-    if (!subjectId) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subjectId || !paperName.trim()) {
+      setError('Please select a subject and specify a paper name.');
+      return;
+    }
 
-    const paper = schoolStore.createExamPaper({
-      examId,
-      subjectId,
-      paperCode: paperCode.trim().toUpperCase() || `PPR-${Math.floor(100 + Math.random() * 900)}`,
-      maxMarks,
-      passingMarks,
-      durationMinutes,
-      examMode,
-      instructions,
-      status: 'ACTIVE',
-    });
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/timetable/exam/papers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          examTermId: examId,
+          subjectId,
+          name: paperName.trim(),
+          maxMarks,
+          passingMarks,
+        }),
+      });
 
-    onSuccess(paper);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to create exam paper.');
+      }
+
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message || 'Error creating exam paper.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -1361,90 +1428,80 @@ function AddExamPaperDialog({
             <div>
               <DialogTitle className="text-base font-bold">Add Curriculum Exam Paper</DialogTitle>
               <DialogDescription className="text-xs">
-                Selects from the central subject store. Preserves form state if adding a new subject in-place.
+                Creates an evaluation paper connected to school subjects and persisted to database.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-3 pt-2">
-          {/* Reusable Subject Selector */}
-          <SubjectSelect
-            value={subjectId}
-            onChange={(id) => setSubjectId(id)}
-            label="Subject Course"
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <FormField label="Paper Code" required>
-              <Input
-                value={paperCode}
-                onChange={(e) => setPaperCode(e.target.value.toUpperCase())}
-                placeholder="e.g. MATH-10-HY"
-                className="h-8.5 text-xs font-mono uppercase"
-              />
-            </FormField>
-
-            <FormField label="Evaluation Mode" required>
-              <select
-                value={examMode}
-                onChange={(e) => setExamMode(e.target.value as ExamMode)}
-                className="w-full h-8.5 rounded-md border border-input bg-background px-2 text-xs"
-              >
-                <option value="OFFLINE">Offline (Pen &amp; Paper)</option>
-                <option value="ONLINE">Online CBT</option>
-                <option value="PRACTICAL">Practical / Viva</option>
-              </select>
-            </FormField>
+        {error && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2.5 text-xs text-destructive">
+            {error}
           </div>
+        )}
 
-          <div className="grid grid-cols-3 gap-2">
-            <FormField label="Max Marks" required>
-              <Input
-                type="number"
-                value={maxMarks}
-                onChange={(e) => setMaxMarks(parseInt(e.target.value, 10) || 100)}
-                className="h-8.5 text-xs font-mono"
-              />
-            </FormField>
+        <form onSubmit={handleSubmit} className="space-y-3 pt-2">
+          <FormField id="subjectId" label="Curriculum Subject" required>
+            <select
+              id="subjectId"
+              value={subjectId}
+              onChange={(e) => setSubjectId(e.target.value)}
+              className="w-full h-8 rounded-md border bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.code || 'Subj'})
+                </option>
+              ))}
+            </select>
+          </FormField>
 
-            <FormField label="Pass Marks" required>
-              <Input
-                type="number"
-                value={passingMarks}
-                onChange={(e) => setPassingMarks(parseInt(e.target.value, 10) || 33)}
-                className="h-8.5 text-xs font-mono"
-              />
-            </FormField>
-
-            <FormField label="Duration (Min)" required>
-              <Input
-                type="number"
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 180)}
-                className="h-8.5 text-xs font-mono"
-              />
-            </FormField>
-          </div>
-
-          <FormField label="Special Instructions">
+          <FormField id="paperName" label="Paper Name" required>
             <Input
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              className="h-8.5 text-xs"
+              id="paperName"
+              placeholder="e.g. Mathematics Paper 1, Chemistry Theory"
+              value={paperName}
+              onChange={(e) => setPaperName(e.target.value)}
+              className="text-xs"
+              required
             />
           </FormField>
 
-          <DialogFooter className="pt-2 border-t">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField id="maxMarks" label="Maximum Marks">
+              <Input
+                id="maxMarks"
+                type="number"
+                min={1}
+                value={maxMarks}
+                onChange={(e) => setMaxMarks(Number(e.target.value))}
+                className="text-xs font-mono"
+              />
+            </FormField>
+
+            <FormField id="passingMarks" label="Passing Marks">
+              <Input
+                id="passingMarks"
+                type="number"
+                min={0}
+                max={maxMarks}
+                value={passingMarks}
+                onChange={(e) => setPassingMarks(Number(e.target.value))}
+                className="text-xs font-mono"
+              />
+            </FormField>
+          </div>
+
+          <DialogFooter className="pt-3 border-t">
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isSubmitting} className="text-xs cursor-pointer">
               Cancel
             </Button>
-            <Button type="button" size="sm" className="bg-primary text-white text-xs" onClick={handleSubmit}>
-              Save Paper
+            <Button type="submit" size="sm" disabled={isSubmitting} className="text-xs cursor-pointer flex items-center gap-1.5">
+              {isSubmitting && <Loader2 className="h-3 w-3 animate-spin" />}
+              Create Exam Paper
             </Button>
           </DialogFooter>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

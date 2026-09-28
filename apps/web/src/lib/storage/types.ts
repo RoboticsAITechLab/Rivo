@@ -28,15 +28,30 @@ export interface UploadResult {
   scope: StorageScope;
 }
 
-export interface SignedUrlOptions {
-  storageKey: string;
+export interface DirectUploadSasOptions {
+  schoolId: string;
+  category: MediaCategory;
+  entityId: string;
+  subCategory?: string;
+  mimeType: string;
+  scope: StorageScope;
   expiresInSeconds?: number; // Default: 900 (15 minutes)
+}
+
+export interface DirectUploadSasResult {
+  storageKey: string;
+  uploadUrl: string; // Direct Azure Blob BlockBlob PUT URL with write-only SAS
+  scope: StorageScope;
+  expiresAt: string;
+  maxSizeBytes: number;
 }
 
 export interface MediaStorageService {
   upload(options: UploadOptions): Promise<UploadResult>;
+  generateDirectUploadSas(options: DirectUploadSasOptions): Promise<DirectUploadSasResult>;
   getSignedUrl(storageKey: string, expiresInSeconds?: number): Promise<string>;
   delete(storageKey: string): Promise<boolean>;
   exists(storageKey: string): Promise<boolean>;
   isConfigured(): boolean;
 }
+

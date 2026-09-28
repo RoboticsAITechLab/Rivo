@@ -31,19 +31,66 @@ export function deriveSchoolCode(schoolNameOrSlug: string): string {
   return slugAlpha.slice(0, 4) || 'SCH';
 }
 
+import { getRedisClient, isRedisHealthy } from '@/lib/redis/client';
+import { RedisKeys } from '@/lib/redis/keys';
+
+const localIdConfigCache = new Map<string, { data: IdFormatConfigData; expiresAt: number }>();
+const LOCAL_ID_CONFIG_TTL_MS = 60 * 1000; // 1 minute local in-memory cache
+const REDIS_ID_CONFIG_TTL_SEC = 300; // 5 minutes Redis cache
+
+/**
+ * Invalidates the cached ID format configuration for a school across local memory and Redis
+ */
+export async function invalidateIdFormatConfigCache(schoolId: string): Promise<void> {
+  localIdConfigCache.delete(schoolId);
+  const redis = getRedisClient();
+  if (redis && isRedisHealthy()) {
+    try {
+      await redis.del(RedisKeys.idFormatConfig(schoolId));
+    } catch {
+      // Ignore cache eviction failures to preserve correctness
+    }
+  }
+}
+
 /**
  * Retrieves the ID format configuration for a school, creating default settings if not yet stored.
+ * Implements two-tier caching: Local memory -> Redis -> PostgreSQL.
  */
 export async function getIdFormatConfig(
   schoolId: string,
   client: any = prisma
 ): Promise<IdFormatConfigData> {
+  const now = Date.now();
+
+  // Tier 1: Process-local in-memory cache
+  const localCached = localIdConfigCache.get(schoolId);
+  if (localCached && localCached.expiresAt > now) {
+    return localCached.data;
+  }
+
+  // Tier 2: Redis cache
+  const redis = getRedisClient();
+  if (redis && isRedisHealthy()) {
+    try {
+      const cached = await redis.get(RedisKeys.idFormatConfig(schoolId));
+      if (cached) {
+        const parsed = JSON.parse(cached) as IdFormatConfigData;
+        localIdConfigCache.set(schoolId, { data: parsed, expiresAt: now + LOCAL_ID_CONFIG_TTL_MS });
+        return parsed;
+      }
+    } catch {
+      // Safe fallback to PostgreSQL on Redis error
+    }
+  }
+
+  // Tier 3: PostgreSQL query (Authoritative Source of Truth)
   const existing = await client.idFormatConfig.findUnique({
     where: { schoolId },
   });
 
   if (existing) {
-    return {
+    const data: IdFormatConfigData = {
       schoolId: existing.schoolId,
       studentPrefix: existing.studentPrefix,
       teacherPrefix: existing.teacherPrefix,
@@ -53,6 +100,16 @@ export async function getIdFormatConfig(
       teacherPadding: existing.teacherPadding,
       staffPadding: existing.staffPadding,
     };
+
+    localIdConfigCache.set(schoolId, { data, expiresAt: now + LOCAL_ID_CONFIG_TTL_MS });
+    if (redis && isRedisHealthy()) {
+      try {
+        await redis.setex(RedisKeys.idFormatConfig(schoolId), REDIS_ID_CONFIG_TTL_SEC, JSON.stringify(data));
+      } catch {
+        // Safe ignore
+      }
+    }
+    return data;
   }
 
   // Derive initial prefix from School
@@ -76,7 +133,7 @@ export async function getIdFormatConfig(
     },
   });
 
-  return {
+  const configData: IdFormatConfigData = {
     schoolId: created.schoolId,
     studentPrefix: created.studentPrefix,
     teacherPrefix: created.teacherPrefix,
@@ -86,10 +143,22 @@ export async function getIdFormatConfig(
     teacherPadding: created.teacherPadding,
     staffPadding: created.staffPadding,
   };
+
+  localIdConfigCache.set(schoolId, { data: configData, expiresAt: now + LOCAL_ID_CONFIG_TTL_MS });
+  if (redis && isRedisHealthy()) {
+    try {
+      await redis.setex(RedisKeys.idFormatConfig(schoolId), REDIS_ID_CONFIG_TTL_SEC, JSON.stringify(configData));
+    } catch {
+      // Safe ignore
+    }
+  }
+
+  return configData;
 }
 
 /**
  * Updates or creates the ID format configuration for a school.
+ * Explicitly invalidates local cache and Redis to prevent stale reads.
  */
 export async function updateIdFormatConfig(
   schoolId: string,
@@ -135,7 +204,7 @@ export async function updateIdFormatConfig(
     },
   });
 
-  return {
+  const result: IdFormatConfigData = {
     schoolId: updated.schoolId,
     studentPrefix: updated.studentPrefix,
     teacherPrefix: updated.teacherPrefix,
@@ -145,6 +214,11 @@ export async function updateIdFormatConfig(
     teacherPadding: updated.teacherPadding,
     staffPadding: updated.staffPadding,
   };
+
+  // Explicit invalidation across tiers
+  await invalidateIdFormatConfigCache(schoolId);
+
+  return result;
 }
 
 /**

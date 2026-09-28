@@ -24,16 +24,28 @@ export interface ValidationResult {
   sanitizedExtension?: string;
 }
 
+export function getMaxCategorySizeBytes(category: MediaCategory): number {
+  return category === 'documents'
+    ? MAX_DOCUMENT_SIZE_BYTES
+    : category === 'branding'
+    ? MAX_BRANDING_SIZE_BYTES
+    : MAX_AVATAR_SIZE_BYTES;
+}
+
+export function getExtensionFromMime(mimeType: string): string {
+  const mime = mimeType.toLowerCase();
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'application/pdf') return 'pdf';
+  return 'bin';
+}
+
 /**
  * Validates file size against category threshold
  */
 export function validateFileSize(buffer: Buffer, category: MediaCategory): ValidationResult {
-  const maxBytes =
-    category === 'documents'
-      ? MAX_DOCUMENT_SIZE_BYTES
-      : category === 'branding'
-      ? MAX_BRANDING_SIZE_BYTES
-      : MAX_AVATAR_SIZE_BYTES;
+  const maxBytes = getMaxCategorySizeBytes(category);
 
   if (buffer.length > maxBytes) {
     const maxMb = Math.round(maxBytes / (1024 * 1024));

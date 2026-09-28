@@ -81,18 +81,46 @@ export async function GET(req: NextRequest) {
         skip,
         take: pageSize,
         orderBy: { admissionNumber: 'asc' },
-        include: {
-          campus: true,
+        select: {
+          id: true,
+          admissionNumber: true,
+          firstName: true,
+          lastName: true,
+          gender: true,
+          dateOfBirth: true,
+          bloodGroup: true,
+          stream: true,
+          house: true,
+          status: true,
+          phone: true,
+          email: true,
+          address: true,
+          photoUrl: true,
+          createdAt: true,
+          campus: {
+            select: { name: true },
+          },
           enrollments: {
             where: { status: 'ACTIVE' },
-            include: {
-              class: true,
-              section: true,
-              academicSession: true,
+            select: {
+              id: true,
+              rollNumber: true,
+              class: { select: { name: true } },
+              section: { select: { name: true } },
+              academicSession: { select: { name: true } },
             },
           },
           parentStudents: {
-            include: { parent: true },
+            select: {
+              isPrimaryContact: true,
+              parent: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  phone: true,
+                },
+              },
+            },
           },
         },
       }),
@@ -121,7 +149,7 @@ export async function GET(req: NextRequest) {
         campusName: s.campus?.name || 'Main Campus',
         className: activeEnrollment?.class?.name || 'Unassigned',
         sectionName: activeEnrollment?.section?.name || 'Unassigned',
-        rollNumber: activeEnrollment?.id ? '01' : null,
+        rollNumber: activeEnrollment?.rollNumber || null,
         sessionName: activeEnrollment?.academicSession?.name || null,
         guardianName: primaryGuardian ? `${primaryGuardian.parent.firstName} ${primaryGuardian.parent.lastName}` : null,
         guardianPhone: primaryGuardian?.parent.phone || null,

@@ -85,7 +85,14 @@ export function useClasses() {
       setIsLoading(true);
       const sectionNames = classItem.sections?.map((s) => s.name) || ['A'];
 
-      if (classItem.id && !classItem.id.startsWith('cls-temp-') && !classItem.id.startsWith('mock-')) {
+      const isExisting = Boolean(
+        classItem.id &&
+        !classItem.id.startsWith('cls-temp-') &&
+        !classItem.id.startsWith('mock-') &&
+        classes.some((c) => c.id === classItem.id)
+      );
+
+      if (isExisting && classItem.id) {
         // Update existing class
         const res = await fetch(`/api/classes/${classItem.id}`, {
           method: 'PUT',
@@ -98,6 +105,26 @@ export function useClasses() {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData?.message || 'Failed to update class.');
+        }
+
+        // Create any newly added sections if they don't exist yet on the server
+        if (classItem.sections && classItem.sections.length > 0) {
+          const currentClass = classes.find((c) => c.id === classItem.id);
+          const existingSectionNames = new Set(
+            (currentClass?.sections || []).map((s) => s.name.toUpperCase())
+          );
+          for (const sec of classItem.sections) {
+            if (!existingSectionNames.has(sec.name.toUpperCase())) {
+              await fetch('/api/sections', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  classId: classItem.id,
+                  name: sec.name.toUpperCase(),
+                }),
+              }).catch(() => null);
+            }
+          }
         }
       } else {
         // Create new class

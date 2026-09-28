@@ -25,7 +25,21 @@ export async function GET() {
   // 2. Check Redis
   const redisHealth = await checkRedisHealth();
 
-  // 3. Check Email Provider configuration
+  // 3. Check Azure Storage
+  let storageStatus = 'unconfigured';
+  try {
+    const connStr = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    if (connStr) {
+      const { BlobServiceClient } = await import('@azure/storage-blob');
+      const client = BlobServiceClient.fromConnectionString(connStr);
+      await client.getProperties();
+      storageStatus = 'connected';
+    }
+  } catch (err) {
+    storageStatus = 'unavailable';
+  }
+
+  // 4. Check Email Provider configuration
   const emailClient = getResendClient();
   const emailStatus = emailClient ? 'configured' : 'mock/local';
 
@@ -44,6 +58,9 @@ export async function GET() {
         redis: {
           status: redisHealth.status,
           latencyMs: redisHealth.latencyMs,
+        },
+        storage: {
+          status: storageStatus,
         },
         email: {
           status: emailStatus,

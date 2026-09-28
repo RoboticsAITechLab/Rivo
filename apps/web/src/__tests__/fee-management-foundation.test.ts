@@ -14,7 +14,10 @@ import {
   reverseFeePayment,
   getStudentFeeLedger,
   getReceiptPrintData,
+  applyAdHocConcession,
+  reverseAdHocConcession,
 } from '../lib/fees/fee-payment-service';
+import { generateReceiptPdfBuffer } from '../lib/fees/fee-pdf-service';
 import {
   generateNextReceiptNumber,
   generateNextPaymentNumber,
@@ -532,8 +535,127 @@ async function runFeeManagementTests() {
     assert(actions.includes('PAYMENT_COLLECTED'), 48, 'FeeAuditLog: PAYMENT_COLLECTED recorded');
     assert(actions.includes('PAYMENT_REVERSED'), 49, 'FeeAuditLog: PAYMENT_REVERSED recorded');
 
+    // -------------------------------------------------------------
+    // TEST 21: Workstream A - Apply Mid-Year Ad-Hoc Fixed Concession
+    // -------------------------------------------------------------
+    // Student 1 has unpaid obligations with ₹40,000 balance total.
+    // Grant ₹5,000 merit concession.
+    const concResult = await applyAdHocConcession(
+      schoolAId,
+      {
+        studentId: student1Id,
+        studentEnrollmentId: enrollment1Id,
+        academicSessionId: sessionAId,
+        type: 'FIXED_AMOUNT',
+        rateOrAmount: 5000,
+        category: 'MERIT',
+        reason: 'Mid-term academic honors concession approved by Principal',
+      },
+      adminAUserId
+    );
+    assert(concResult.success === true, 50, 'Mid-year concession applied successfully');
+    assert(concResult.totalAppliedConcession === 5000, 51, 'Exact ₹5,000 concession applied across obligations');
+
+    const updatedLedger = await getStudentFeeLedger(schoolAId, student1Id, sessionAId);
+    assert(updatedLedger.summary.totalBalance === 35000, 52, 'Student total balance reduced from ₹40,000 to ₹35,000');
+    assert(updatedLedger.summary.totalPaid === 20000, 53, 'Historical paid amount strictly unchanged at ₹20,000');
+
+    // -------------------------------------------------------------
+    // TEST 22: Concession Exceeding Outstanding Dues Blocked
+    // -------------------------------------------------------------
+    let excessConcessionBlocked = false;
+    try {
+      await applyAdHocConcession(
+        schoolAId,
+        {
+          studentId: student1Id,
+          studentEnrollmentId: enrollment1Id,
+          academicSessionId: sessionAId,
+          type: 'FIXED_AMOUNT',
+          rateOrAmount: 999999, // Exceeds outstanding
+          category: 'MERIT',
+          reason: 'Excessive concession attempt',
+        },
+        adminAUserId
+      );
+    } catch (err: any) {
+      if (err.message.includes('exceeds')) {
+        excessConcessionBlocked = true;
+      }
+    }
+    assert(excessConcessionBlocked, 54, 'Concession exceeding outstanding balance strictly rejected');
+
+    // -------------------------------------------------------------
+    // TEST 23: Workstream A - Reversal of Applied Concession
+    // -------------------------------------------------------------
+    const affectedObId = concResult.affectedObligations[0].obligationId;
+    const revConcResult = await reverseAdHocConcession(
+      schoolAId,
+      {
+        obligationId: affectedObId,
+        reversalReason: 'Concession applied erroneously to student',
+      },
+      adminAUserId
+    );
+    assert(revConcResult.success === true, 55, 'Applied concession reversed successfully');
+
+    const ledgerAfterRev = await getStudentFeeLedger(schoolAId, student1Id, sessionAId);
+    assert(ledgerAfterRev.summary.totalBalance === 40000, 56, 'Outstanding balance restored to ₹40,000 after reversal');
+
+    // -------------------------------------------------------------
+    // TEST 24: Workstream B - Server-Side PDF Binary Generation
+    // -------------------------------------------------------------
+    const pdfBytes = await generateReceiptPdfBuffer({
+      schoolName: 'Delhi Public Test School',
+      schoolAddress: 'Sector 24, Rohini, New Delhi',
+      schoolPhone: '+91 11 2345 6789',
+      schoolEmail: 'accounts@dps-test.edu',
+      receiptNumber: 'RCP-2026-00001',
+      paymentNumber: 'PAY-2026-00001',
+      receiptDate: new Date(),
+      paymentMode: 'CASH',
+      status: 'ISSUED',
+      studentName: 'Aarav Sharma',
+      admissionNumber: 'ADM-2026-001',
+      className: 'Class 10',
+      sectionName: 'A',
+      rollNumber: '1',
+      fatherName: 'Rajesh Sharma',
+      allocations: [
+        { title: 'Quarter 1 Tuition Fee', amount: 15000 },
+        { title: 'Quarter 2 Tuition Fee', amount: 5000 },
+      ],
+      totalPaid: 20000,
+      issuedByName: 'Accounts Office',
+    });
+
+    assert(pdfBytes instanceof Uint8Array, 57, 'generateReceiptPdfBuffer returned Uint8Array binary');
+    assert(pdfBytes.byteLength > 500, 58, 'PDF document byte length is valid (> 500 bytes)');
+
+    // Verify PDF Magic Header bytes: %PDF- (ASCII: 0x25, 0x50, 0x44, 0x46, 0x2D)
+    const headerStr = Buffer.from(pdfBytes.slice(0, 5)).toString('ascii');
+    assert(headerStr === '%PDF-', 59, 'Generated binary contains valid %PDF- magic signature header');
+
+    // -------------------------------------------------------------
+    // TEST 25: Workstream B - Cancelled Receipt PDF Rendering
+    // -------------------------------------------------------------
+    const cancelledPdfBytes = await generateReceiptPdfBuffer({
+      schoolName: 'Delhi Public Test School',
+      receiptNumber: 'RCP-2026-00001',
+      paymentNumber: 'PAY-2026-00001',
+      receiptDate: new Date(),
+      paymentMode: 'CASH',
+      status: 'CANCELLED',
+      studentName: 'Aarav Sharma',
+      admissionNumber: 'ADM-2026-001',
+      allocations: [{ title: 'Quarter 1 Tuition Fee', amount: 20000 }],
+      totalPaid: 20000,
+    });
+    const cancelledHeader = Buffer.from(cancelledPdfBytes.slice(0, 5)).toString('ascii');
+    assert(cancelledHeader === '%PDF-', 60, 'Cancelled status PDF generated with valid structure');
+
     console.log('\n================================================================');
-    console.log('🎉 ALL 49 FEE MANAGEMENT FOUNDATION & FINANCIAL TESTS PASSED!');
+    console.log('🎉 ALL 60 FEE MANAGEMENT FOUNDATION & ADVANCED TESTS PASSED!');
     console.log('================================================================');
   } catch (error) {
     console.error('Fatal error during fee tests:', error);

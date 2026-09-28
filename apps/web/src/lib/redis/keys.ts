@@ -36,4 +36,12 @@ export const RedisKeys = {
   mfaRateLimit(userId: string): string {
     return `rivo:rl:mfa:user:${userId}`;
   },
+
+  /**
+   * Tenant ID Format Config cache key: rivo:{env}:{schoolId}:config:id_format
+   */
+  idFormatConfig(schoolId: string): string {
+    const env = process.env.NODE_ENV === 'production' ? 'prod' : 'dev';
+    return `rivo:${env}:${schoolId}:config:id_format`;
+  },
 };

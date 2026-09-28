@@ -518,6 +518,7 @@ model StudentEnrollment {
 
   @@unique([studentId, academicSessionId])
   @@index([schoolId])
+  @@index([schoolId, classId, sectionId, status])
   @@index([studentId])
   @@index([academicSessionId])
   @@index([classId, sectionId])
@@ -573,6 +574,7 @@ model AttendanceRegister {
 
   @@unique([schoolId, academicSessionId, classId, sectionId, date, subjectId])
   @@index([schoolId])
+  @@index([schoolId, date])
   @@index([academicSessionId])
   @@index([classId, sectionId])
   @@index([date])
@@ -1539,6 +1541,7 @@ model FeeObligation {
   allocations       FeePaymentAllocation[]
 
   @@index([schoolId, studentId, status])
+  @@index([schoolId, studentEnrollmentId, status])
   @@index([studentEnrollmentId, dueDate])
   @@index([assignmentId])
   @@index([academicSessionId])

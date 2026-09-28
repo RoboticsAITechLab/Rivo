@@ -1,4 +1,13 @@
-export type UserRole = 'SCHOOL_ADMIN' | 'TEACHER' | 'STUDENT';
+export type UserRole =
+  | 'DIRECTOR'
+  | 'PRINCIPAL'
+  | 'ADMIN'
+  | 'TEACHER'
+  | 'STAFF'
+  | 'STUDENT'
+  | 'PARENT'
+  | 'SCHOOL_ADMIN'
+  | 'OWNER';
 
 export interface CurrentUser {
   id: string;

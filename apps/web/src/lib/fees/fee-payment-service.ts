@@ -499,6 +499,7 @@ export async function getReceiptPrintData(schoolId: string, receiptId: string) {
       },
       payment: true,
       student: { select: { id: true, admissionNumber: true, email: true, phone: true } },
+      issuedByUser: { select: { id: true, firstName: true, lastName: true } },
     },
   });
 
@@ -507,4 +508,354 @@ export async function getReceiptPrintData(schoolId: string, receiptId: string) {
   }
 
   return receipt;
+}
+
+export interface ApplyAdHocConcessionInput {
+  studentId: string;
+  studentEnrollmentId: string;
+  academicSessionId: string;
+  type: 'FIXED_AMOUNT' | 'PERCENTAGE';
+  rateOrAmount: number;
+  category: string;
+  reason: string;
+  obligationIds?: string[]; // If specified, apply to these obligations; otherwise oldest outstanding
+}
+
+export interface ReverseAdHocConcessionInput {
+  obligationId: string;
+  reversalReason: string;
+}
+
+/**
+ * Grants an auditable mid-year fee concession or waiver against a student's existing unpaid obligations.
+ * Does NOT mutate the master FeePlan or historical payments.
+ * Wrapped in an atomic transaction to ensure Decimal arithmetic safety and concurrency protection.
+ */
+export async function applyAdHocConcession(
+  schoolId: string,
+  params: ApplyAdHocConcessionInput,
+  userId: string
+) {
+  const {
+    studentId,
+    studentEnrollmentId,
+    academicSessionId,
+    type,
+    rateOrAmount,
+    category,
+    reason,
+    obligationIds,
+  } = params;
+
+  if (rateOrAmount <= 0) {
+    throw new Error('Concession amount or percentage must be greater than zero.');
+  }
+
+  if (!reason || reason.trim().length < 5) {
+    throw new Error('A detailed justification reason (at least 5 characters) is mandatory.');
+  }
+
+  // Verify student enrollment exists and belongs to this school
+  const enrollment = await prisma.studentEnrollment.findFirst({
+    where: {
+      id: studentEnrollmentId,
+      studentId,
+      schoolId,
+      academicSessionId,
+    },
+    include: {
+      student: { select: { id: true, firstName: true, lastName: true, admissionNumber: true } },
+      class: { select: { name: true } },
+    },
+  });
+
+  if (!enrollment) {
+    throw new Error('Student enrollment record not found for this school and session.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // 1. Fetch eligible obligations (with balanceAmount > 0 and not CANCELLED)
+    const whereClause: any = {
+      schoolId,
+      studentId,
+      studentEnrollmentId,
+      academicSessionId,
+      status: { not: FeeObligationStatus.CANCELLED },
+      balanceAmount: { gt: 0 },
+    };
+
+    if (obligationIds && obligationIds.length > 0) {
+      whereClause.id = { in: obligationIds };
+    }
+
+    const eligibleObligations = await tx.feeObligation.findMany({
+      where: whereClause,
+      orderBy: { dueDate: 'asc' },
+    });
+
+    if (eligibleObligations.length === 0) {
+      throw new Error('No eligible fee obligations with an outstanding balance were found.');
+    }
+
+    // 2. Determine concession distribution across target obligations
+    const updates: Array<{
+      obligation: typeof eligibleObligations[0];
+      concessionToApply: Prisma.Decimal;
+      newConcessionAmount: Prisma.Decimal;
+      newNetAmount: Prisma.Decimal;
+      newBalanceAmount: Prisma.Decimal;
+      newStatus: FeeObligationStatus;
+    }> = [];
+
+    let totalAppliedConcession = new Prisma.Decimal(0);
+
+    if (type === 'PERCENTAGE') {
+      const percentage = Number(rateOrAmount);
+      if (percentage <= 0 || percentage > 100) {
+        throw new Error('Percentage concession rate must be between 1 and 100.');
+      }
+
+      for (const ob of eligibleObligations) {
+        // Percentage is calculated against originalAmount, capped at remaining balanceAmount
+        const calculated = ob.originalAmount
+          .mul(percentage)
+          .div(100)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+        const concessionToApply = Prisma.Decimal.min(calculated, ob.balanceAmount);
+
+        if (concessionToApply.greaterThan(0)) {
+          const newConcessionAmount = ob.concessionAmount.add(concessionToApply);
+          const newNetAmount = ob.originalAmount.minus(newConcessionAmount);
+          const newBalanceAmount = ob.balanceAmount.minus(concessionToApply);
+          const newStatus = newBalanceAmount.equals(0)
+            ? (ob.paidAmount.greaterThan(0) ? FeeObligationStatus.PAID : FeeObligationStatus.WAIVED)
+            : ob.status;
+
+          updates.push({
+            obligation: ob,
+            concessionToApply,
+            newConcessionAmount,
+            newNetAmount,
+            newBalanceAmount,
+            newStatus,
+          });
+          totalAppliedConcession = totalAppliedConcession.add(concessionToApply);
+        }
+      }
+    } else {
+      // FIXED_AMOUNT: Sequential allocation across eligible obligations
+      let remainingToAllocate = new Prisma.Decimal(rateOrAmount);
+
+      // Check total available balance across selected obligations
+      const totalAvailableBalance = eligibleObligations.reduce(
+        (sum, ob) => sum.add(ob.balanceAmount),
+        new Prisma.Decimal(0)
+      );
+
+      if (remainingToAllocate.greaterThan(totalAvailableBalance)) {
+        throw new Error(
+          `Requested concession of ₹${remainingToAllocate} exceeds total eligible outstanding balance of ₹${totalAvailableBalance}.`
+        );
+      }
+
+      for (const ob of eligibleObligations) {
+        if (remainingToAllocate.lessThanOrEqualTo(0)) break;
+
+        const concessionToApply = Prisma.Decimal.min(remainingToAllocate, ob.balanceAmount);
+        const newConcessionAmount = ob.concessionAmount.add(concessionToApply);
+        const newNetAmount = ob.originalAmount.minus(newConcessionAmount);
+        const newBalanceAmount = ob.balanceAmount.minus(concessionToApply);
+        const newStatus = newBalanceAmount.equals(0)
+          ? (ob.paidAmount.greaterThan(0) ? FeeObligationStatus.PAID : FeeObligationStatus.WAIVED)
+          : ob.status;
+
+        updates.push({
+          obligation: ob,
+          concessionToApply,
+          newConcessionAmount,
+          newNetAmount,
+          newBalanceAmount,
+          newStatus,
+        });
+
+        remainingToAllocate = remainingToAllocate.minus(concessionToApply);
+        totalAppliedConcession = totalAppliedConcession.add(concessionToApply);
+      }
+    }
+
+    if (updates.length === 0 || totalAppliedConcession.equals(0)) {
+      throw new Error('Unable to apply concession: calculated adjustment amount is ₹0.');
+    }
+
+    // 3. Persist obligation updates atomically
+    const affectedObligationDetails = [];
+
+    for (const item of updates) {
+      await tx.feeObligation.update({
+        where: { id: item.obligation.id },
+        data: {
+          concessionAmount: item.newConcessionAmount,
+          netAmount: item.newNetAmount,
+          balanceAmount: item.newBalanceAmount,
+          status: item.newStatus,
+        },
+      });
+
+      affectedObligationDetails.push({
+        obligationId: item.obligation.id,
+        obligationTitle: item.obligation.title,
+        concessionApplied: item.concessionToApply.toNumber(),
+        beforeBalance: item.obligation.balanceAmount.toNumber(),
+        afterBalance: item.newBalanceAmount.toNumber(),
+        status: item.newStatus,
+      });
+    }
+
+    // 4. Update total custom concession amount on the parent StudentFeeAssignment
+    // We increment customConcessionAmount on the active assignment for this session
+    const primaryAssignment = await tx.studentFeeAssignment.findFirst({
+      where: {
+        schoolId,
+        studentId,
+        studentEnrollmentId,
+        academicSessionId,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (primaryAssignment) {
+      await tx.studentFeeAssignment.update({
+        where: { id: primaryAssignment.id },
+        data: {
+          customConcessionAmount: primaryAssignment.customConcessionAmount.add(totalAppliedConcession),
+          concessionReason: primaryAssignment.concessionReason
+            ? `${primaryAssignment.concessionReason} | [Mid-Year Concession: ₹${totalAppliedConcession} - ${reason.trim()}]`
+            : `[Mid-Year Concession: ₹${totalAppliedConcession} - ${reason.trim()}]`,
+        },
+      });
+    }
+
+    // 5. Append immutable FeeAuditLog
+    await tx.feeAuditLog.create({
+      data: {
+        schoolId,
+        action: 'CONCESSION_APPLIED',
+        entityType: 'FeeObligation',
+        entityId: eligibleObligations[0].id,
+        performedByUserId: userId,
+        details: JSON.stringify({
+          action: 'CONCESSION_GRANTED',
+          studentId,
+          studentEnrollmentId,
+          studentName: `${enrollment.student.firstName} ${enrollment.student.lastName}`.trim(),
+          admissionNumber: enrollment.student.admissionNumber,
+          type,
+          rateOrAmount,
+          category,
+          reason: reason.trim(),
+          totalAppliedConcession: totalAppliedConcession.toNumber(),
+          affectedObligations: affectedObligationDetails,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      totalAppliedConcession: totalAppliedConcession.toNumber(),
+      affectedObligations: affectedObligationDetails,
+    };
+  }, { maxWait: 15000, timeout: 30000 });
+}
+
+/**
+ * Reverses an applied concession from a specific obligation, restoring its balance.
+ */
+export async function reverseAdHocConcession(
+  schoolId: string,
+  params: ReverseAdHocConcessionInput,
+  userId: string
+) {
+  const { obligationId, reversalReason } = params;
+
+  if (!reversalReason || reversalReason.trim().length < 5) {
+    throw new Error('A detailed reversal explanation (at least 5 characters) is required.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const ob = await tx.feeObligation.findFirst({
+      where: { id: obligationId, schoolId },
+      include: {
+        assignment: true,
+        student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+      },
+    });
+
+    if (!ob) {
+      throw new Error('Fee obligation record not found for this school.');
+    }
+
+    if (ob.concessionAmount.lessThanOrEqualTo(0)) {
+      throw new Error('This obligation has no active concession to reverse.');
+    }
+
+    const reversedAmount = ob.concessionAmount;
+    const newConcessionAmount = new Prisma.Decimal(0);
+    const newNetAmount = ob.originalAmount;
+    const newBalanceAmount = ob.balanceAmount.add(reversedAmount);
+    const newStatus = ob.paidAmount.greaterThan(0)
+      ? (newBalanceAmount.equals(0) ? FeeObligationStatus.PAID : FeeObligationStatus.PARTIALLY_PAID)
+      : FeeObligationStatus.PENDING;
+
+    await tx.feeObligation.update({
+      where: { id: ob.id },
+      data: {
+        concessionAmount: newConcessionAmount,
+        netAmount: newNetAmount,
+        balanceAmount: newBalanceAmount,
+        status: newStatus,
+      },
+    });
+
+    // Update assignment record if exists
+    if (ob.assignment) {
+      const currentConcession = ob.assignment.customConcessionAmount;
+      const updatedConcession = Prisma.Decimal.max(0, currentConcession.minus(reversedAmount));
+      await tx.studentFeeAssignment.update({
+        where: { id: ob.assignment.id },
+        data: {
+          customConcessionAmount: updatedConcession,
+          concessionReason: ob.assignment.concessionReason
+            ? `${ob.assignment.concessionReason} | [Concession Reversed: ₹${reversedAmount} - ${reversalReason.trim()}]`
+            : `[Concession Reversed: ₹${reversedAmount} - ${reversalReason.trim()}]`,
+        },
+      });
+    }
+
+    // Append audit log
+    await tx.feeAuditLog.create({
+      data: {
+        schoolId,
+        action: 'CONCESSION_APPLIED',
+        entityType: 'FeeObligation',
+        entityId: ob.id,
+        performedByUserId: userId,
+        details: JSON.stringify({
+          action: 'CONCESSION_REVERSED',
+          obligationId: ob.id,
+          obligationTitle: ob.title,
+          studentId: ob.studentId,
+          reversedAmount: reversedAmount.toNumber(),
+          reversalReason: reversalReason.trim(),
+          restoredBalance: newBalanceAmount.toNumber(),
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      reversedAmount: reversedAmount.toNumber(),
+      restoredBalance: newBalanceAmount.toNumber(),
+    };
+  }, { maxWait: 15000, timeout: 30000 });
 }

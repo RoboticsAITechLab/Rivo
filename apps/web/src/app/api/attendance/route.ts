@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma, Prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 
 // GET /api/attendance - Fetch attendance roster or school-wide attendance metrics
@@ -106,8 +106,18 @@ export async function GET(req: NextRequest) {
         ...(sectionId && sectionId !== 'ALL' ? { sectionId } : {}),
         status: 'ACTIVE',
       },
-      include: {
-        student: true,
+      select: {
+        id: true,
+        rollNumber: true,
+        student: {
+          select: {
+            id: true,
+            admissionNumber: true,
+            firstName: true,
+            lastName: true,
+            gender: true,
+          },
+        },
       },
       orderBy: [
         { student: { admissionNumber: 'asc' } },
@@ -137,7 +147,7 @@ export async function GET(req: NextRequest) {
         firstName: e.student.firstName,
         lastName: e.student.lastName,
         name: `${e.student.firstName} ${e.student.lastName}`.trim(),
-        rollNumber: String(idx + 1).padStart(2, '0'),
+        rollNumber: e.rollNumber || String(idx + 1).padStart(2, '0'),
         gender: e.student.gender,
         status: record ? record.status : 'PRESENT',
         reason: record?.reason || '',

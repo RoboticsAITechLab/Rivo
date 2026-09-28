@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
 import { FormSection } from '@/components/ui/form-section';
-import { Plus, Trash2, AlertCircle, Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, Eye, EyeOff, KeyRound, Camera, UploadCloud, X, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { EmploymentType } from '@/features/shared/types';
 
@@ -143,6 +143,43 @@ function TeacherFormWizard({
   const [email, setEmail] = React.useState(teacherToEdit?.personal.email || '');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
+
+  // Photo Upload State
+  const [photoUrl, setPhotoUrl] = React.useState(teacherToEdit?.personal.photoUrl || '');
+  const [photoUploading, setPhotoUploading] = React.useState(false);
+  const [photoError, setPhotoError] = React.useState<string | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError('Image file size must not exceed 2MB.');
+      return;
+    }
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setPhotoError('Invalid image format. Allowed: JPEG, PNG, WebP.');
+      return;
+    }
+    setPhotoUploading(true);
+    setPhotoError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/teachers/photo/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to upload photo');
+      }
+      setPhotoUrl(data.photoUrl);
+    } catch (err: any) {
+      setPhotoError(err.message || 'Error uploading photo');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   // Employment
   const [employeeId, setEmployeeId] = React.useState(
@@ -318,6 +355,7 @@ function TeacherFormWizard({
         phone,
         email,
         password,
+        photoUrl: photoUrl || teacherToEdit?.personal.photoUrl || null,
       },
       employment: {
         employeeId,
@@ -403,6 +441,73 @@ function TeacherFormWizard({
         {step === 1 && (
           <div className="space-y-4">
             <FormSection title="Identity & Demographics" description="Primary personal details of the faculty member.">
+              {/* Photo Upload Box */}
+              <div className="mb-4 flex items-center gap-4 p-3.5 rounded-xl border border-border/70 bg-muted/20">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                  }}
+                  disabled={photoUploading}
+                />
+                <div className="relative h-16 w-16 shrink-0 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center overflow-hidden bg-background">
+                  {photoUrl ? (
+                    <img
+                      src={photoUrl}
+                      alt="Teacher Avatar Preview"
+                      className="h-full w-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <Camera className="h-6 w-6 text-muted-foreground stroke-[1.5]" />
+                  )}
+                  {photoUploading && (
+                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={photoUploading}
+                      className="h-7 text-xs gap-1.5 cursor-pointer"
+                    >
+                      <UploadCloud className="h-3.5 w-3.5" />
+                      <span>{photoUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                    </Button>
+                    {photoUrl && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setPhotoUrl('');
+                          if (photoInputRef.current) photoInputRef.current.value = '';
+                        }}
+                        className="h-7 text-xs text-destructive hover:bg-destructive/10 px-2 cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5 mr-1" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upload official teacher portrait (JPEG, PNG, WebP up to 2MB).
+                  </p>
+                  {photoError && (
+                    <p className="text-[11px] text-destructive font-medium">{photoError}</p>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FormField label="First Name" required error={safeErrors.firstName}>
                   <Input

@@ -4,8 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, ChevronRight, GraduationCap } from 'lucide-react';
-import { mockCurrentUser } from '@/data/mock-data';
-import { APP_NAV_GROUPS } from '@/config/navigation';
+import { APP_NAV_GROUPS, getNavForRole } from '@/config/navigation';
 import { NavIcon } from '@/components/navigation/nav-icon';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -22,7 +21,13 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const schoolDisplayName = user?.schoolName || mockCurrentUser.schoolName;
+  const schoolDisplayName = user?.schoolName || 'Rivo Institution';
+  const navGroups = React.useMemo(() => {
+    if (user?.roleType) {
+      return getNavForRole(user.roleType as any);
+    }
+    return APP_NAV_GROUPS;
+  }, [user?.roleType]);
 
   return (
     <aside
@@ -60,7 +65,7 @@ export function Sidebar({
 
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-4">
-        {APP_NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.group} className="space-y-1">
             {!collapsed ? (
               <div className="px-3 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase">
@@ -157,7 +162,7 @@ export function Sidebar({
         {!collapsed && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-            <span>Session {mockCurrentUser.sessionName}</span>
+            <span>Session 2026–27</span>
           </div>
         )}
         <button

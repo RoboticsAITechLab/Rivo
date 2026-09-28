@@ -10,10 +10,27 @@ export async function GET(req: NextRequest) {
 
     const heads = await prisma.feeHead.findMany({
       where: { schoolId: auth.schoolId },
+      include: {
+        _count: {
+          select: { items: true },
+        },
+      },
       orderBy: { name: 'asc' },
     });
 
-    return NextResponse.json({ heads });
+    const formatted = heads.map((h) => ({
+      id: h.id,
+      name: h.name,
+      code: h.code,
+      description: h.description,
+      isRefundable: h.isRefundable,
+      isActive: h.isActive,
+      createdAt: h.createdAt.toISOString(),
+      updatedAt: h.updatedAt.toISOString(),
+      usageCount: h._count.items,
+    }));
+
+    return NextResponse.json({ heads: formatted });
   } catch (error) {
     console.error('Error in GET /api/fees/heads:', error);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });

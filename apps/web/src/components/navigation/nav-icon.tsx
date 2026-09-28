@@ -14,6 +14,7 @@ import {
   LucideProps,
   Settings,
   Users,
+  CreditCard,
 } from 'lucide-react';
 
 const icons: Record<string, React.ComponentType<LucideProps>> = {
@@ -30,6 +31,7 @@ const icons: Record<string, React.ComponentType<LucideProps>> = {
   Bell,
   Inbox,
   Settings,
+  CreditCard,
 };
 
 export function NavIcon({

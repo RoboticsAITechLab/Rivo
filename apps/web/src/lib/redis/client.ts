@@ -11,7 +11,7 @@ export function isProductionMode(): boolean {
 }
 
 export function getRedisClient(): Redis | null {
-  const redisUrl = process.env.REDIS_URL;
+  let redisUrl = process.env.REDIS_URL;
 
   // In local mode without REDIS_URL, return null for graceful in-memory fallback
   if (!redisUrl || redisUrl.trim() === '' || redisUrl === 'redis://localhost:6379/placeholder') {
@@ -21,17 +21,23 @@ export function getRedisClient(): Redis | null {
     return null;
   }
 
+  // Ensure rediss:// TLS protocol for Upstash endpoints
+  if (redisUrl.includes('upstash.io') && redisUrl.startsWith('redis://')) {
+    redisUrl = 'rediss://' + redisUrl.slice(8);
+  }
+
   if (!redisInstance) {
     try {
       redisInstance = new Redis(redisUrl, {
         maxRetriesPerRequest: 2,
+        connectTimeout: 5000,
         retryStrategy: (times) => {
           if (times > 3) {
             return null; // Stop retrying after 3 attempts
           }
           return Math.min(times * 100, 1000);
         },
-        enableOfflineQueue: false,
+        enableOfflineQueue: true,
         lazyConnect: false,
       });
 
