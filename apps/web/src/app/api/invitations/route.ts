@@ -71,25 +71,16 @@ export async function POST(req: NextRequest) {
     const validRoles = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'TEACHER', 'FEE_MANAGER', 'STAFF', 'SCHOOL_ADMIN'];
     const targetRole = validRoles.includes(role) ? role : 'TEACHER';
 
-    // Strict School Hierarchy Enforcement:
-    // 1. Only DIRECTOR / OWNER can invite another DIRECTOR or PRINCIPAL
-    if (targetRole === 'DIRECTOR' || targetRole === 'PRINCIPAL') {
-      if (auth.role !== 'DIRECTOR' && auth.role !== 'OWNER') {
-        return NextResponse.json(
-          { message: 'Forbidden: Only the School Director can invite Directors or Principals.' },
-          { status: 403 }
-        );
-      }
-    }
+    // School Hierarchy Enforcement:
+    // Only Administrative roles can invite
+    const callerRole = auth.role || '';
+    const isAdminCaller = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'PLATFORM_ADMIN'].includes(callerRole);
 
-    // 2. Only DIRECTOR, PRINCIPAL, or OWNER can invite an ADMIN
-    if (targetRole === 'ADMIN' || targetRole === 'SCHOOL_ADMIN') {
-      if (auth.role !== 'DIRECTOR' && auth.role !== 'PRINCIPAL' && auth.role !== 'OWNER') {
-        return NextResponse.json(
-          { message: 'Forbidden: Only Directors and Principals can invite School Administrators.' },
-          { status: 403 }
-        );
-      }
+    if (!isAdminCaller) {
+      return NextResponse.json(
+        { message: 'Forbidden: Insufficient privileges to dispatch staff invitations.' },
+        { status: 403 }
+      );
     }
 
     const invitation = await prisma.staffInvitation.create({
@@ -119,10 +110,10 @@ export async function POST(req: NextRequest) {
       details: { email: trimmedEmail, role: invitation.role },
     });
 
-    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://rivo-web-sand.vercel.app';
     const inviteUrl = `${appUrl}/invite/accept?token=${rawToken}`;
 
-    await sendStaffInvitationEmail({
+    const emailResult = await sendStaffInvitationEmail({
       to: trimmedEmail,
       schoolName: invitation.school?.name || 'Rivo School',
       role: invitation.role,
@@ -135,7 +126,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Invitation created successfully.',
+      message: emailResult.success 
+        ? 'Invitation created and email dispatched successfully.' 
+        : `Invitation created. Email status: ${emailResult.error || 'Pending delivery'}`,
+      emailDelivered: emailResult.success,
+      emailError: emailResult.error || null,
       invitation: {
         id: invitation.id,
         email: invitation.email,

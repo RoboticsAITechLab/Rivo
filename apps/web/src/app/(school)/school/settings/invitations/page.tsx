@@ -63,33 +63,15 @@ export default function InvitationsManagementPage() {
   const isDirector = callerRole === 'DIRECTOR' || callerRole === 'OWNER' || callerRole === 'PLATFORM_ADMIN';
   const isPrincipal = callerRole === 'PRINCIPAL';
 
-  // Available roles to invite based on strict hierarchy
-  const availableInviteRoles = React.useMemo(() => {
-    if (isDirector) {
-      return [
-        { value: 'FEE_MANAGER', label: 'Fee Manager' },
-        { value: 'TEACHER', label: 'Teacher' },
-        { value: 'ADMIN', label: 'School Administrator' },
-        { value: 'PRINCIPAL', label: 'Principal' },
-        { value: 'DIRECTOR', label: 'Director / Board' },
-        { value: 'STAFF', label: 'Staff / Coordinator' },
-      ];
-    }
-    if (isPrincipal) {
-      return [
-        { value: 'FEE_MANAGER', label: 'Fee Manager' },
-        { value: 'TEACHER', label: 'Teacher' },
-        { value: 'ADMIN', label: 'School Administrator' },
-        { value: 'STAFF', label: 'Staff / Coordinator' },
-      ];
-    }
-    // Standard ADMIN can invite Teacher, Fee Manager, Staff
-    return [
-      { value: 'FEE_MANAGER', label: 'Fee Manager' },
-      { value: 'TEACHER', label: 'Teacher' },
-      { value: 'STAFF', label: 'Staff / Coordinator' },
-    ];
-  }, [isDirector, isPrincipal]);
+  // Institutional roles available to invite
+  const availableInviteRoles = [
+    { value: 'DIRECTOR', label: 'Director / Board' },
+    { value: 'PRINCIPAL', label: 'Principal / Headmaster' },
+    { value: 'ADMIN', label: 'School Administrator' },
+    { value: 'TEACHER', label: 'Teacher / Faculty' },
+    { value: 'FEE_MANAGER', label: 'Fee Manager / Accountant' },
+    { value: 'STAFF', label: 'Staff / Coordinator' },
+  ];
 
   // New Invite Dialog State
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -150,7 +132,11 @@ export default function InvitationsManagementPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        toast.success(`Invitation dispatched via Resend to ${cleanEmail}`);
+        if (data.emailDelivered) {
+          toast.success(`Invitation email sent to ${cleanEmail} via Resend`);
+        } else {
+          toast.info(`Invitation created for ${cleanEmail}. Activation link ready.`);
+        }
         const fullUrl = `${window.location.origin}${data.inviteUrl}`;
         setCreatedInviteUrl(fullUrl);
         setIsDialogOpen(false);
