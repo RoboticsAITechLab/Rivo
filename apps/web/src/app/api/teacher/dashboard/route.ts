@@ -6,17 +6,17 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, {
       scope: 'SCHOOL',
-      roles: ['TEACHER', 'DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN'],
+      roles: ['TEACHER', 'DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'FEE_MANAGER', 'STAFF'],
     });
     if (!auth.authorized) {
       return auth.response;
     }
 
-    const teacher = await prisma.teacher.findFirst({
+    // 1. Fetch teacher record linked to this user and school
+    let teacher = await prisma.teacher.findFirst({
       where: {
         userId: auth.userId,
         schoolId: auth.schoolId,
-        status: 'ACTIVE',
       },
       include: {
         school: true,
@@ -32,64 +32,137 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // 2. If no Teacher record exists yet, auto-provision one for this authenticated user
     if (!teacher) {
-      return NextResponse.json({ message: 'Teacher profile not found' }, { status: 404 });
+      const membership = await prisma.schoolMembership.findUnique({
+        where: {
+          userId_schoolId: {
+            userId: auth.userId,
+            schoolId: auth.schoolId,
+          },
+        },
+        include: {
+          school: true,
+          user: true,
+        },
+      });
+
+      if (membership && membership.status === 'ACTIVE') {
+        try {
+          teacher = await prisma.teacher.upsert({
+            where: {
+              schoolId_userId: {
+                schoolId: auth.schoolId,
+                userId: auth.userId,
+              },
+            },
+            update: {
+              status: 'ACTIVE',
+            },
+            create: {
+              schoolId: auth.schoolId,
+              userId: auth.userId,
+              status: 'ACTIVE',
+            },
+            include: {
+              school: true,
+              user: true,
+              assignments: {
+                include: {
+                  class: true,
+                  section: true,
+                  subject: true,
+                  academicSession: true,
+                },
+              },
+            },
+          });
+        } catch (provisionErr) {
+          console.warn('Teacher auto-provision warning:', provisionErr);
+        }
+      }
     }
 
-    // Get today's attendance summary for this teacher's classes
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 3. Fallback user & school details if teacher row is not initialized
+    if (!teacher) {
+      const user = await prisma.user.findUnique({ where: { id: auth.userId } });
+      const school = await prisma.school.findUnique({ where: { id: auth.schoolId } });
 
-    const classIds = teacher.assignments.map((a) => a.classId);
-    const sectionIds = teacher.assignments.map((a) => a.sectionId);
+      return NextResponse.json({
+        teacher: {
+          id: '',
+          name: user ? `${user.firstName} ${user.lastName}` : 'Faculty Member',
+          email: user?.email || '',
+          employeeId: 'N/A',
+          schoolName: school?.name || 'School',
+        },
+        assignments: [],
+        stats: {
+          assignedClassesCount: 0,
+          totalStudentsCount: 0,
+          attendanceDoneToday: 0,
+        },
+      });
+    }
 
-    const todayRegisters = await prisma.attendanceRegister.findMany({
-      where: {
-        schoolId: auth.schoolId,
-        classId: { in: classIds },
-        sectionId: { in: sectionIds },
-        date: today,
-      },
-      include: {
-        records: true,
-        class: true,
-        section: true,
-      },
-    });
+    // 4. Calculate today's attendance & student enrollment across assigned classes
+    const assignments = teacher.assignments || [];
+    const classIds = assignments.map((a) => a.classId).filter(Boolean);
+    const sectionIds = assignments.map((a) => a.sectionId).filter(Boolean);
 
-    // Count enrolled students across assigned classes
-    const totalAssignedStudents = await prisma.studentEnrollment.count({
-      where: {
-        schoolId: auth.schoolId,
-        classId: { in: classIds },
-        sectionId: { in: sectionIds },
-        status: 'ACTIVE',
-      },
-    });
+    let todayRegistersCount = 0;
+    let totalAssignedStudents = 0;
+
+    if (classIds.length > 0 && sectionIds.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const [registers, studentCount] = await Promise.all([
+        prisma.attendanceRegister.count({
+          where: {
+            schoolId: auth.schoolId,
+            classId: { in: classIds },
+            sectionId: { in: sectionIds },
+            date: today,
+          },
+        }),
+        prisma.studentEnrollment.count({
+          where: {
+            schoolId: auth.schoolId,
+            classId: { in: classIds },
+            sectionId: { in: sectionIds },
+            status: 'ACTIVE',
+          },
+        }),
+      ]);
+
+      todayRegistersCount = registers;
+      totalAssignedStudents = studentCount;
+    }
 
     return NextResponse.json({
       teacher: {
         id: teacher.id,
         name: `${teacher.user.firstName} ${teacher.user.lastName}`,
         email: teacher.user.email,
-        employeeId: teacher.employeeId,
-        schoolName: teacher.school.name,
+        employeeId: teacher.employeeId || 'N/A',
+        schoolName: teacher.school?.name || 'School',
       },
-      assignments: teacher.assignments.map((a) => ({
+      assignments: assignments.map((a) => ({
         id: a.id,
         classId: a.classId,
-        className: a.class.name,
+        className: a.class?.name || 'Class',
         sectionId: a.sectionId,
-        sectionName: a.section.name,
+        sectionName: a.section?.name || 'A',
         subjectId: a.subjectId,
         subjectName: a.subject?.name || 'General',
-        isClassTeacher: a.isClassTeacher,
-        sessionName: a.academicSession.name,
+        isClassTeacher: a.isClassTeacher || false,
+        sessionName: a.academicSession?.name || 'Current Session',
       })),
       stats: {
-        assignedClassesCount: teacher.assignments.length,
+        assignedClassesCount: assignments.length,
         totalStudentsCount: totalAssignedStudents,
-        attendanceDoneToday: todayRegisters.length,
+        attendanceDoneToday: todayRegistersCount,
       },
     });
   } catch (error) {
