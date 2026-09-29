@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
         where: { schoolId },
       }),
       prisma.section.count({
-        where: { class: { schoolId } },
+        where: { schoolId },
       }),
       prisma.attendanceRegister.findMany({
         where: { schoolId, date: today },

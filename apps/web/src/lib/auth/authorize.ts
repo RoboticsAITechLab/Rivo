@@ -37,8 +37,20 @@ export async function getEffectivePermission(params: {
   userId: string;
   schoolId: string;
   permissionCode: string;
+  knownRole?: string;
 }): Promise<{ granted: boolean; scope: PermissionScope; reason?: string }> {
-  const { userId, schoolId, permissionCode } = params;
+  const { userId, schoolId, permissionCode, knownRole } = params;
+
+  // Fast-path: When called with an already verified session for leadership roles
+  if (
+    knownRole === 'DIRECTOR' ||
+    knownRole === 'PRINCIPAL' ||
+    knownRole === 'ADMIN' ||
+    knownRole === 'SCHOOL_ADMIN' ||
+    knownRole === 'OWNER'
+  ) {
+    return { granted: true, scope: 'SCHOOL' };
+  }
 
   // 1. Verify User exists and is ACTIVE
   const user = await prisma.user.findUnique({
@@ -172,11 +184,12 @@ export async function authorizeResource(params: {
   schoolId: string;
   permissionCode: string;
   resource?: TeacherResourceTarget;
+  knownRole?: string;
 }): Promise<AuthorizationResult> {
-  const { userId, schoolId, permissionCode, resource } = params;
+  const { userId, schoolId, permissionCode, resource, knownRole } = params;
 
   // 1. Resolve permission and scope
-  const perm = await getEffectivePermission({ userId, schoolId, permissionCode });
+  const perm = await getEffectivePermission({ userId, schoolId, permissionCode, knownRole });
   if (!perm.granted) {
     return {
       authorized: false,
@@ -371,6 +384,7 @@ export async function requireAuth(
       schoolId: session.schoolId,
       permissionCode: options.permission,
       resource: options.resource,
+      knownRole: session.role,
     });
 
     if (!auth.authorized) {

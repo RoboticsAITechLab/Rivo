@@ -261,11 +261,15 @@ export function getAuthSession(req: NextRequest): TokenPayload | null {
 export async function revokeSession(rawToken: string): Promise<boolean> {
   try {
     const tokenHash = hashToken(rawToken);
+    const existing = await prisma.session.findUnique({
+      where: { tokenHash },
+      select: { userId: true },
+    });
     await prisma.session.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    await invalidateSessionCache(tokenHash);
+    await invalidateSessionCache(tokenHash, existing?.userId);
     return true;
   } catch (error) {
     console.error('Error revoking session:', error);

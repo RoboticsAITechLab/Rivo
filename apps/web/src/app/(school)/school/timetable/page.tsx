@@ -15,14 +15,22 @@ import {
   BookOpen,
   Sliders,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useTimetable } from '@/features/timetable/hooks/use-timetable';
 import { TimetableViewToggle } from '@/features/timetable/components/timetable-view-toggle';
 import { TimetableGrid } from '@/features/timetable/components/timetable-grid';
 import { TimetableMobileList } from '@/features/timetable/components/timetable-mobile-list';
-import { TimetableAddDialog } from '@/features/timetable/components/timetable-add-dialog';
-import { TimetableScheduleSettingsModal } from '@/features/timetable/components/timetable-schedule-settings-modal';
 import { TimetablePeriod } from '@/features/timetable/types';
 import { DayOfWeek } from '@/features/shared/types';
+
+const TimetableAddDialog = dynamic(
+  () => import('@/features/timetable/components/timetable-add-dialog').then((m) => m.TimetableAddDialog),
+  { ssr: false }
+);
+const TimetableScheduleSettingsModal = dynamic(
+  () => import('@/features/timetable/components/timetable-schedule-settings-modal').then((m) => m.TimetableScheduleSettingsModal),
+  { ssr: false }
+);
 
 export default function TimetablePage() {
   const {

@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Sliders,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { initialMockHouses } from '@/data/mock-houses';
 import {
   initialCustomFields,
@@ -38,13 +39,35 @@ import { StudentBulkToolbar } from '@/components/students/student-bulk-toolbar';
 import { StudentTable } from '@/components/students/student-table';
 import { StudentPagination } from '@/components/students/student-pagination';
 import { StudentDetailSheet, DetailTabKey } from '@/components/students/student-detail-sheet';
-import { AdmissionWorkspace } from '@/components/students/admission/admission-workspace';
-import { CustomFieldBuilder } from '@/components/students/custom-fields/custom-field-builder';
-import { AdmissionFormConfig } from '@/components/students/custom-fields/admission-form-config';
-import { HouseManagement } from '@/components/students/houses/house-management';
-import { StudentStatusDialog } from '@/components/students/student-status-dialog';
-import { StudentArchiveDialog } from '@/components/students/student-archive-dialog';
-import { StudentImportSheet } from '@/components/students/student-import-sheet';
+
+const AdmissionWorkspace = dynamic(
+  () => import('@/components/students/admission/admission-workspace').then((m) => m.AdmissionWorkspace),
+  { ssr: false }
+);
+const CustomFieldBuilder = dynamic(
+  () => import('@/components/students/custom-fields/custom-field-builder').then((m) => m.CustomFieldBuilder),
+  { ssr: false }
+);
+const AdmissionFormConfig = dynamic(
+  () => import('@/components/students/custom-fields/admission-form-config').then((m) => m.AdmissionFormConfig),
+  { ssr: false }
+);
+const HouseManagement = dynamic(
+  () => import('@/components/students/houses/house-management').then((m) => m.HouseManagement),
+  { ssr: false }
+);
+const StudentStatusDialog = dynamic(
+  () => import('@/components/students/student-status-dialog').then((m) => m.StudentStatusDialog),
+  { ssr: false }
+);
+const StudentArchiveDialog = dynamic(
+  () => import('@/components/students/student-archive-dialog').then((m) => m.StudentArchiveDialog),
+  { ssr: false }
+);
+const StudentImportSheet = dynamic(
+  () => import('@/components/students/student-import-sheet').then((m) => m.StudentImportSheet),
+  { ssr: false }
+);
 
 const defaultFilters: StudentFilterState = {
   searchQuery: '',

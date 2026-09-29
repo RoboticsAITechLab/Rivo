@@ -52,11 +52,16 @@ export async function GET(req: NextRequest) {
         { periodNumber: 'asc' },
       ],
       include: {
-        class: true,
-        section: true,
-        subject: true,
+        class: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true } },
+        subject: { select: { id: true, name: true } },
         teacher: {
-          include: { user: true },
+          select: {
+            id: true,
+            user: {
+              select: { firstName: true, lastName: true },
+            },
+          },
         },
       },
     });

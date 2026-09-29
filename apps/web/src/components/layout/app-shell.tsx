@@ -1,15 +1,31 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { Sidebar } from './sidebar';
 import { TopNav } from './top-nav';
 import { MobileNav } from './mobile-nav';
-import { CommandSearch } from '@/components/navigation/command-search';
+
+const CommandSearch = dynamic(
+  () => import('@/components/navigation/command-search').then((mod) => mod.CommandSearch),
+  { ssr: false }
+);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [commandSearchOpen, setCommandSearchOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="flex min-h-screen w-full bg-muted/20">
