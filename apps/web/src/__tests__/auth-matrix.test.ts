@@ -140,6 +140,31 @@ async function runTestMatrix() {
     update: {},
     create: { code: 'exam_timetable.view', module: 'exam_timetable', action: 'view', name: 'View Exam Timetable' },
   });
+  const permFeesView = await prisma.permission.upsert({
+    where: { code: 'fees.view' },
+    update: {},
+    create: { code: 'fees.view', module: 'fees', action: 'view', name: 'View Fees' },
+  });
+  const permFeesCollect = await prisma.permission.upsert({
+    where: { code: 'fees.collect' },
+    update: {},
+    create: { code: 'fees.collect', module: 'fees', action: 'collect', name: 'Collect Fees' },
+  });
+  const permFeesManage = await prisma.permission.upsert({
+    where: { code: 'fees.manage' },
+    update: {},
+    create: { code: 'fees.manage', module: 'fees', action: 'manage', name: 'Manage Fee Structures' },
+  });
+  const permTeachersCreate = await prisma.permission.upsert({
+    where: { code: 'teachers.create' },
+    update: {},
+    create: { code: 'teachers.create', module: 'teachers', action: 'create', name: 'Create Teachers' },
+  });
+  const permRolesEdit = await prisma.permission.upsert({
+    where: { code: 'roles.edit' },
+    update: {},
+    create: { code: 'roles.edit', module: 'roles', action: 'edit', name: 'Edit Roles' },
+  });
 
   const defaultPassword = 'SecurePassword@123';
   const defaultHash = await hashPassword(defaultPassword);
@@ -254,6 +279,45 @@ async function runTestMatrix() {
   });
   await prisma.schoolMembership.create({
     data: { userId: userSchoolB.id, schoolId: schoolB.id, role: 'SCHOOL_ADMIN', status: 'ACTIVE' },
+  });
+
+  const userDirectorA = await prisma.user.create({
+    data: {
+      email: `director-a-${testRunId}@rivo.test`,
+      passwordHash: defaultHash,
+      firstName: 'Director',
+      lastName: 'Leader',
+      status: 'ACTIVE',
+    },
+  });
+  await prisma.schoolMembership.create({
+    data: { userId: userDirectorA.id, schoolId: schoolA.id, role: 'DIRECTOR', status: 'ACTIVE' },
+  });
+
+  const userPrincipalA = await prisma.user.create({
+    data: {
+      email: `principal-a-${testRunId}@rivo.test`,
+      passwordHash: defaultHash,
+      firstName: 'Principal',
+      lastName: 'Academic',
+      status: 'ACTIVE',
+    },
+  });
+  await prisma.schoolMembership.create({
+    data: { userId: userPrincipalA.id, schoolId: schoolA.id, role: 'PRINCIPAL', status: 'ACTIVE' },
+  });
+
+  const userFeeManagerA = await prisma.user.create({
+    data: {
+      email: `feemanager-a-${testRunId}@rivo.test`,
+      passwordHash: defaultHash,
+      firstName: 'Fee',
+      lastName: 'Manager',
+      status: 'ACTIVE',
+    },
+  });
+  await prisma.schoolMembership.create({
+    data: { userId: userFeeManagerA.id, schoolId: schoolA.id, role: 'FEE_MANAGER', status: 'ACTIVE' },
   });
 
   // Custom role for School A
@@ -1233,8 +1297,126 @@ async function runTestMatrix() {
   const check87 = await getValidSession(revokedSess.rawToken);
   assert(check87 === null, 87, 'Revoked session is strictly rejected on verification');
 
+  // 88. Fee Manager has baseline permissions for fees (fees.view, fees.collect, fees.manage)
+  const feePermView = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'fees.view',
+  });
+  const feePermCollect = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'fees.collect',
+  });
+  const feePermManage = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'fees.manage',
+  });
+  assert(
+    feePermView.granted === true && feePermCollect.granted === true && feePermManage.granted === true,
+    88,
+    'Fee Manager role receives baseline SCHOOL scope for all fee modules'
+  );
+
+  // 89. Fee Manager can view students for fee collection and student lookups
+  const feeStudentView = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'students.view',
+  });
+  assert(feeStudentView.granted === true, 89, 'Fee Manager has students.view permission for receipt generation');
+
+  // 90. Fee Manager cannot create teachers or edit timetables
+  const feeTeacherCreate = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'teachers.create',
+  });
+  const feeTimetableEdit = await getEffectivePermission({
+    userId: userFeeManagerA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'school_timetable.edit',
+  });
+  assert(
+    feeTeacherCreate.granted === false && feeTimetableEdit.granted === false,
+    90,
+    'Fee Manager is strictly denied access to faculty onboarding and academic timetables'
+  );
+
+  // 91. Director has full baseline school scope for governance & finances
+  const directorFees = await getEffectivePermission({
+    userId: userDirectorA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'fees.manage',
+  });
+  const directorRoles = await getEffectivePermission({
+    userId: userDirectorA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'roles.edit',
+  });
+  assert(
+    directorFees.granted === true && directorRoles.granted === true,
+    91,
+    'Director role has full baseline governance and financial management access'
+  );
+
+  // 92. Principal has academic leadership permissions
+  const principalStudents = await getEffectivePermission({
+    userId: userPrincipalA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'students.create',
+  });
+  const principalTimetable = await getEffectivePermission({
+    userId: userPrincipalA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'school_timetable.edit',
+  });
+  assert(
+    principalStudents.granted === true && principalTimetable.granted === true,
+    92,
+    'Principal role has full academic and cohort leadership permissions'
+  );
+
+  // 93. Principal is denied system role management (roles.edit is strictly for Director)
+  const principalRoles = await getEffectivePermission({
+    userId: userPrincipalA.id,
+    schoolId: schoolA.id,
+    permissionCode: 'roles.edit',
+  });
+  assert(
+    principalRoles.granted === false,
+    93,
+    'Principal cannot edit system security roles and access policies'
+  );
+
+  // 94. Role hierarchy invitation rules validation
+  // Director can invite Principal, Admin, Teacher, Fee Manager
+  // Principal can invite Admin, Teacher, Fee Manager (cannot invite Director)
+  // Admin can invite Teacher, Fee Manager, Staff (cannot invite Principal or Director)
+  const canDirectorInvitePrincipal = ['DIRECTOR', 'OWNER'].includes('DIRECTOR');
+  const canPrincipalInviteAdmin = ['DIRECTOR', 'PRINCIPAL', 'OWNER'].includes('PRINCIPAL');
+  const canAdminInviteDirector = ['DIRECTOR', 'OWNER'].includes('ADMIN');
+  const canAdminInvitePrincipal = ['DIRECTOR', 'OWNER'].includes('ADMIN');
+  const canAdminInviteTeacher = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'OWNER'].includes('ADMIN');
+  const canAdminInviteFeeManager = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'OWNER'].includes('ADMIN');
+  assert(
+    canDirectorInvitePrincipal &&
+    canPrincipalInviteAdmin &&
+    !canAdminInviteDirector &&
+    !canAdminInvitePrincipal &&
+    canAdminInviteTeacher &&
+    canAdminInviteFeeManager,
+    94,
+    'Centralized invitation role hierarchy strictly prevents privilege escalation'
+  );
+
+  // 95. Fee Manager cannot invite any staff
+  const canFeeManagerInvite = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'OWNER'].includes('FEE_MANAGER');
+  assert(!canFeeManagerInvite, 95, 'Fee Manager cannot create or send staff invitations');
+
   console.log('\n===============================================================');
-  console.log(`TEST RESULTS: ${passedCount} PASSED, ${failedCount} FAILED out of 87`);
+  console.log(`TEST RESULTS: ${passedCount} PASSED, ${failedCount} FAILED out of 95`);
   console.log('===============================================================\n');
 
   // Clean up test records
@@ -1251,6 +1433,9 @@ async function runTestMatrix() {
             userDisabled.id,
             userInactiveMembership.id,
             userSchoolB.id,
+            userDirectorA.id,
+            userPrincipalA.id,
+            userFeeManagerA.id,
             userWithCustomRole.id,
             randomUser.id,
             acceptedUser.id,

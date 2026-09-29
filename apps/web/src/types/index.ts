@@ -3,6 +3,7 @@ export type UserRole =
   | 'PRINCIPAL'
   | 'ADMIN'
   | 'TEACHER'
+  | 'FEE_MANAGER'
   | 'STAFF'
   | 'STUDENT'
   | 'PARENT'

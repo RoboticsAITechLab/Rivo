@@ -85,14 +85,33 @@ export async function getEffectivePermission(params: {
     return { granted: false, scope: 'OWN', reason: 'No active school membership found for this tenant.' };
   }
 
-  // 3. School Directors, Principals, Admins, and School Admins have full SCHOOL scope across all features
+  // 3. School Directors and Owners have full SCHOOL scope across all features
   if (
     membership.role === 'DIRECTOR' ||
-    membership.role === 'PRINCIPAL' ||
-    membership.role === 'ADMIN' ||
-    membership.role === 'SCHOOL_ADMIN' ||
     membership.role === 'OWNER'
   ) {
+    return { granted: true, scope: 'SCHOOL' };
+  }
+
+  // School Principals, Admins, and School Admins have full SCHOOL scope across operational/academic features
+  // but strictly cannot edit institutional security roles or security policies (reserved for Director/Owner)
+  if (
+    membership.role === 'PRINCIPAL' ||
+    membership.role === 'ADMIN' ||
+    membership.role === 'SCHOOL_ADMIN'
+  ) {
+    if (
+      permissionCode === 'roles.edit' ||
+      permissionCode === 'roles.manage' ||
+      permissionCode === 'roles.delete' ||
+      permissionCode.startsWith('security.')
+    ) {
+      return {
+        granted: false,
+        scope: 'OWN',
+        reason: 'Permission denied: Institutional roles and security policies can only be managed by School Directors.',
+      };
+    }
     return { granted: true, scope: 'SCHOOL' };
   }
 
@@ -158,7 +177,18 @@ export async function getEffectivePermission(params: {
     }
   }
 
-  // 7. System Defaults for Base STAFF Role
+  // 7. System Defaults for Base FEE_MANAGER Role
+  if (membership.role === 'FEE_MANAGER') {
+    if (
+      permissionCode.startsWith('fees.') ||
+      permissionCode === 'students.view' ||
+      permissionCode === 'notices.view'
+    ) {
+      return { granted: true, scope: 'SCHOOL' };
+    }
+  }
+
+  // 8. System Defaults for Base STAFF Role
   if (membership.role === 'STAFF') {
     if (
       permissionCode === 'students.view' ||
@@ -490,10 +520,14 @@ export async function getCurrentUser(reqOrToken: NextRequest | string) {
       ? 'Director'
       : membership.role === 'PRINCIPAL'
       ? 'Principal'
-      : membership.role === 'SCHOOL_ADMIN' || membership.role === 'ADMIN'
+      : membership.role === 'ADMIN' || membership.role === 'SCHOOL_ADMIN'
       ? 'School Administrator'
       : membership.role === 'TEACHER'
       ? 'Teacher'
+      : membership.role === 'FEE_MANAGER'
+      ? 'Fee Manager'
+      : membership.role === 'STAFF'
+      ? 'Staff Member'
       : membership.role,
     roleType: membership.role,
     scope: 'SCHOOL' as const,

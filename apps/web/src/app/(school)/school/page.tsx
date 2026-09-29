@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
   AlertTriangle,
@@ -13,6 +14,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock,
+  CreditCard,
   Download,
   FileText,
   GraduationCap,
@@ -20,6 +22,8 @@ import {
   Layers,
   Plus,
   RefreshCw,
+  Settings,
+  Shield,
   Sparkles,
   Users,
 } from 'lucide-react';
@@ -29,6 +33,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
+import { useAuth } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
 
 interface DashboardData {
@@ -77,9 +82,20 @@ interface DashboardData {
 }
 
 export default function SchoolDashboardPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [data, setData] = React.useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Role-specific automatic routing
+  React.useEffect(() => {
+    if (user?.roleType === 'TEACHER') {
+      router.replace('/teacher/dashboard');
+    } else if (user?.roleType === 'FEE_MANAGER') {
+      router.replace('/school/fees');
+    }
+  }, [user?.roleType, router]);
 
   const fetchDashboard = React.useCallback(async () => {
     setIsLoading(true);
@@ -103,7 +119,7 @@ export default function SchoolDashboardPage() {
     fetchDashboard();
   }, [fetchDashboard]);
 
-  if (isLoading) {
+  if (isLoading || user?.roleType === 'TEACHER' || user?.roleType === 'FEE_MANAGER') {
     return (
       <PageContainer>
         <div className="space-y-6 animate-pulse">
@@ -141,15 +157,36 @@ export default function SchoolDashboardPage() {
   const presentAttendance = stats.attendanceBreakdown.present;
   const attendanceRateNum = totalAttendance > 0 ? Math.round((presentAttendance / totalAttendance) * 100) : 0;
 
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
+  const isPrincipal = user?.roleType === 'PRINCIPAL';
+
+  const dashboardTitle = isDirector
+    ? 'Director Dashboard'
+    : isPrincipal
+    ? 'Principal Dashboard'
+    : 'School Dashboard';
+
+  const roleBadgeLabel = isDirector
+    ? 'Executive View'
+    : isPrincipal
+    ? 'Academic Leadership'
+    : 'Live Session';
+
+  const roleOverviewDescription = isDirector
+    ? 'Institutional Governance & Executive Overview'
+    : isPrincipal
+    ? 'Academic Operations & Cohort Progress'
+    : 'Daily Operations & Records';
+
   return (
     <PageContainer>
       {/* 1. Header: School Dashboard */}
       <PageHeader
-        title="School Dashboard"
+        title={dashboardTitle}
         badge={
           <Badge variant="success" className="gap-1 hidden sm:inline-flex">
             <Sparkles className="h-3 w-3" />
-            Live Session
+            {roleBadgeLabel}
           </Badge>
         }
         description={
@@ -164,7 +201,7 @@ export default function SchoolDashboardPage() {
               Session {stats.activeSession}
             </span>
             <span>•</span>
-            <span>Institutional Overview</span>
+            <span>{roleOverviewDescription}</span>
           </div>
         }
         actions={
@@ -178,12 +215,28 @@ export default function SchoolDashboardPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </Button>
-            <Button size="sm" className="gap-1.5 text-xs" asChild>
-              <Link href="/school/students">
-                <Plus className="h-3.5 w-3.5" />
-                Add Student
-              </Link>
-            </Button>
+            {isDirector ? (
+              <Button size="sm" className="gap-1.5 text-xs" asChild>
+                <Link href="/school/fees">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Fees Management
+                </Link>
+              </Button>
+            ) : isPrincipal ? (
+              <Button size="sm" className="gap-1.5 text-xs" asChild>
+                <Link href="/school/attendance">
+                  <CalendarCheck className="h-3.5 w-3.5" />
+                  Cohort Attendance
+                </Link>
+              </Button>
+            ) : (
+              <Button size="sm" className="gap-1.5 text-xs" asChild>
+                <Link href="/school/students">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Student
+                </Link>
+              </Button>
+            )}
           </div>
         }
       />
@@ -467,95 +520,271 @@ export default function SchoolDashboardPage() {
         <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card p-5 shadow-2xs">
           <div className="pb-3 border-b border-border/60">
             <h2 className="text-sm font-bold text-foreground">
-              Administrative Quick Actions
+              {isDirector ? 'Executive Quick Launch' : isPrincipal ? 'Academic Actions' : 'Administrative Quick Actions'}
             </h2>
-            <p className="text-[11px] text-muted-foreground">Shortcuts for routine operational tasks</p>
+            <p className="text-[11px] text-muted-foreground">Shortcuts tailored for your institutional responsibilities</p>
           </div>
           <div className="pt-4">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/students">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <GraduationCap className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">+ Add Student</span>
-                  <span className="text-[10px] text-muted-foreground">New admission</span>
-                </Link>
-              </Button>
+              {isDirector ? (
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/fees">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <CreditCard className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Fee Financials</span>
+                      <span className="text-[10px] text-muted-foreground">Collections & dues</span>
+                    </Link>
+                  </Button>
 
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/teachers">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">+ Add Teacher</span>
-                  <span className="text-[10px] text-muted-foreground">Faculty roster</span>
-                </Link>
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/teachers">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Faculty Roster</span>
+                      <span className="text-[10px] text-muted-foreground">Staff & assignments</span>
+                    </Link>
+                  </Button>
 
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/attendance">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <CalendarCheck className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Mark Attendance</span>
-                  <span className="text-[10px] text-muted-foreground">Daily roll call</span>
-                </Link>
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/students">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <GraduationCap className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Admissions</span>
+                      <span className="text-[10px] text-muted-foreground">Student directory</span>
+                    </Link>
+                  </Button>
 
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/classes">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <Layers className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Manage Classes</span>
-                  <span className="text-[10px] text-muted-foreground">Cohorts &amp; sections</span>
-                </Link>
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/settings">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Settings className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Configuration</span>
+                      <span className="text-[10px] text-muted-foreground">System settings</span>
+                    </Link>
+                  </Button>
 
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/exams">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <Award className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Create Exam</span>
-                  <span className="text-[10px] text-muted-foreground">Cycles &amp; papers</span>
-                </Link>
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/settings/users">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Shield className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">User Access</span>
+                      <span className="text-[10px] text-muted-foreground">Roles & invites</span>
+                    </Link>
+                  </Button>
 
-              <Button
-                variant="outline"
-                className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
-                asChild
-              >
-                <Link href="/school/timetable">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
-                    <Clock className="h-4 w-4" />
-                  </div>
-                  <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Timetable</span>
-                  <span className="text-[10px] text-muted-foreground">Weekly slots</span>
-                </Link>
-              </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/notices">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Bell className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Notices</span>
+                      <span className="text-[10px] text-muted-foreground">School circulars</span>
+                    </Link>
+                  </Button>
+                </>
+              ) : isPrincipal ? (
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/attendance">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <CalendarCheck className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Attendance</span>
+                      <span className="text-[10px] text-muted-foreground">Roll call metrics</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/teachers">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Faculty</span>
+                      <span className="text-[10px] text-muted-foreground">Teacher roster</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/classes">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Layers className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Classes</span>
+                      <span className="text-[10px] text-muted-foreground">Sections & cohorts</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/exams">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Award className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Exams</span>
+                      <span className="text-[10px] text-muted-foreground">Assessment cycles</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/timetable">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Timetable</span>
+                      <span className="text-[10px] text-muted-foreground">Class schedules</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/notices">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Bell className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Notices</span>
+                      <span className="text-[10px] text-muted-foreground">Circulars & alerts</span>
+                    </Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/students">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <GraduationCap className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">+ Add Student</span>
+                      <span className="text-[10px] text-muted-foreground">New admission</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/teachers">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">+ Add Teacher</span>
+                      <span className="text-[10px] text-muted-foreground">Faculty roster</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/attendance">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <CalendarCheck className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Mark Attendance</span>
+                      <span className="text-[10px] text-muted-foreground">Daily roll call</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/classes">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Layers className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Manage Classes</span>
+                      <span className="text-[10px] text-muted-foreground">Cohorts &amp; sections</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/exams">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Award className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Create Exam</span>
+                      <span className="text-[10px] text-muted-foreground">Cycles &amp; papers</span>
+                    </Link>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3.5 px-3.5 flex flex-col items-start gap-1.5 text-left border-border/80 bg-surface-subtle/50 hover:bg-card hover:border-primary/50 hover:shadow-xs transition-all group"
+                    asChild
+                  >
+                    <Link href="/school/timetable">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <span className="font-semibold text-xs text-foreground group-hover:text-primary transition-colors">Timetable</span>
+                      <span className="text-[10px] text-muted-foreground">Weekly slots</span>
+                    </Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

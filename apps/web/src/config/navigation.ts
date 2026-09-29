@@ -19,7 +19,8 @@ export interface AppNavGroup {
   items: AppNavItem[];
 }
 
-const ADMIN_ROLES: UserRole[] = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'];
+const ALL_ADMIN_ROLES: UserRole[] = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'];
+const LEADERSHIP_ROLES: UserRole[] = ['DIRECTOR', 'PRINCIPAL', 'OWNER'];
 
 export const APP_NAVIGATION: AppNavItem[] = [
   // OVERVIEW
@@ -29,8 +30,26 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'LayoutDashboard',
     group: 'OVERVIEW',
     description: 'Executive overview, metrics & operational activity',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
+    roles: [...ALL_ADMIN_ROLES, 'STAFF'],
     keywords: ['home', 'overview', 'analytics', 'kpi', 'stats', 'control center'],
+  },
+  {
+    title: 'Teacher Dashboard',
+    href: '/teacher/dashboard',
+    iconName: 'LayoutDashboard',
+    group: 'OVERVIEW',
+    description: 'My daily timetable, assigned classes & pending attendance',
+    roles: ['TEACHER'],
+    keywords: ['teacher', 'my classes', 'schedule', 'daily'],
+  },
+  {
+    title: 'Fee Dashboard',
+    href: '/school/fees',
+    iconName: 'CreditCard',
+    group: 'OVERVIEW',
+    description: 'Today collections, outstanding dues & quick payment recording',
+    roles: ['FEE_MANAGER'],
+    keywords: ['fees', 'collections', 'cashier', 'bursar', 'payments'],
   },
 
   // PEOPLE
@@ -40,8 +59,17 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'GraduationCap',
     group: 'PEOPLE',
     description: 'Student directory, admissions, enrollment & parent contacts',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF'],
+    roles: [...ALL_ADMIN_ROLES, 'FEE_MANAGER', 'STAFF'],
     keywords: ['pupil', 'admission', 'enrollment', 'directory', 'children', 'guardian'],
+  },
+  {
+    title: 'My Students',
+    href: '/teacher/students',
+    iconName: 'GraduationCap',
+    group: 'PEOPLE',
+    description: 'Students assigned to my teaching division and classes',
+    roles: ['TEACHER'],
+    keywords: ['students', 'class roster', 'my students'],
   },
   {
     title: 'Teachers',
@@ -49,7 +77,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Users',
     group: 'PEOPLE',
     description: 'Faculty roster, department assignments & teaching workloads',
-    roles: ADMIN_ROLES,
+    roles: ALL_ADMIN_ROLES,
     keywords: ['faculty', 'staff', 'instructors', 'educators', 'workload'],
   },
 
@@ -60,8 +88,17 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Layers',
     group: 'ACADEMICS',
     description: 'Academic grade levels, division sections & class teachers',
-    roles: [...ADMIN_ROLES, 'TEACHER'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['grades', 'sections', 'divisions', 'classrooms', 'roster'],
+  },
+  {
+    title: 'My Classes',
+    href: '/teacher/classes',
+    iconName: 'Layers',
+    group: 'ACADEMICS',
+    description: 'My assigned classes and class teacher duties',
+    roles: ['TEACHER'],
+    keywords: ['classes', 'sections', 'teaching'],
   },
   {
     title: 'Subjects',
@@ -69,7 +106,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'BookOpen',
     group: 'ACADEMICS',
     description: 'Curriculum subjects, codes & assigned instructors',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
+    roles: LEADERSHIP_ROLES,
     keywords: ['courses', 'curriculum', 'syllabus', 'department', 'codes'],
   },
   {
@@ -78,8 +115,17 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Clock',
     group: 'ACADEMICS',
     description: 'Weekly schedule matrix, room allocations & conflict detection',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['schedule', 'periods', 'routine', 'calendar', 'slots', 'rooms'],
+  },
+  {
+    title: 'My Timetable',
+    href: '/teacher/timetable',
+    iconName: 'Clock',
+    group: 'ACADEMICS',
+    description: 'My weekly period routine, room assignments & schedule',
+    roles: ['TEACHER'],
+    keywords: ['routine', 'timetable', 'periods', 'schedule'],
   },
   {
     title: 'Attendance',
@@ -87,8 +133,17 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'CalendarCheck',
     group: 'ACADEMICS',
     description: 'Daily roll call registers, punch times & absence summaries',
-    roles: [...ADMIN_ROLES, 'TEACHER'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['roll call', 'present', 'absent', 'registers', 'leave', 'punctuality'],
+  },
+  {
+    title: 'Take Attendance',
+    href: '/teacher/attendance',
+    iconName: 'CalendarCheck',
+    group: 'ACADEMICS',
+    description: 'Submit daily roll call register for assigned classes',
+    roles: ['TEACHER'],
+    keywords: ['mark attendance', 'roll call', 'present'],
   },
   {
     title: 'Homework',
@@ -96,7 +151,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'FileText',
     group: 'ACADEMICS',
     description: 'Class assignments, submission trackers & teacher review queue',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
+    roles: [...LEADERSHIP_ROLES, 'TEACHER'],
     keywords: ['assignments', 'tasks', 'coursework', 'projects', 'review queue'],
   },
 
@@ -107,7 +162,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Award',
     group: 'ASSESSMENT',
     description: 'Examination datesheets, examination halls & invigilation',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['tests', 'assessments', 'midterm', 'finals', 'halls', 'invigilator'],
   },
   {
@@ -116,7 +171,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'BarChart2',
     group: 'ASSESSMENT',
     description: 'Academic mark entry, moderation review & report card publishing',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STUDENT'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['grades', 'marks', 'report cards', 'scores', 'gpa', 'moderation'],
   },
 
@@ -127,7 +182,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Bell',
     group: 'COMMUNICATION',
     description: 'Official circulars, administrative alerts & school broadcasts',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
+    roles: [...ALL_ADMIN_ROLES, 'TEACHER', 'FEE_MANAGER', 'STAFF'],
     keywords: ['announcements', 'circulars', 'bulletins', 'news', 'broadcast'],
   },
   {
@@ -136,7 +191,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Users',
     group: 'COMMUNICATION',
     description: 'Dynamic parent, class, and faculty communication groups',
-    roles: [...ADMIN_ROLES, 'TEACHER'],
+    roles: ALL_ADMIN_ROLES,
     keywords: ['groups', 'audiences', 'parents', 'teachers', 'cohorts'],
   },
   {
@@ -145,18 +200,18 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Inbox',
     group: 'COMMUNICATION',
     description: 'Administrative notification stream & operational alerts',
-    roles: [...ADMIN_ROLES, 'TEACHER', 'STAFF', 'STUDENT'],
+    roles: [...ALL_ADMIN_ROLES, 'STAFF'],
     keywords: ['alerts', 'inbox', 'messages', 'updates', 'unread'],
   },
 
   // FINANCE
   {
-    title: 'Fees',
+    title: 'Fee Management',
     href: '/school/fees',
     iconName: 'CreditCard',
     group: 'FINANCE',
     description: 'Fee collection, plans, student ledgers & financial receipts',
-    roles: [...ADMIN_ROLES, 'STAFF'],
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'FEE_MANAGER', 'SCHOOL_ADMIN', 'OWNER'],
     keywords: ['fees', 'payments', 'receipts', 'installments', 'dues', 'finance', 'ledger', 'concessions', 'bursar', 'cashier'],
   },
 
@@ -167,8 +222,17 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Settings',
     group: 'SYSTEM',
     description: 'School institutional profile, academic sessions & security',
-    roles: ADMIN_ROLES,
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
     keywords: ['configuration', 'preferences', 'session', 'tenant', 'setup', 'profile'],
+  },
+  {
+    title: 'Staff Invitations',
+    href: '/school/settings/invitations',
+    iconName: 'UserPlus',
+    group: 'SYSTEM',
+    description: 'Manage staff and faculty onboarding invitations',
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
+    keywords: ['invite', 'faculty', 'onboarding', 'staff'],
   },
 ];
 

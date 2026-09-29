@@ -5,18 +5,45 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SETTINGS_NAVIGATION_GROUPS, SettingsCategoryGroup } from '../config/settings-navigation';
 import { SettingsSearch } from './settings-search';
+import { useAuth } from '@/lib/auth/auth-context';
 import { cn } from '@/lib/utils';
 import { Menu, X, ChevronRight, ChevronLeft, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function SettingsNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [selectedMobileCategory, setSelectedMobileCategory] = React.useState<SettingsCategoryGroup | null>(null);
 
+  const roleType = user?.roleType || 'ADMIN';
+  const isDirector = roleType === 'DIRECTOR' || roleType === 'OWNER' || roleType === 'PLATFORM_ADMIN';
+
+  // Role-filtered groups
+  const filteredGroups = React.useMemo(() => {
+    return SETTINGS_NAVIGATION_GROUPS.map((group) => {
+      // If Security & Auth category and not Director/Owner, hide category entirely
+      if (group.category === 'SECURITY' && !isDirector) {
+        return null;
+      }
+
+      // Filter individual items within group
+      const items = group.items.filter((item) => {
+        // Roles & Permissions under People & Access are strictly for Director / Owner
+        if ((item.id === 'roles' || item.id === 'permissions') && !isDirector) {
+          return false;
+        }
+        return true;
+      });
+
+      if (items.length === 0) return null;
+      return { ...group, items };
+    }).filter((g): g is SettingsCategoryGroup => g !== null);
+  }, [isDirector]);
+
   // Find currently active item and group
   const activeInfo = React.useMemo(() => {
-    for (const group of SETTINGS_NAVIGATION_GROUPS) {
+    for (const group of filteredGroups) {
       for (const item of group.items) {
         const isActive =
           item.href === '/school/settings'
@@ -28,7 +55,7 @@ export function SettingsNav() {
       }
     }
     return null;
-  }, [pathname]);
+  }, [pathname, filteredGroups]);
 
   return (
     <>
@@ -37,7 +64,7 @@ export function SettingsNav() {
       {/* ========================================================= */}
       <aside className="hidden lg:block w-[260px] shrink-0 h-full overflow-y-auto overscroll-contain pr-2 border-r border-border/40">
         <nav className="space-y-5 pb-8" aria-label="Settings Navigation">
-          {SETTINGS_NAVIGATION_GROUPS.map((group) => (
+          {filteredGroups.map((group) => (
             <div key={group.category} className="space-y-1">
               <div className="px-3 text-[11px] font-bold tracking-wider text-muted-foreground/80 uppercase">
                 {group.label}
@@ -145,7 +172,7 @@ export function SettingsNav() {
             {/* Level 1: Category Listing */}
             {!selectedMobileCategory ? (
               <div className="flex-1 overflow-y-auto divide-y divide-border/40">
-                {SETTINGS_NAVIGATION_GROUPS.map((group) => {
+                {filteredGroups.map((group) => {
                   const isCurrentCategory = activeInfo?.group.category === group.category;
                   return (
                     <button

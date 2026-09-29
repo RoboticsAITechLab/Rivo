@@ -12,6 +12,7 @@ export type SchoolRoleType =
   | 'PRINCIPAL'
   | 'ADMIN'
   | 'TEACHER'
+  | 'FEE_MANAGER'
   | 'STAFF'
   | 'STUDENT'
   | 'PARENT'

@@ -9,7 +9,9 @@ import { sendStaffInvitationEmail } from '@/lib/email/email-service';
 // POST /api/invitations - Admin sends an invitation to a teacher or staff member
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req, { permission: 'teachers.create' });
+    const auth = await requireAuth(req, {
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }
@@ -66,15 +68,25 @@ export async function POST(req: NextRequest) {
     });
 
     // Allowed school roles for invitation
-    const validRoles = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'TEACHER', 'STAFF', 'SCHOOL_ADMIN'];
+    const validRoles = ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'TEACHER', 'FEE_MANAGER', 'STAFF', 'SCHOOL_ADMIN'];
     const targetRole = validRoles.includes(role) ? role : 'TEACHER';
 
-    // Privilege escalation protection:
-    // Only DIRECTOR can invite another DIRECTOR or PRINCIPAL
+    // Strict School Hierarchy Enforcement:
+    // 1. Only DIRECTOR / OWNER can invite another DIRECTOR or PRINCIPAL
     if (targetRole === 'DIRECTOR' || targetRole === 'PRINCIPAL') {
-      if (auth.role !== 'DIRECTOR') {
+      if (auth.role !== 'DIRECTOR' && auth.role !== 'OWNER') {
         return NextResponse.json(
           { message: 'Forbidden: Only the School Director can invite Directors or Principals.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // 2. Only DIRECTOR, PRINCIPAL, or OWNER can invite an ADMIN
+    if (targetRole === 'ADMIN' || targetRole === 'SCHOOL_ADMIN') {
+      if (auth.role !== 'DIRECTOR' && auth.role !== 'PRINCIPAL' && auth.role !== 'OWNER') {
+        return NextResponse.json(
+          { message: 'Forbidden: Only Directors and Principals can invite School Administrators.' },
           { status: 403 }
         );
       }

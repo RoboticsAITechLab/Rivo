@@ -25,9 +25,12 @@ import { Badge } from '@/components/ui/badge';
 import { DependencyAlert } from '@/features/settings/components/dependency-alert';
 import { useSchoolStore } from '@/shared/mock-store/school-store';
 import { EntityStatusBadge } from '@/features/settings/components/entity-status-badge';
+import { useAuth } from '@/lib/auth/auth-context';
 
 export default function SettingsOverviewPage() {
   const store = useSchoolStore();
+  const { user } = useAuth();
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
 
   const hasProfile = Boolean(store.schoolProfile?.schoolName?.trim());
   const hasActiveSession = Boolean(store.academicSessions?.some((s) => s.status === 'ACTIVE'));
@@ -111,7 +114,12 @@ export default function SettingsOverviewPage() {
       icon: CheckCircle2,
       description: 'Marksheet publication rules and student portal access locks',
     },
-  ];
+  ].filter((item) => {
+    if (item.category === 'Security' && !isDirector) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
