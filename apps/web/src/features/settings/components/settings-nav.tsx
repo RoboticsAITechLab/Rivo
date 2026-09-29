@@ -19,15 +19,38 @@ export function SettingsNav() {
   const roleType = user?.roleType || 'ADMIN';
   const isDirector = roleType === 'DIRECTOR' || roleType === 'OWNER' || roleType === 'PLATFORM_ADMIN';
 
-  // Role-filtered groups
+  // Role-filtered groups based on Rivo Role Hierarchy
   const filteredGroups = React.useMemo(() => {
     return SETTINGS_NAVIGATION_GROUPS.map((group) => {
-      // If Security & Auth category and not Director/Owner, hide category entirely
+      // Fee Manager role gets only General overview/profile/branding, Fees & Finance, and Print settings
+      if (roleType === 'FEE_MANAGER') {
+        const allowedIds = ['overview', 'school-profile', 'branding', 'fees', 'print-settings'];
+        const items = group.items.filter((item) => allowedIds.includes(item.id));
+        if (items.length === 0) return null;
+        return { ...group, items };
+      }
+
+      // Teacher role gets only relevant operational and document settings
+      if (roleType === 'TEACHER') {
+        const allowedIds = ['overview', 'school-profile', 'homework', 'templates', 'print-settings', 'notices'];
+        const items = group.items.filter((item) => allowedIds.includes(item.id));
+        if (items.length === 0) return null;
+        return { ...group, items };
+      }
+
+      // Staff role gets only basic operational overview
+      if (roleType === 'STAFF') {
+        const allowedIds = ['overview', 'school-profile', 'print-settings'];
+        const items = group.items.filter((item) => allowedIds.includes(item.id));
+        if (items.length === 0) return null;
+        return { ...group, items };
+      }
+
+      // Principal / Admin leadership roles
       if (group.category === 'SECURITY' && !isDirector) {
         return null;
       }
 
-      // Filter individual items within group
       const items = group.items.filter((item) => {
         // Roles & Permissions under People & Access are strictly for Director / Owner
         if ((item.id === 'roles' || item.id === 'permissions') && !isDirector) {
@@ -39,7 +62,7 @@ export function SettingsNav() {
       if (items.length === 0) return null;
       return { ...group, items };
     }).filter((g): g is SettingsCategoryGroup => g !== null);
-  }, [isDirector]);
+  }, [roleType, isDirector]);
 
   // Find currently active item and group
   const activeInfo = React.useMemo(() => {

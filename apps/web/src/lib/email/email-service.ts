@@ -85,10 +85,10 @@ export async function sendStaffInvitationEmail(
         details: {
           to,
           role,
-          errorMessage: response.error.name,
+          errorMessage: response.error.message,
         },
       });
-      return { success: false, error: 'Email delivery failed' };
+      return { success: false, error: response.error.message || 'Email delivery failed' };
     }
 
     await logSecurityAudit({
@@ -105,8 +105,9 @@ export async function sendStaffInvitationEmail(
     });
 
     return { success: true, messageId: response.data?.id };
-  } catch {
-    console.error('[EMAIL ERROR] Unexpected exception during invitation delivery');
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'DISPATCH_EXCEPTION';
+    console.error('[EMAIL ERROR] Unexpected exception during invitation delivery:', err);
     await logSecurityAudit({
       schoolId: schoolId || null,
       userId: invitedById || null,
@@ -116,10 +117,10 @@ export async function sendStaffInvitationEmail(
       details: {
         to,
         role,
-        error: 'DISPATCH_EXCEPTION',
+        error: errorMsg,
       },
     });
-    return { success: false, error: 'Email service error' };
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -173,10 +174,10 @@ export async function sendPasswordResetEmail(
         userAgent,
         details: {
           to,
-          errorMessage: response.error.name,
+          errorMessage: response.error.message,
         },
       });
-      return { success: false, error: 'Email delivery failed' };
+      return { success: false, error: response.error.message || 'Email delivery failed' };
     }
 
     await logSecurityAudit({
@@ -192,8 +193,9 @@ export async function sendPasswordResetEmail(
     });
 
     return { success: true, messageId: response.data?.id };
-  } catch {
-    console.error('[EMAIL ERROR] Unexpected exception during reset email delivery');
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'DISPATCH_EXCEPTION';
+    console.error('[EMAIL ERROR] Unexpected exception during reset email delivery:', err);
     await logSecurityAudit({
       schoolId: schoolId || null,
       userId: userId || null,
@@ -202,9 +204,9 @@ export async function sendPasswordResetEmail(
       userAgent,
       details: {
         to,
-        error: 'DISPATCH_EXCEPTION',
+        error: errorMsg,
       },
     });
-    return { success: false, error: 'Email service error' };
+    return { success: false, error: errorMsg };
   }
 }

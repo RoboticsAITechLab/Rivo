@@ -75,12 +75,35 @@ export function UserNav() {
           <DropdownMenuSeparator />
 
           {user?.roleType === 'TEACHER' ? (
-            <DropdownMenuItem asChild>
-              <Link href="/teacher/dashboard" className="flex items-center gap-2 cursor-pointer">
-                <UserIcon className="h-4 w-4 text-muted-foreground" />
-                <span>Teacher Dashboard</span>
-              </Link>
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem asChild>
+                <Link href="/teacher/dashboard" className="flex items-center gap-2 cursor-pointer">
+                  <UserIcon className="h-4 w-4 text-muted-foreground" />
+                  <span>Teacher Dashboard</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/teacher/timetable" className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <span>My Timetable</span>
+                </Link>
+              </DropdownMenuItem>
+            </>
+          ) : user?.roleType === 'FEE_MANAGER' ? (
+            <>
+              <DropdownMenuItem asChild>
+                <Link href="/school/fees" className="flex items-center gap-2 cursor-pointer">
+                  <UserIcon className="h-4 w-4 text-muted-foreground" />
+                  <span>Fee Dashboard</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/school/settings/fees" className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <span>Fee Settings</span>
+                </Link>
+              </DropdownMenuItem>
+            </>
           ) : (
             <>
               <DropdownMenuItem asChild>
@@ -89,7 +112,6 @@ export function UserNav() {
                   <span>School Profile</span>
                 </Link>
               </DropdownMenuItem>
-
               <DropdownMenuItem asChild>
                 <Link href="/school/settings" className="flex items-center gap-2 cursor-pointer">
                   <Settings className="h-4 w-4 text-muted-foreground" />

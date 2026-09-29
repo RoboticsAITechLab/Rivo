@@ -21,7 +21,7 @@ export function validateEnvConfig(): AppEnvConfig {
 
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const resendApiKey = process.env.RESEND_API_KEY;
-  const resendFromEmail = process.env.RESEND_FROM_EMAIL || 'no-reply@rivo.school';
+  const resendFromEmail = process.env.RESEND_FROM_EMAIL || 'no-reply@homyhaven.app';
   const resendFromName = process.env.RESEND_FROM_NAME || 'Rivo School Management';
   const redisUrl = process.env.REDIS_URL;
   const mfaEncryptionKey = process.env.MFA_ENCRYPTION_KEY;

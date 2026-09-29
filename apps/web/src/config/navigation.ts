@@ -211,7 +211,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'CreditCard',
     group: 'FINANCE',
     description: 'Fee collection, plans, student ledgers & financial receipts',
-    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'FEE_MANAGER', 'SCHOOL_ADMIN', 'OWNER'],
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
     keywords: ['fees', 'payments', 'receipts', 'installments', 'dues', 'finance', 'ledger', 'concessions', 'bursar', 'cashier'],
   },
 
@@ -222,7 +222,7 @@ export const APP_NAVIGATION: AppNavItem[] = [
     iconName: 'Settings',
     group: 'SYSTEM',
     description: 'School institutional profile, academic sessions & security',
-    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'FEE_MANAGER'],
     keywords: ['configuration', 'preferences', 'session', 'tenant', 'setup', 'profile'],
   },
   {

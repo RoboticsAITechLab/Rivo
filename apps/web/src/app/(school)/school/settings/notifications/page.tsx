@@ -1,10 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
-import { NotificationSettings } from '@/features/settings/types';
-import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
-import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   BellRing, 
   Save, 
@@ -15,11 +11,12 @@ import {
   Calendar,
   Award,
   BookOpen,
-  UserX
+  UserX,
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
@@ -39,71 +36,88 @@ interface NotificationFormState {
 }
 
 export default function NotificationSettingsPage() {
-  const store = useSchoolStore();
-  const currentSettings = store.notificationSettings;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const [formData, setFormData] = useState<NotificationFormState>({
     channels: {
-      inApp: currentSettings?.channels?.inApp ?? true,
-      email: currentSettings?.channels?.email ?? true,
-      sms: currentSettings?.channels?.sms ?? false,
+      inApp: true,
+      email: true,
+      sms: false,
     },
     eventTriggers: {
-      studentAbsence: currentSettings?.eventTriggers?.studentAbsence ?? true,
-      homeworkAssigned: currentSettings?.eventTriggers?.homeworkAssigned ?? true,
-      examSchedulePublished: currentSettings?.eventTriggers?.examSchedulePublished ?? true,
-      resultDeclared: currentSettings?.eventTriggers?.resultDeclared ?? true,
-      feeDueReminder: currentSettings?.eventTriggers?.feeDueReminder ?? false,
+      studentAbsence: true,
+      homeworkAssigned: true,
+      examSchedulePublished: true,
+      resultDeclared: true,
+      feeDueReminder: true,
     },
   });
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=notifications');
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setFormData(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to load notification settings:', err);
+      toast.error('Failed to load notification settings');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData({
-        channels: {
-          inApp: currentSettings.channels?.inApp ?? true,
-          email: currentSettings.channels?.email ?? true,
-          sms: currentSettings.channels?.sms ?? false,
-        },
-        eventTriggers: {
-          studentAbsence: currentSettings.eventTriggers?.studentAbsence ?? true,
-          homeworkAssigned: currentSettings.eventTriggers?.homeworkAssigned ?? true,
-          examSchedulePublished: currentSettings.eventTriggers?.examSchedulePublished ?? true,
-          resultDeclared: currentSettings.eventTriggers?.resultDeclared ?? true,
-          feeDueReminder: currentSettings.eventTriggers?.feeDueReminder ?? false,
-        },
+    fetchSettings();
+  }, [fetchSettings]);
+
+  const handleChannelToggle = (channel: keyof NotificationFormState['channels'], value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      channels: { ...prev.channels, [channel]: value }
+    }));
+    setIsDirty(true);
+  };
+
+  const handleTriggerToggle = (trigger: keyof NotificationFormState['eventTriggers'], value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      eventTriggers: { ...prev.eventTriggers, [trigger]: value }
+    }));
+    setIsDirty(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'notifications',
+          value: formData,
+        }),
       });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save notification settings');
+      }
+
+      setIsDirty(false);
+      setSaveSuccess(true);
+      toast.success('Notification preferences saved successfully');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save notification settings');
+    } finally {
+      setSaving(false);
     }
-  }, [currentSettings]);
-
-  const handleChannelToggle = (channel: keyof NotificationFormState['channels'], val: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      channels: {
-        ...prev.channels,
-        [channel]: val,
-      }
-    }));
-    setIsDirty(true);
-  };
-
-  const handleTriggerToggle = (trigger: keyof NotificationFormState['eventTriggers'], val: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      eventTriggers: {
-        ...prev.eventTriggers,
-        [trigger]: val,
-      }
-    }));
-    setIsDirty(true);
-  };
-
-  const handleSave = () => {
-    schoolStore.updateNotificationSettings(formData);
-    setIsDirty(false);
-    toast.success('Automated dispatch and notification triggers saved');
   };
 
   return (
@@ -112,28 +126,24 @@ export default function NotificationSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <BellRing className="h-6 w-6 text-primary" />
-            Automated Alerts & Dispatch Triggers
+            Automated Notification Triggers
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure automated outbound channels and lifecycle alerts triggered by academic workflows.
+            Configure automated event alerts dispatched to parents, students, and faculty members.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Triggers
+        <Button onClick={handleSave} disabled={!isDirty || saving || loading} className="gap-2 shrink-0">
+          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? 'Saving...' : 'Save Settings'}
         </Button>
       </div>
 
-      <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
-        <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <div className="font-semibold text-sm">Outbound Gateways: Pending Carrier Attachment</div>
-          <p className="leading-relaxed opacity-90">
-            SMS gateways (DLT compliant SMS service) and transactional SMTP mailers will handle delivery once attached. 
-            All in-app alerts fire reactive notifications within the portal immediately.
-          </p>
+      {saveSuccess && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>Notification rules updated and enforced across CommunicationService.</span>
         </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Delivery Channels */}
@@ -141,133 +151,142 @@ export default function NotificationSettingsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Monitor className="h-4 w-4 text-primary" />
-              Delivery Channels
+              Supported Delivery Channels
             </CardTitle>
             <CardDescription className="text-xs">
-              Select supported transport mechanisms for automated institutional communication.
+              Active communication channels for event notifications.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Monitor className="h-4 w-4 text-primary" />
-                  In-App Notification Center
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-muted-foreground" />
+                  In-App Notification Feed
                 </div>
-                <div className="text-xs text-muted-foreground">Portal bell icon & activity drawer</div>
+                <div className="text-xs text-muted-foreground">
+                  Deliver real-time web portal notifications to student and parent dashboards.
+                </div>
               </div>
               <Switch 
-                checked={formData.channels.inApp}
-                onCheckedChange={(val) => handleChannelToggle('inApp', val)}
+                checked={formData.channels.inApp} 
+                onCheckedChange={checked => handleChannelToggle('inApp', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Mail className="h-4 w-4 text-primary" />
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
                   Email Dispatch
                 </div>
-                <div className="text-xs text-muted-foreground">Automated HTML digests and reports</div>
+                <div className="text-xs text-muted-foreground">
+                  Send official email advisories for important academic milestones and alerts.
+                </div>
               </div>
               <Switch 
-                checked={formData.channels.email}
-                onCheckedChange={(val) => handleChannelToggle('email', val)}
+                checked={formData.channels.email} 
+                onCheckedChange={checked => handleChannelToggle('email', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20 opacity-60">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Smartphone className="h-4 w-4 text-primary" />
-                  SMS Text Messages
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Smartphone className="h-4 w-4 text-muted-foreground" />
+                  SMS Gateway (Future Carrier Add-on)
                 </div>
-                <div className="text-xs text-muted-foreground">Urgent absence alerts & critical OTPs</div>
+                <div className="text-xs text-muted-foreground">
+                  SMS carrier notifications (Requires active telecom gateway provisioning).
+                </div>
               </div>
               <Switch 
-                checked={formData.channels.sms}
-                onCheckedChange={(val) => handleChannelToggle('sms', val)}
+                checked={formData.channels.sms} 
+                disabled={true}
+                onCheckedChange={checked => handleChannelToggle('sms', checked)} 
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Event Triggers */}
+        {/* Academic & Operational Triggers */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <BellRing className="h-4 w-4 text-primary" />
-              Academic Event Triggers
+              <AlertCircle className="h-4 w-4 text-primary" />
+              Event Automated Triggers
             </CardTitle>
             <CardDescription className="text-xs">
-              Automated notifications fired when operational milestones occur.
+              Select which events dispatch instant notifications.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <UserX className="h-3.5 w-3.5 text-amber-500" />
-                  Student Absence Recorded
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <UserX className="h-4 w-4 text-amber-500" />
+                  Daily Student Absence Alert
                 </div>
-                <div className="text-xs text-muted-foreground">Alert parent guardian when student is marked absent</div>
+                <div className="text-xs text-muted-foreground">
+                  Notify parents when student is marked Absent during daily roll call.
+                </div>
               </div>
               <Switch 
-                checked={formData.eventTriggers.studentAbsence}
-                onCheckedChange={(val) => handleTriggerToggle('studentAbsence', val)}
+                checked={formData.eventTriggers.studentAbsence} 
+                onCheckedChange={checked => handleTriggerToggle('studentAbsence', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <BookOpen className="h-3.5 w-3.5 text-primary" />
-                  New Homework Assigned
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-blue-500" />
+                  Exam Date-sheet Publication
                 </div>
-                <div className="text-xs text-muted-foreground">Notify students when teacher publishes a class assignment</div>
+                <div className="text-xs text-muted-foreground">
+                  Notify students and parents when formal exam timetables are released.
+                </div>
               </div>
               <Switch 
-                checked={formData.eventTriggers.homeworkAssigned}
-                onCheckedChange={(val) => handleTriggerToggle('homeworkAssigned', val)}
+                checked={formData.eventTriggers.examSchedulePublished} 
+                onCheckedChange={checked => handleTriggerToggle('examSchedulePublished', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 text-primary" />
-                  Exam Date Sheet Published
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Award className="h-4 w-4 text-emerald-500" />
+                  Term Result Declaration
                 </div>
-                <div className="text-xs text-muted-foreground">Broadcast date sheet timings and room allocations</div>
+                <div className="text-xs text-muted-foreground">
+                  Dispatch alert when marksheets and grades are officially published.
+                </div>
               </div>
               <Switch 
-                checked={formData.eventTriggers.examSchedulePublished}
-                onCheckedChange={(val) => handleTriggerToggle('examSchedulePublished', val)}
+                checked={formData.eventTriggers.resultDeclared} 
+                onCheckedChange={checked => handleTriggerToggle('resultDeclared', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <Award className="h-3.5 w-3.5 text-primary" />
-                  Exam Results Declared
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-purple-500" />
+                  Fee Installment Due Reminders
                 </div>
-                <div className="text-xs text-muted-foreground">Alert students and parents when report cards are released</div>
+                <div className="text-xs text-muted-foreground">
+                  Send automated reminder notifications prior to installment due dates.
+                </div>
               </div>
               <Switch 
-                checked={formData.eventTriggers.resultDeclared}
-                onCheckedChange={(val) => handleTriggerToggle('resultDeclared', val)}
+                checked={formData.eventTriggers.feeDueReminder} 
+                onCheckedChange={checked => handleTriggerToggle('feeDueReminder', checked)} 
               />
             </div>
           </CardContent>
         </Card>
       </div>
-
-      <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
-      />
     </div>
   );
 }

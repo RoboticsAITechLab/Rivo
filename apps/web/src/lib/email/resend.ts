@@ -16,7 +16,7 @@ export function getResendClient(): Resend | null {
 }
 
 export function getEmailSender(): { email: string; name: string } {
-  const email = process.env.RESEND_FROM_EMAIL || 'no-reply@rivo.school';
+  const email = process.env.RESEND_FROM_EMAIL || 'no-reply@homyhaven.app';
   const name = process.env.RESEND_FROM_NAME || 'Rivo School Management';
   return { email, name };
 }

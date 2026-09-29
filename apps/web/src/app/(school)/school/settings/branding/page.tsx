@@ -1,19 +1,32 @@
 'use client';
 
 import * as React from 'react';
-import { Palette, Upload, CheckCircle2, Save, FileImage, ShieldCheck, PenTool } from 'lucide-react';
+import { Palette, Upload, CheckCircle2, Save, FileImage, ShieldCheck, PenTool, RefreshCw, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
 import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
+import { toast } from 'sonner';
+
+const defaultBranding = {
+  primaryLogoUrl: '',
+  secondaryLogoUrl: '',
+  schoolSealUrl: '',
+  authorizedSignatureUrl: '',
+  documentHeader: '',
+  documentFooter: '',
+  watermarkText: '',
+};
 
 export default function BrandingSettingsPage() {
-  const store = useSchoolStore();
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [uploadingLogo, setUploadingLogo] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const logoInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const {
     currentValues: form,
@@ -23,38 +36,118 @@ export default function BrandingSettingsPage() {
     resetForm,
     showUnsavedDialog,
     setShowUnsavedDialog,
-  } = useUnsavedChanges(store.branding || {});
+  } = useUnsavedChanges(defaultBranding);
 
-  const handleSimulateUpload = (field: 'primaryLogoUrl' | 'secondaryLogoUrl' | 'schoolSealUrl' | 'authorizedSignatureUrl', name: string) => {
-    // In real app, uploads to storage or backend; stores real URL or asset identifier
-    setForm({ ...form, [field]: `uploaded://${name}` });
+  const fetchBranding = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/branding');
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setForm(json.data);
+        markSaved(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to load branding:', err);
+      toast.error('Failed to load branding settings');
+    } finally {
+      setLoading(false);
+    }
+  }, [markSaved, setForm]);
+
+  React.useEffect(() => {
+    fetchBranding();
+  }, [fetchBranding]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload a valid image file (PNG, JPG, SVG, WebP)');
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/school/branding/logo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to upload logo');
+      }
+
+      setForm((prev) => ({ ...prev, primaryLogoUrl: json.logoUrl }));
+      toast.success('School logo uploaded to storage and updated successfully.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
   };
 
-  const handleClearAsset = (field: 'primaryLogoUrl' | 'secondaryLogoUrl' | 'schoolSealUrl' | 'authorizedSignatureUrl') => {
-    setForm({ ...form, [field]: undefined });
+  const handleRemoveLogo = async () => {
+    try {
+      setUploadingLogo(true);
+      const res = await fetch('/api/school/branding/logo', {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setForm((prev) => ({ ...prev, primaryLogoUrl: '' }));
+        toast.success('School logo removed.');
+      }
+    } catch (err) {
+      toast.error('Failed to remove logo');
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = schoolStore.updateBranding(form);
-    markSaved(updated);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-  };
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/branding', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
 
-  const hasAnyAsset = Boolean(
-    form.primaryLogoUrl ||
-    form.secondaryLogoUrl ||
-    form.schoolSealUrl ||
-    form.authorizedSignatureUrl ||
-    form.documentHeader ||
-    form.documentFooter
-  );
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to update branding');
+      }
+
+      markSaved(json.data);
+      setSaveSuccess(true);
+      toast.success('Branding settings saved successfully');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save branding');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <input
+        type="file"
+        ref={logoInputRef}
+        onChange={handleLogoUpload}
+        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        className="hidden"
+      />
+
       <PageHeader
-        title="Branding &amp; Identity"
+        title="Branding & Identity"
         description="Official school crest, signatures, digital seal and print header configurations."
         icon={Palette}
         actions={
@@ -64,6 +157,7 @@ export default function BrandingSettingsPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={saving}
                 onClick={resetForm}
                 className="text-xs h-8"
               >
@@ -73,11 +167,11 @@ export default function BrandingSettingsPage() {
             <Button
               type="submit"
               size="sm"
-              disabled={!isDirty}
+              disabled={!isDirty || saving}
               className="gap-1.5 text-xs h-8"
             >
-              <Save className="h-3.5 w-3.5" />
-              Save Branding
+              {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {saving ? 'Saving...' : 'Save Branding'}
             </Button>
           </div>
         }
@@ -86,7 +180,7 @@ export default function BrandingSettingsPage() {
       {saveSuccess && (
         <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>Branding configurations updated successfully.</span>
+          <span>Branding configurations updated and persisted to database.</span>
         </div>
       )}
 
@@ -98,209 +192,160 @@ export default function BrandingSettingsPage() {
             Logos and official stamps applied across report cards, admit cards, and circular headers.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-5">
+        <CardContent className="pt-5 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Primary Logo */}
-            <div className="p-4 rounded-lg border bg-muted/20 space-y-3">
+            
+            {/* Primary Logo Upload */}
+            <div className="space-y-3 rounded-lg border border-border/60 p-4 bg-muted/20">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <FileImage className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-semibold">Primary School Logo</span>
+                  Primary Institutional Crest / Logo
                 </div>
                 {form.primaryLogoUrl && (
-                  <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                    Configured
-                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Uploaded</span>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                High-resolution SVG or PNG logo for student portal and printed documents.
+                Main high-resolution emblem rendered in navigation headers, PDF receipts, and official admit cards.
               </p>
-              <div className="pt-2 flex items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleSimulateUpload('primaryLogoUrl', file.name);
-                  }}
-                  className="text-xs file:text-xs file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground"
-                />
-                {form.primaryLogoUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleClearAsset('primaryLogoUrl')}
-                    className="h-8 text-xs text-destructive hover:bg-destructive/10 shrink-0"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-              <div className="text-[11px] text-muted-foreground font-mono truncate">
-                {form.primaryLogoUrl ? `File: ${form.primaryLogoUrl}` : 'No logo configured'}
-              </div>
-            </div>
-
-            {/* Secondary / Mascot Logo */}
-            <div className="p-4 rounded-lg border bg-muted/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileImage className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-semibold">Secondary Emblem / Mascot</span>
+              
+              {form.primaryLogoUrl ? (
+                <div className="flex items-center justify-between gap-3 p-2 rounded bg-background border border-border/50">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={form.primaryLogoUrl}
+                      alt="Primary Logo"
+                      className="h-9 w-9 object-contain rounded border border-border/40 p-0.5"
+                    />
+                    <span className="text-[11px] font-mono truncate text-muted-foreground">
+                      {form.primaryLogoUrl.split('/').pop() || 'school_logo'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingLogo}
+                      onClick={() => logoInputRef.current?.click()}
+                      className="text-xs h-7"
+                    >
+                      Replace
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={uploadingLogo}
+                      onClick={handleRemoveLogo}
+                      className="text-xs h-7 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
-                {form.secondaryLogoUrl && (
-                  <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                    Configured
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Alternative crest or monochrome emblem for secondary reports.
-              </p>
-              <div className="pt-2 flex items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleSimulateUpload('secondaryLogoUrl', file.name);
-                  }}
-                  className="text-xs file:text-xs file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground"
-                />
-                {form.secondaryLogoUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleClearAsset('secondaryLogoUrl')}
-                    className="h-8 text-xs text-destructive hover:bg-destructive/10 shrink-0"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-              <div className="text-[11px] text-muted-foreground font-mono truncate">
-                {form.secondaryLogoUrl ? `File: ${form.secondaryLogoUrl}` : 'No secondary emblem configured'}
-              </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploadingLogo}
+                  onClick={() => logoInputRef.current?.click()}
+                  className="w-full text-xs h-9 gap-2 border-dashed"
+                >
+                  {uploadingLogo ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  {uploadingLogo ? 'Uploading to Azure...' : 'Upload Primary Logo'}
+                </Button>
+              )}
             </div>
 
-            {/* School Seal */}
-            <div className="p-4 rounded-lg border bg-muted/20 space-y-3">
+            {/* Official Seal / Stamp */}
+            <div className="space-y-3 rounded-lg border border-border/60 p-4 bg-muted/20">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-semibold">Institutional Digital Seal</span>
+                  Official Digital Seal / Stamp
                 </div>
                 {form.schoolSealUrl && (
-                  <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                    Configured
-                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Configured</span>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Transparent circular seal stamped onto examination marksheets.
+                Authenticity stamp placed over result certificates, transfer documents, and marksheet summaries.
               </p>
-              <div className="pt-2 flex items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleSimulateUpload('schoolSealUrl', file.name);
-                  }}
-                  className="text-xs file:text-xs file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground"
-                />
-                {form.schoolSealUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleClearAsset('schoolSealUrl')}
-                    className="h-8 text-xs text-destructive hover:bg-destructive/10 shrink-0"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-              <div className="text-[11px] text-muted-foreground font-mono truncate">
-                {form.schoolSealUrl ? `File: ${form.schoolSealUrl}` : 'No official seal configured'}
-              </div>
+              <Input
+                value={form.schoolSealUrl || ''}
+                onChange={(e) => setForm({ ...form, schoolSealUrl: e.target.value })}
+                placeholder="https://... or storage asset key"
+                className="text-xs font-mono"
+              />
             </div>
 
             {/* Authorized Signature */}
-            <div className="p-4 rounded-lg border bg-muted/20 space-y-3">
+            <div className="space-y-3 rounded-lg border border-border/60 p-4 bg-muted/20 md:col-span-2">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <PenTool className="h-4 w-4 text-primary" />
-                  <span className="text-xs font-semibold">Authorized Signature</span>
+                  Authorized Signatory (Principal / Director)
                 </div>
                 {form.authorizedSignatureUrl && (
-                  <span className="text-[10px] font-mono text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                    Configured
-                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Configured</span>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Digital signature of the Principal or Controller of Examinations.
+                Digital signature URL / vector rendered on official transcripts and grade cards.
               </p>
-              <div className="pt-2 flex items-center gap-3">
-                <Input
-                  type="file"
-                  accept="image/png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleSimulateUpload('authorizedSignatureUrl', file.name);
-                  }}
-                  className="text-xs file:text-xs file:py-1 file:px-2 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground"
-                />
-                {form.authorizedSignatureUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleClearAsset('authorizedSignatureUrl')}
-                    className="h-8 text-xs text-destructive hover:bg-destructive/10 shrink-0"
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-              <div className="text-[11px] text-muted-foreground font-mono truncate">
-                {form.authorizedSignatureUrl ? `File: ${form.authorizedSignatureUrl}` : 'No signature configured'}
-              </div>
+              <Input
+                value={form.authorizedSignatureUrl || ''}
+                onChange={(e) => setForm({ ...form, authorizedSignatureUrl: e.target.value })}
+                placeholder="https://... or storage asset key"
+                className="text-xs font-mono"
+              />
             </div>
+
           </div>
         </CardContent>
       </Card>
 
-      {/* Document Headers & Footers */}
+      {/* Document Printing Customization */}
       <Card>
         <CardHeader className="pb-3 border-b">
-          <CardTitle className="text-sm font-semibold">Document Header &amp; Footer Layout</CardTitle>
+          <CardTitle className="text-sm font-semibold">Document Headers & Footers</CardTitle>
           <CardDescription className="text-xs">
-            Standard text rendered at the top and bottom of printed circulars and examination papers.
+            Global header and footer text applied to formal printed documents and circulars.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-5 space-y-4">
-          <FormField id="headerText" label="Document Header Title / Subtitle">
+        <CardContent className="pt-5 space-y-4">
+          <FormField label="Official Letterhead Header Tagline" className="text-xs">
             <Input
-              id="headerText"
               value={form.documentHeader || ''}
               onChange={(e) => setForm({ ...form, documentHeader: e.target.value })}
-              placeholder="e.g. ST. XAVIER'S SENIOR SECONDARY SCHOOL • AFFILIATED TO CBSE, NEW DELHI"
-              className="text-xs font-mono"
+              placeholder="e.g. Recognized by Department of Education | ISO 9001:2015 Certified"
+              className="text-xs"
             />
           </FormField>
 
-          <FormField id="footerText" label="Document Footer Legal Text">
+          <FormField label="Official Document Footer Text / Legal Disclaimer" className="text-xs">
             <Input
-              id="footerText"
               value={form.documentFooter || ''}
               onChange={(e) => setForm({ ...form, documentFooter: e.target.value })}
-              placeholder="e.g. This is a computer-generated document. No manual signature is required."
-              className="text-xs font-mono"
+              placeholder="e.g. This is a computer generated document issued under the seal of the Examination Board."
+              className="text-xs"
+            />
+          </FormField>
+
+          <FormField label="Document Watermark Text (Optional)" className="text-xs">
+            <Input
+              value={form.watermarkText || ''}
+              onChange={(e) => setForm({ ...form, watermarkText: e.target.value })}
+              placeholder="e.g. OFFICIAL / CONFIDENTIAL"
+              className="text-xs font-mono uppercase"
             />
           </FormField>
         </CardContent>
@@ -310,9 +355,8 @@ export default function BrandingSettingsPage() {
         open={showUnsavedDialog}
         onDiscard={() => resetForm()}
         onContinueEditing={() => setShowUnsavedDialog(false)}
-        onSave={() => {
-          schoolStore.updateBranding(form);
-          markSaved(form);
+        onSave={async () => {
+          await handleSubmit(new Event('submit') as any);
         }}
       />
     </form>

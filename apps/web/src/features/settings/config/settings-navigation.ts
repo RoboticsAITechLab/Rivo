@@ -28,6 +28,7 @@ import {
   Home,
   LayoutDashboard,
   Palette,
+  CreditCard,
 } from 'lucide-react';
 
 export interface SettingsNavItem {
@@ -215,6 +216,15 @@ export const SETTINGS_NAVIGATION_GROUPS: SettingsCategoryGroup[] = [
         description: 'Consolidated result publishing behavior, student portal access and result locking',
         category: 'OPERATIONS',
         keywords: ['results', 'publishing', 'marksheet', 'report cards', 'grades', 'visibility'],
+      },
+      {
+        id: 'fees',
+        title: 'Fees & Finance',
+        href: '/school/settings/fees',
+        icon: CreditCard,
+        description: 'Currency, receipt format, payment methods, and institutional fee preferences',
+        category: 'OPERATIONS',
+        keywords: ['fees', 'finance', 'receipts', 'currency', 'payments', 'tuition', 'concessions'],
       },
     ],
   },

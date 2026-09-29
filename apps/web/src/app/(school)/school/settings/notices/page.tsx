@@ -1,10 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
-import { NoticeSettings } from '@/features/settings/types';
-import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
-import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Bell, 
   Save, 
@@ -12,7 +8,8 @@ import {
   Send, 
   Users, 
   FileEdit,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,46 +18,72 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 export default function NoticeSettingsPage() {
-  const store = useSchoolStore();
-  const currentSettings = store.noticeSettings;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [formData, setFormData] = useState<NoticeSettings>({
-    adminOnlyPublish: false,
-    allowTeacherDrafts: true,
-    targetAudienceScope: ['ALL', 'STUDENTS', 'TEACHERS', 'PARENTS'],
+  const [formData, setFormData] = useState({
+    teacherCanCreate: true,
+    teacherCanPublish: false,
+    defaultAudience: 'ALL' as 'ALL' | 'TEACHERS' | 'STUDENTS' | 'PARENTS',
+    allowScheduling: true,
+    allowAttachments: true,
     requireApprovalBeforeBroadcast: true,
+    enabledChannels: ['IN_APP', 'EMAIL'] as ('IN_APP' | 'EMAIL' | 'PUSH')[],
   });
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=communication');
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setFormData(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to load communication settings:', err);
+      toast.error('Failed to load notice configuration');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData(currentSettings);
-    }
-  }, [currentSettings]);
+    fetchSettings();
+  }, [fetchSettings]);
 
-  const handleToggle = <K extends keyof NoticeSettings>(key: K, value: NoticeSettings[K]) => {
+  const handleToggle = (key: keyof typeof formData, value: any) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
 
-  const handleToggleAudience = (audience: 'ALL' | 'STUDENTS' | 'TEACHERS' | 'PARENTS', checked: boolean) => {
-    setFormData(prev => {
-      let updated = [...(prev.targetAudienceScope || [])];
-      if (checked && !updated.includes(audience)) {
-        updated.push(audience);
-      } else if (!checked) {
-        updated = updated.filter(a => a !== audience);
-      }
-      return { ...prev, targetAudienceScope: updated };
-    });
-    setIsDirty(true);
-  };
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'communication',
+          value: formData,
+        }),
+      });
 
-  const handleSave = () => {
-    schoolStore.updateNoticeSettings(formData);
-    setIsDirty(false);
-    toast.success('Notice board preferences saved');
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save communication settings');
+      }
+
+      setIsDirty(false);
+      setSaveSuccess(true);
+      toast.success('Notice and communication policies saved');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save notice policies');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -69,139 +92,119 @@ export default function NoticeSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Bell className="h-6 w-6 text-primary" />
-            Notice Board & Circulars Settings
+            Notice & Broadcast Policies
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure announcement authorship rights, pre-broadcast moderation workflows, and recipient segmentation.
+            Configure authorization rules, faculty publishing restrictions, and circular review workflows.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Settings
+        <Button onClick={handleSave} disabled={!isDirty || saving || loading} className="gap-2 shrink-0">
+          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? 'Saving...' : 'Save Policies'}
         </Button>
       </div>
 
+      {saveSuccess && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>Notice policies updated and active across communication channels.</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Authorship & Moderation */}
+        {/* Authoring & Publishing Controls */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <FileEdit className="h-4 w-4 text-primary" />
-              Publishing & Moderation
+              Faculty Authoring Permissions
             </CardTitle>
             <CardDescription className="text-xs">
-              Determine who can author and broadcast official school bulletins.
+              Determine who can draft circulars and whether leadership approval is required.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
-              <div className="space-y-0.5 pr-2">
-                <Label htmlFor="adminOnly" className="text-sm font-medium">Admin-Only Publishing</Label>
-                <p className="text-xs text-muted-foreground">
-                  Restrict circular creation and dispatch exclusively to School Administrators.
-                </p>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">Teacher Circular Drafting</div>
+                <div className="text-xs text-muted-foreground">
+                  Allow teachers to compose notices for their assigned classes and sections.
+                </div>
               </div>
               <Switch 
-                id="adminOnly"
-                checked={formData.adminOnlyPublish}
-                onCheckedChange={(val) => handleToggle('adminOnlyPublish', val)}
+                checked={formData.teacherCanCreate} 
+                onCheckedChange={checked => handleToggle('teacherCanCreate', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
-              <div className="space-y-0.5 pr-2">
-                <Label htmlFor="teacherDrafts" className="text-sm font-medium">Permit Teacher Drafts</Label>
-                <p className="text-xs text-muted-foreground">
-                  Allow teachers and department coordinators to compose notice drafts for administrative review.
-                </p>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">Immediate Faculty Publishing</div>
+                <div className="text-xs text-muted-foreground">
+                  Allow teachers to publish directly without administrative review.
+                </div>
               </div>
               <Switch 
-                id="teacherDrafts"
-                checked={formData.allowTeacherDrafts}
-                onCheckedChange={(val) => handleToggle('allowTeacherDrafts', val)}
+                checked={formData.teacherCanPublish} 
+                onCheckedChange={checked => handleToggle('teacherCanPublish', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
-              <div className="space-y-0.5 pr-2">
-                <Label htmlFor="requireApproval" className="text-sm font-medium">Mandatory Approval Before Broadcast</Label>
-                <p className="text-xs text-muted-foreground">
-                  Require explicit principal/admin sign-off before notices appear on student and parent feeds.
-                </p>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">Mandatory Broadcast Review</div>
+                <div className="text-xs text-muted-foreground">
+                  School-wide broadcasts require approval from the Principal or Director.
+                </div>
               </div>
               <Switch 
-                id="requireApproval"
-                checked={formData.requireApprovalBeforeBroadcast}
-                onCheckedChange={(val) => handleToggle('requireApprovalBeforeBroadcast', val)}
+                checked={formData.requireApprovalBeforeBroadcast} 
+                onCheckedChange={checked => handleToggle('requireApprovalBeforeBroadcast', checked)} 
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Audience Scope */}
+        {/* Feature Capabilities */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              Supported Audience Segments
+              <Send className="h-4 w-4 text-primary" />
+              Dispatch Features
             </CardTitle>
             <CardDescription className="text-xs">
-              Allowable targeting options available when authoring a new circular.
+              Enable advanced dispatch mechanisms and attachment allowances.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium">Entire School Community (Universal)</div>
-                <div className="text-xs text-muted-foreground">All staff, students, and parent guardians</div>
+                <div className="text-sm font-medium text-foreground">Scheduled Dispatches</div>
+                <div className="text-xs text-muted-foreground">
+                  Allow circulars to be scheduled for automated release at a future date/time.
+                </div>
               </div>
               <Switch 
-                checked={(formData.targetAudienceScope || []).includes('ALL')}
-                onCheckedChange={(val) => handleToggleAudience('ALL', val)}
+                checked={formData.allowScheduling} 
+                onCheckedChange={checked => handleToggle('allowScheduling', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium">Students</div>
-                <div className="text-xs text-muted-foreground">Classroom and campus-specific student feeds</div>
+                <div className="text-sm font-medium text-foreground">Document Attachments</div>
+                <div className="text-xs text-muted-foreground">
+                  Allow PDF circulars, timetables, and guidelines to be attached to notices.
+                </div>
               </div>
               <Switch 
-                checked={(formData.targetAudienceScope || []).includes('STUDENTS')}
-                onCheckedChange={(val) => handleToggleAudience('STUDENTS', val)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Teaching Faculty & Staff</div>
-                <div className="text-xs text-muted-foreground">Internal academic and operational bulletins</div>
-              </div>
-              <Switch 
-                checked={(formData.targetAudienceScope || []).includes('TEACHERS')}
-                onCheckedChange={(val) => handleToggleAudience('TEACHERS', val)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Parents & Guardians</div>
-                <div className="text-xs text-muted-foreground">Institutional announcements and fee circulars</div>
-              </div>
-              <Switch 
-                checked={(formData.targetAudienceScope || []).includes('PARENTS')}
-                onCheckedChange={(val) => handleToggleAudience('PARENTS', val)}
+                checked={formData.allowAttachments} 
+                onCheckedChange={checked => handleToggle('allowAttachments', checked)} 
               />
             </div>
           </CardContent>
         </Card>
       </div>
-
-      <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
-      />
     </div>
   );
 }

@@ -196,6 +196,7 @@ model School {
   feePaymentAllocations   FeePaymentAllocation[]
   feeReceipts             FeeReceipt[]
   feeAuditLogs            FeeAuditLog[]
+  settings                SchoolSetting[]
 
   @@index([status])
   @@map("schools")
@@ -238,6 +239,7 @@ model User {
   feeReceiptsIssued        FeeReceipt[]            @relation("FeeReceiptIssuedBy")
   feeReceiptsCancelled     FeeReceipt[]            @relation("FeeReceiptCancelledBy")
   feeAuditLogs             FeeAuditLog[]           @relation("FeeAuditPerformedBy")
+  updatedSettings          SchoolSetting[]         @relation("SchoolSettingUpdatedBy")
 
   @@index([phone])
   @@map("users")
@@ -1662,4 +1664,23 @@ model FeeAuditLog {
   @@index([schoolId, createdAt])
   @@index([entityType, entityId])
   @@map("fee_audit_logs")
+}
+
+model SchoolSetting {
+  id          String   @id @default(uuid())
+  schoolId    String   @map("school_id")
+  category    String
+  value       Json
+  version     Int      @default(1)
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  updatedBy User?  @relation("SchoolSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([schoolId, category])
+  @@index([schoolId])
+  @@index([schoolId, category])
+  @@map("school_settings")
 }

@@ -101,7 +101,12 @@ function InviteAcceptContent() {
       toast.success('Your portal account has been activated!');
 
       const userRole = data?.user?.roleType;
-      const targetRoute = userRole === 'TEACHER' ? '/teacher/dashboard' : '/school';
+      const targetRoute =
+        userRole === 'TEACHER'
+          ? '/teacher/dashboard'
+          : userRole === 'FEE_MANAGER'
+          ? '/school/fees'
+          : '/school';
 
       setTimeout(() => {
         router.replace(targetRoute);

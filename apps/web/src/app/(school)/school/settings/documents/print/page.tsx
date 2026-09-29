@@ -1,10 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
-import { PrintSettings } from '@/features/settings/types';
-import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
-import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Printer, 
   Save, 
@@ -12,7 +8,9 @@ import {
   Stamp, 
   PenTool, 
   Eye,
-  Sliders
+  Sliders,
+  RefreshCw,
+  CheckCircle2,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,29 +26,55 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-export default function PrintSettingsPage() {
-  const store = useSchoolStore();
-  const currentSettings = store.printSettings;
+interface DocumentsPrintConfig {
+  pageSize: 'A4' | 'LETTER' | 'LEGAL';
+  orientation: 'PORTRAIT' | 'LANDSCAPE';
+  marginsMM: { top: number; bottom: number; left: number; right: number };
+  showHeader: boolean;
+  showFooter: boolean;
+  showSeal: boolean;
+  showSignature: boolean;
+  watermarkText: string;
+}
 
-  const [formData, setFormData] = useState<PrintSettings>({
-    paperSize: 'A4',
+export default function PrintSettingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const [formData, setFormData] = useState<DocumentsPrintConfig>({
+    pageSize: 'A4',
     orientation: 'PORTRAIT',
     marginsMM: { top: 15, bottom: 15, left: 15, right: 15 },
-    showWatermark: false,
-    watermarkText: 'CONFIDENTIAL',
-    showAuthorizedSignature: true,
-    showSchoolSeal: true,
+    showHeader: true,
+    showFooter: true,
+    showSeal: true,
+    showSignature: true,
+    watermarkText: '',
   });
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=documents');
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setFormData(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to load print settings:', err);
+      toast.error('Failed to load document print configuration');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData(currentSettings);
-    }
-  }, [currentSettings]);
+    fetchSettings();
+  }, [fetchSettings]);
 
-  const handleChange = <K extends keyof PrintSettings>(key: K, value: PrintSettings[K]) => {
+  const handleChange = <K extends keyof DocumentsPrintConfig>(key: K, value: DocumentsPrintConfig[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
@@ -60,20 +84,37 @@ export default function PrintSettingsPage() {
     setFormData(prev => ({
       ...prev,
       marginsMM: {
-        top: prev.marginsMM?.top ?? 15,
-        bottom: prev.marginsMM?.bottom ?? 15,
-        left: prev.marginsMM?.left ?? 15,
-        right: prev.marginsMM?.right ?? 15,
+        ...prev.marginsMM,
         [margin]: val,
       }
     }));
     setIsDirty(true);
   };
 
-  const handleSave = () => {
-    schoolStore.updatePrintSettings(formData);
-    setIsDirty(false);
-    toast.success('Document print layout and page settings saved');
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'documents',
+          value: formData,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save print settings');
+      }
+      setIsDirty(false);
+      setSaveSuccess(true);
+      toast.success('Document print layout and page settings saved');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save print configuration');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -88,11 +129,18 @@ export default function PrintSettingsPage() {
             Standardize paper stock dimensions, printer margins, watermark stamps, and institutional endorsements.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Layout
+        <Button onClick={handleSave} disabled={!isDirty || saving || loading} className="gap-2 shrink-0">
+          {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? 'Saving...' : 'Save Layout'}
         </Button>
       </div>
+
+      {saveSuccess && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>Print layout configurations persisted to database.</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Paper & Orientation */}
@@ -100,170 +148,155 @@ export default function PrintSettingsPage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4 text-primary" />
-              Paper & Geometry
+              Paper &amp; Physical Geometry
             </CardTitle>
             <CardDescription className="text-xs">
-              Physical page dimensions for PDF report card and admit card exporters.
+              Baseline paper sheet size and default print orientation.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="paperSize">Default Paper Stock</Label>
-                <Select 
-                  value={formData.paperSize} 
-                  onValueChange={(val: any) => handleChange('paperSize', val)}
-                >
-                  <SelectTrigger id="paperSize">
-                    <SelectValue placeholder="Size" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A4">A4 (210 × 297 mm) — Standard</SelectItem>
-                    <SelectItem value="LETTER">US Letter (8.5 × 11 in)</SelectItem>
-                    <SelectItem value="LEGAL">Legal (8.5 × 14 in)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="orientation">Page Orientation</Label>
-                <Select 
-                  value={formData.orientation} 
-                  onValueChange={(val: any) => handleChange('orientation', val)}
-                >
-                  <SelectTrigger id="orientation">
-                    <SelectValue placeholder="Orientation" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PORTRAIT">Portrait (Vertical)</SelectItem>
-                    <SelectItem value="LANDSCAPE">Landscape (Horizontal)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Paper Stock Standard</Label>
+              <Select 
+                value={formData.pageSize} 
+                onValueChange={(val: any) => handleChange('pageSize', val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select paper size" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="A4">A4 (210 × 297 mm) — Standard School Format</SelectItem>
+                  <SelectItem value="LETTER">US Letter (8.5 × 11 in)</SelectItem>
+                  <SelectItem value="LEGAL">US Legal (8.5 × 14 in)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <Label className="text-xs font-semibold">Print Margins (in millimeters)</Label>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Top</span>
-                  <Input 
-                    type="number" 
-                    min={0} 
-                    value={formData.marginsMM?.top ?? 15} 
-                    onChange={(e) => handleMarginChange('top', Number(e.target.value))}
-                    className="h-8 font-mono text-center text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Bottom</span>
-                  <Input 
-                    type="number" 
-                    min={0} 
-                    value={formData.marginsMM?.bottom ?? 15} 
-                    onChange={(e) => handleMarginChange('bottom', Number(e.target.value))}
-                    className="h-8 font-mono text-center text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Left</span>
-                  <Input 
-                    type="number" 
-                    min={0} 
-                    value={formData.marginsMM?.left ?? 15} 
-                    onChange={(e) => handleMarginChange('left', Number(e.target.value))}
-                    className="h-8 font-mono text-center text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Right</span>
-                  <Input 
-                    type="number" 
-                    min={0} 
-                    value={formData.marginsMM?.right ?? 15} 
-                    onChange={(e) => handleMarginChange('right', Number(e.target.value))}
-                    className="h-8 font-mono text-center text-xs"
-                  />
-                </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Default Orientation</Label>
+              <Select 
+                value={formData.orientation} 
+                onValueChange={(val: any) => handleChange('orientation', val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select orientation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PORTRAIT">Portrait (Vertical documents, Marksheets)</SelectItem>
+                  <SelectItem value="LANDSCAPE">Landscape (Horizontal timetables, Schedules)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Margins */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sliders className="h-4 w-4 text-primary" />
+              Page Margins (Millimeters)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Ensure proper spacing for school letterhead, headers, and binding borders.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Top Margin (mm)</Label>
+                <Input 
+                  type="number" 
+                  min={0} 
+                  max={50}
+                  value={formData.marginsMM?.top ?? 15}
+                  onChange={e => handleMarginChange('top', parseInt(e.target.value) || 0)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Bottom Margin (mm)</Label>
+                <Input 
+                  type="number" 
+                  min={0} 
+                  max={50}
+                  value={formData.marginsMM?.bottom ?? 15}
+                  onChange={e => handleMarginChange('bottom', parseInt(e.target.value) || 0)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Left Margin (mm)</Label>
+                <Input 
+                  type="number" 
+                  min={0} 
+                  max={50}
+                  value={formData.marginsMM?.left ?? 15}
+                  onChange={e => handleMarginChange('left', parseInt(e.target.value) || 0)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Right Margin (mm)</Label>
+                <Input 
+                  type="number" 
+                  min={0} 
+                  max={50}
+                  value={formData.marginsMM?.right ?? 15}
+                  onChange={e => handleMarginChange('right', parseInt(e.target.value) || 0)}
+                  className="font-mono text-xs"
+                />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Endorsements & Security */}
-        <Card>
+        {/* Official Endorsements & Seals */}
+        <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Stamp className="h-4 w-4 text-primary" />
-              Security Watermarks & Seals
+              Institutional Seals, Signatures &amp; Endorsements
             </CardTitle>
             <CardDescription className="text-xs">
-              Overlay institutional stamps, watermarks, and verification signatures.
+              Toggle automatic overlay of official authenticity marks on generated documents.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
                   <Stamp className="h-4 w-4 text-primary" />
-                  Print Official School Seal
+                  Official Institutional Seal / Stamp
                 </div>
-                <div className="text-xs text-muted-foreground">Embed embossed digital school seal stamp on certificates</div>
+                <div className="text-xs text-muted-foreground">
+                  Print official institutional seal on admit cards, certificates, and marksheets.
+                </div>
               </div>
               <Switch 
-                checked={formData.showSchoolSeal}
-                onCheckedChange={(val) => handleChange('showSchoolSeal', val)}
+                checked={formData.showSeal} 
+                onCheckedChange={checked => handleChange('showSeal', checked)} 
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-muted/20">
               <div className="space-y-0.5">
-                <div className="text-sm font-medium flex items-center gap-1.5">
+                <div className="text-sm font-medium text-foreground flex items-center gap-2">
                   <PenTool className="h-4 w-4 text-primary" />
-                  Authorized Signature Block
+                  Principal / Controller of Examinations Signature
                 </div>
-                <div className="text-xs text-muted-foreground">Append principal or registrar digital signature line</div>
+                <div className="text-xs text-muted-foreground">
+                  Print authorized signatory image on report cards, fee receipts, and official transcripts.
+                </div>
               </div>
               <Switch 
-                checked={formData.showAuthorizedSignature}
-                onCheckedChange={(val) => handleChange('showAuthorizedSignature', val)}
+                checked={formData.showSignature} 
+                onCheckedChange={checked => handleChange('showSignature', checked)} 
               />
-            </div>
-
-            <div className="p-3 rounded-lg border border-border/40 bg-muted/10 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-sm font-medium">Background Watermark</div>
-                  <div className="text-xs text-muted-foreground">Diagonal anti-tamper watermark text</div>
-                </div>
-                <Switch 
-                  checked={formData.showWatermark}
-                  onCheckedChange={(val) => handleChange('showWatermark', val)}
-                />
-              </div>
-
-              {formData.showWatermark && (
-                <div className="space-y-1.5 pt-2">
-                  <Label htmlFor="watermarkText" className="text-xs">Watermark Text</Label>
-                  <Input 
-                    id="watermarkText" 
-                    placeholder="e.g. OFFICIAL COPY, DRAFT, CONFIDENTIAL"
-                    value={formData.watermarkText || ''}
-                    onChange={(e) => handleChange('watermarkText', e.target.value)}
-                    className="font-mono text-xs uppercase"
-                  />
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
       </div>
-
-      <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
-      />
     </div>
   );
 }

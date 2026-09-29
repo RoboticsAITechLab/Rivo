@@ -72,27 +72,36 @@ function LoginFormContent() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
+function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
+  if (user.scope === 'PLATFORM' || user.roleType === 'PLATFORM_ADMIN') {
+    return '/platform/dashboard';
+  }
+  if (user.roleType === 'TEACHER') {
+    return returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
+  }
+  if (user.roleType === 'PARENT') {
+    return '/parent';
+  }
+  if (user.roleType === 'FEE_MANAGER') {
+    return returnUrl && returnUrl !== '/school' ? returnUrl : '/school/fees';
+  }
+  if (
+    user.roleType === 'DIRECTOR' ||
+    user.roleType === 'PRINCIPAL' ||
+    user.roleType === 'ADMIN' ||
+    user.roleType === 'SCHOOL_ADMIN' ||
+    user.roleType === 'OWNER' ||
+    user.roleType === 'STAFF'
+  ) {
+    return returnUrl || '/school';
+  }
+  return '/school';
+}
+
   // Redirect if already authenticated
   useEffect(() => {
     if (authState === 'AUTHENTICATED' && user) {
-      if (user.scope === 'PLATFORM' || user.roleType === 'OWNER' || user.roleType === 'PLATFORM_ADMIN') {
-        router.replace('/platform/dashboard');
-      } else if (user.roleType === 'TEACHER') {
-        const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-        router.replace(dest);
-      } else if (user.roleType === 'PARENT') {
-        router.replace('/parent');
-      } else if (
-        user.roleType === 'DIRECTOR' ||
-        user.roleType === 'PRINCIPAL' ||
-        user.roleType === 'ADMIN' ||
-        user.roleType === 'SCHOOL_ADMIN' ||
-        user.roleType === 'STAFF'
-      ) {
-        router.replace(returnUrl || '/school');
-      } else {
-        router.replace('/access-denied');
-      }
+      router.replace(resolveRoleRedirect(user, returnUrl));
     }
   }, [authState, user, router, returnUrl]);
 
@@ -154,20 +163,7 @@ function LoginFormContent() {
 
       // 2. Direct session established
       if (result.success && result.user) {
-        if (result.user.roleType === 'TEACHER') {
-          const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-          window.location.href = dest;
-        } else if (result.user.roleType === 'PARENT') {
-          window.location.href = '/parent';
-        } else if (
-          result.user.roleType === 'SCHOOL_ADMIN' ||
-          result.user.roleType === 'ADMIN' ||
-          result.user.roleType === 'OWNER'
-        ) {
-          window.location.href = returnUrl || '/school';
-        } else {
-          router.replace('/access-denied');
-        }
+        window.location.href = resolveRoleRedirect(result.user, returnUrl);
       } else {
         const errorMsg =
           result.error ||
@@ -282,20 +278,7 @@ function LoginFormContent() {
       const result = await verifyMfaChallenge(mfaChallengeToken, trimmedCode, useRecoveryCode);
 
       if (result.success && result.user) {
-        if (result.user.roleType === 'TEACHER') {
-          const dest = returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-          window.location.href = dest;
-        } else if (result.user.roleType === 'PARENT') {
-          window.location.href = '/parent';
-        } else if (
-          result.user.roleType === 'SCHOOL_ADMIN' ||
-          result.user.roleType === 'ADMIN' ||
-          result.user.roleType === 'OWNER'
-        ) {
-          window.location.href = returnUrl || '/school';
-        } else {
-          router.replace('/access-denied');
-        }
+        window.location.href = resolveRoleRedirect(result.user, returnUrl);
       } else {
         setMfaError(result.error || 'Invalid verification code. Please check and try again.');
       }
