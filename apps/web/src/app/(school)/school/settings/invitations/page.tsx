@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth/auth-context';
 
 interface LiveInvitation {
   id: string;
@@ -53,14 +54,47 @@ interface LiveInvitation {
 }
 
 export default function InvitationsManagementPage() {
+  const { user } = useAuth();
   const [invitations, setInvitations] = useState<LiveInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  const callerRole = user?.roleType || 'ADMIN';
+  const isDirector = callerRole === 'DIRECTOR' || callerRole === 'OWNER' || callerRole === 'PLATFORM_ADMIN';
+  const isPrincipal = callerRole === 'PRINCIPAL';
+
+  // Available roles to invite based on strict hierarchy
+  const availableInviteRoles = React.useMemo(() => {
+    if (isDirector) {
+      return [
+        { value: 'FEE_MANAGER', label: 'Fee Manager' },
+        { value: 'TEACHER', label: 'Teacher' },
+        { value: 'ADMIN', label: 'School Administrator' },
+        { value: 'PRINCIPAL', label: 'Principal' },
+        { value: 'DIRECTOR', label: 'Director / Board' },
+        { value: 'STAFF', label: 'Staff / Coordinator' },
+      ];
+    }
+    if (isPrincipal) {
+      return [
+        { value: 'FEE_MANAGER', label: 'Fee Manager' },
+        { value: 'TEACHER', label: 'Teacher' },
+        { value: 'ADMIN', label: 'School Administrator' },
+        { value: 'STAFF', label: 'Staff / Coordinator' },
+      ];
+    }
+    // Standard ADMIN can invite Teacher, Fee Manager, Staff
+    return [
+      { value: 'FEE_MANAGER', label: 'Fee Manager' },
+      { value: 'TEACHER', label: 'Teacher' },
+      { value: 'STAFF', label: 'Staff / Coordinator' },
+    ];
+  }, [isDirector, isPrincipal]);
+
   // New Invite Dialog State
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('TEACHER');
+  const [role, setRole] = useState('FEE_MANAGER');
   const [department, setDepartment] = useState('');
   const [designation, setDesignation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -317,9 +351,11 @@ export default function InvitationsManagementPage() {
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TEACHER">Teacher</SelectItem>
-                    <SelectItem value="STAFF">Staff / Coordinator</SelectItem>
-                    <SelectItem value="SCHOOL_ADMIN">School Administrator</SelectItem>
+                    {availableInviteRoles.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
