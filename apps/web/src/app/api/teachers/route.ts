@@ -3,6 +3,8 @@ import { prisma, Prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 import { generateSecureToken, hashPassword, validatePasswordPolicy } from '@/lib/auth/crypto';
 
+import { getMediaStorageService } from '@/lib/storage';
+
 // GET /api/teachers - List all teachers with assignments and subjects
 export async function GET(req: NextRequest) {
   try {
@@ -52,6 +54,7 @@ export async function GET(req: NextRequest) {
       include: {
         user: true,
         campus: true,
+        documents: true,
         assignments: {
           include: {
             class: true,
@@ -63,52 +66,66 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const formatted = teachers.map((t) => {
-      const assignments = t.assignments.map((a) => ({
-        id: a.id,
-        classId: a.classId,
-        className: a.class.name,
-        sectionId: a.sectionId,
-        sectionName: a.section.name,
-        streamId: a.streamId,
-        subjectId: a.subjectId,
-        subjectName: a.subject?.name || 'Class Teacher',
-        isClassTeacher: a.isClassTeacher,
-      }));
+    const storageService = getMediaStorageService();
 
-      const uniqueClasses = new Set(assignments.map((a) => a.className));
+    const formatted = await Promise.all(
+      teachers.map(async (t) => {
+        const assignments = t.assignments.map((a) => ({
+          id: a.id,
+          classId: a.classId,
+          className: a.class.name,
+          sectionId: a.sectionId,
+          sectionName: a.section.name,
+          streamId: a.streamId,
+          subjectId: a.subjectId,
+          subjectName: a.subject?.name || 'Class Teacher',
+          isClassTeacher: a.isClassTeacher,
+        }));
 
-      return {
-        id: t.id,
-        userId: t.userId,
-        employeeId: t.employeeId || 'TCH-000',
-        firstName: t.user.firstName,
-        lastName: t.user.lastName,
-        name: `${t.user.firstName} ${t.user.lastName}`.trim(),
-        email: t.user.email,
-        phone: t.phone || '',
-        photoUrl: t.photoUrl || null,
-        gender: t.gender || null,
-        dateOfBirth: t.dateOfBirth ? t.dateOfBirth.toISOString().split('T')[0] : null,
-        joiningDate: t.joiningDate ? t.joiningDate.toISOString().split('T')[0] : null,
-        employmentType: t.employmentType || 'FULL_TIME',
-        experienceYears: t.experienceYears || 0,
-        specialization: t.specialization || null,
-        emergencyContactName: t.emergencyContactName || null,
-        emergencyContactPhone: t.emergencyContactPhone || null,
-        emergencyContactRelation: t.emergencyContactRelation || null,
-        address: t.address || null,
-        status: t.status,
-        department: t.department || 'General',
-        designation: t.designation || 'Faculty Member',
-        qualification: t.qualification || 'Master of Education',
-        campusId: t.campusId,
-        campusName: t.campus?.name || 'Main Campus',
-        totalClassesCount: uniqueClasses.size,
-        assignments,
-        createdAt: t.createdAt.toISOString(),
-      };
-    });
+        const uniqueClasses = new Set(assignments.map((a) => a.className));
+
+        let photoUrl = t.photoUrl;
+        if (photoUrl && photoUrl.startsWith('schools/')) {
+          try {
+            photoUrl = await storageService.getSignedUrl(photoUrl, 900);
+          } catch {
+            // Keep original if signed URL generation fails
+          }
+        }
+
+        return {
+          id: t.id,
+          userId: t.userId,
+          employeeId: t.employeeId || 'TCH-000',
+          firstName: t.user.firstName,
+          lastName: t.user.lastName,
+          name: `${t.user.firstName} ${t.user.lastName}`.trim(),
+          email: t.user.email,
+          phone: t.phone || '',
+          photoUrl: photoUrl || null,
+          gender: t.gender || null,
+          dateOfBirth: t.dateOfBirth ? t.dateOfBirth.toISOString().split('T')[0] : null,
+          joiningDate: t.joiningDate ? t.joiningDate.toISOString().split('T')[0] : null,
+          employmentType: t.employmentType || 'FULL_TIME',
+          experienceYears: t.experienceYears || 0,
+          specialization: t.specialization || null,
+          emergencyContactName: t.emergencyContactName || null,
+          emergencyContactPhone: t.emergencyContactPhone || null,
+          emergencyContactRelation: t.emergencyContactRelation || null,
+          address: t.address || null,
+          status: t.status,
+          department: t.department || 'General',
+          designation: t.designation || 'Faculty Member',
+          qualification: t.qualification || 'Master of Education',
+          campusId: t.campusId,
+          campusName: t.campus?.name || 'Main Campus',
+          totalClassesCount: uniqueClasses.size,
+          documentsCount: t.documents?.length || 0,
+          assignments,
+          createdAt: t.createdAt.toISOString(),
+        };
+      })
+    );
 
     return NextResponse.json({ teachers: formatted });
   } catch (error) {

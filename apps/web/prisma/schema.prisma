@@ -392,6 +392,7 @@ model Teacher {
   user                     User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   assignments              TeacherAssignment[]
   timetableSlots           TimetableSlot[]
+  documents                TeacherDocument[]
 
   @@unique([schoolId, userId])
   @@index([schoolId])
@@ -399,6 +400,22 @@ model Teacher {
   @@index([userId])
   @@index([schoolId, status])
   @@map("teachers")
+}
+
+model TeacherDocument {
+  id           String   @id @default(uuid())
+  teacherId    String   @map("teacher_id")
+  documentType String   @map("document_type") // RESUME, DEGREE_CERTIFICATE, ID_PROOF, EXPERIENCE_LETTER, CONTRACT, OTHER
+  title        String
+  fileUrl      String   @map("file_url")
+  fileName     String?  @map("file_name")
+  fileSize     String?  @map("file_size")
+  status       String   @default("VERIFIED") // PENDING, VERIFIED, REJECTED
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@index([teacherId])
+  @@map("teacher_documents")
 }
 
 model AcademicSession {

@@ -51,6 +51,34 @@ export interface TeacherEmergencyContact {
   phone: string;
 }
 
+export interface TeacherDocumentItem {
+  id: string;
+  documentType: string;
+  category?: string;
+  title: string;
+  fileName?: string;
+  fileSize?: number | string | null;
+  fileUrl: string;
+  accessUrl?: string;
+  status?: string;
+  uploadedAt?: string;
+  createdAt?: string;
+}
+
+export interface TeacherTimetableSlotItem {
+  id: string;
+  dayOfWeek: string;
+  periodNumber: number;
+  periodName?: string;
+  startTime: string;
+  endTime: string;
+  roomNumber?: string;
+  roomName?: string;
+  className: string;
+  sectionName: string;
+  subjectName: string;
+}
+
 export interface TeacherDetail {
   id: string;
   personal: TeacherPersonal;
@@ -60,6 +88,8 @@ export interface TeacherDetail {
   emergencyContact: TeacherEmergencyContact;
   status: TeacherStatus;
   notes?: string;
+  documents?: TeacherDocumentItem[];
+  timetableSlots?: TeacherTimetableSlotItem[];
   createdAt: string;
   updatedAt?: string;
 

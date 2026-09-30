@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, Prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
+import { getMediaStorageService } from '@/lib/storage';
 
-// GET /api/teachers/[id] - Fetch single teacher profile with assignments & schedule details
+// GET /api/teachers/[id] - Fetch single teacher profile with assignments, documents & schedule details
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,6 +23,20 @@ export async function GET(
       include: {
         user: true,
         campus: true,
+        documents: {
+          orderBy: { uploadedAt: 'desc' },
+        },
+        timetableSlots: {
+          include: {
+            class: true,
+            section: true,
+            subject: true,
+          },
+          orderBy: [
+            { dayOfWeek: 'asc' },
+            { periodNumber: 'asc' },
+          ],
+        },
         assignments: {
           include: {
             class: true,
@@ -37,7 +52,45 @@ export async function GET(
       return NextResponse.json({ message: 'Teacher not found' }, { status: 404 });
     }
 
-    const assignments = teacher.assignments.map((a) => ({
+    const storageService = getMediaStorageService();
+
+    // Sign photo URL if storageKey
+    let photoUrl = teacher.photoUrl;
+    if (photoUrl && photoUrl.startsWith('schools/')) {
+      try {
+        photoUrl = await storageService.getSignedUrl(photoUrl, 900);
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Sign documents
+    const documents = await Promise.all(
+      teacher.documents.map(async (doc: any) => {
+        let accessUrl = doc.fileUrl;
+        if (doc.fileUrl && doc.fileUrl.startsWith('schools/')) {
+          try {
+            accessUrl = await storageService.getSignedUrl(doc.fileUrl, 900);
+          } catch {
+            // Keep original
+          }
+        }
+        return {
+          id: doc.id,
+          teacherId: doc.teacherId,
+          documentType: doc.documentType,
+          title: doc.title,
+          accessUrl,
+          fileUrl: accessUrl,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          status: doc.status,
+          uploadedAt: doc.uploadedAt.toISOString(),
+        };
+      })
+    );
+
+    const assignments = teacher.assignments.map((a: any) => ({
       id: a.id,
       classId: a.classId,
       className: a.class.name,
@@ -50,6 +103,37 @@ export async function GET(
       sessionName: a.academicSession?.name || '',
     }));
 
+    const timetableSlots = teacher.timetableSlots.map((s: any) => ({
+      id: s.id,
+      dayOfWeek: s.dayOfWeek,
+      periodNumber: s.periodNumber,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      roomNumber: s.roomNumber || 'Standard Classroom',
+      classId: s.classId,
+      className: s.class.name,
+      sectionId: s.sectionId,
+      sectionName: s.section.name,
+      streamId: s.streamId,
+      subjectId: s.subjectId,
+      subjectName: s.subject.name,
+    }));
+
+    // Calculate total students enrolled across teacher's assigned classes
+    const classIds = assignments.map((a: any) => a.classId);
+    const sectionIds = assignments.map((a: any) => a.sectionId);
+    let totalStudentsCount = 0;
+    if (classIds.length > 0 && sectionIds.length > 0) {
+      totalStudentsCount = await prisma.studentEnrollment.count({
+        where: {
+          schoolId: auth.schoolId,
+          classId: { in: classIds },
+          sectionId: { in: sectionIds },
+          status: 'ACTIVE',
+        },
+      });
+    }
+
     return NextResponse.json({
       teacher: {
         id: teacher.id,
@@ -60,7 +144,7 @@ export async function GET(
         lastName: teacher.user.lastName,
         email: teacher.user.email,
         phone: teacher.phone || '',
-        photoUrl: teacher.photoUrl || null,
+        photoUrl: photoUrl || null,
         gender: teacher.gender || null,
         dateOfBirth: teacher.dateOfBirth ? teacher.dateOfBirth.toISOString().split('T')[0] : null,
         joiningDate: teacher.joiningDate ? teacher.joiningDate.toISOString().split('T')[0] : null,
@@ -77,7 +161,13 @@ export async function GET(
         qualification: teacher.qualification || 'Master of Education',
         campusId: teacher.campusId,
         campusName: teacher.campus?.name || 'Main Campus',
+        totalClassesCount: new Set(assignments.map((a: any) => a.className)).size,
+        weeklyPeriods: timetableSlots.length || assignments.length * 5,
+        totalStudentsCount,
+        attendanceRate: 100,
         assignments,
+        timetableSlots,
+        documents,
         createdAt: teacher.createdAt.toISOString(),
       },
     });
@@ -141,7 +231,7 @@ export async function PATCH(
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Update User names if provided
       if (firstName || lastName !== undefined) {
         await tx.user.update({

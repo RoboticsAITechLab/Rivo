@@ -43,7 +43,17 @@ export async function GET(req: NextRequest) {
     if (classId && classId !== 'ALL') where.classId = classId;
     if (sectionId && sectionId !== 'ALL') where.sectionId = sectionId;
     if (streamId && streamId !== 'ALL') where.streamId = streamId;
-    if (teacherId && teacherId !== 'ALL') where.teacherId = teacherId;
+    if (teacherId && teacherId !== 'ALL') {
+      where.teacherId = teacherId;
+    } else if (auth.role === 'TEACHER') {
+      const teacherRec = await prisma.teacher.findFirst({
+        where: { userId: auth.userId, schoolId: auth.schoolId },
+        select: { id: true },
+      });
+      if (teacherRec) {
+        where.teacherId = teacherRec.id;
+      }
+    }
 
     const slots = await prisma.timetableSlot.findMany({
       where,
