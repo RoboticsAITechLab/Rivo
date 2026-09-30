@@ -9,25 +9,27 @@ import {
   maskDocumentNumber,
 } from '@/lib/teachers/document-catalog';
 
-// GET /api/teachers/[id]/documents - List teacher legal, KYC, educational & employment documents with signed SAS URLs
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET /api/teacher/documents - Logged-in teacher accessing their own legal, KYC, educational & employment documents
+export async function GET(req: NextRequest) {
   try {
-    const { id } = await params;
-    const auth = await requireAuth(req, { permission: 'teachers.view' });
+    const auth = await requireAuth(req, {
+      scope: 'SCHOOL',
+      roles: ['TEACHER', 'DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'STAFF'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }
 
-    const teacher = await prisma.teacher.findFirst({
-      where: { id, schoolId: auth.schoolId },
+    let teacher = await prisma.teacher.findFirst({
+      where: {
+        userId: auth.userId,
+        schoolId: auth.schoolId,
+      },
       include: {
         documents: {
           include: {
             verifiedBy: {
-              select: { firstName: true, lastName: true, email: true },
+              select: { firstName: true, lastName: true },
             },
           },
           orderBy: [{ isRequired: 'desc' }, { uploadedAt: 'desc' }],
@@ -36,18 +38,48 @@ export async function GET(
     });
 
     if (!teacher) {
-      return NextResponse.json({ message: 'Teacher not found' }, { status: 404 });
+      // Auto-provision if active membership
+      const membership = await prisma.schoolMembership.findUnique({
+        where: {
+          userId_schoolId: {
+            userId: auth.userId,
+            schoolId: auth.schoolId,
+          },
+        },
+      });
+      if (membership && membership.status === 'ACTIVE') {
+        teacher = await prisma.teacher.upsert({
+          where: {
+            schoolId_userId: {
+              schoolId: auth.schoolId,
+              userId: auth.userId,
+            },
+          },
+          update: { status: 'ACTIVE' },
+          create: {
+            schoolId: auth.schoolId,
+            userId: auth.userId,
+            status: 'ACTIVE',
+          },
+          include: {
+            documents: {
+              include: {
+                verifiedBy: {
+                  select: { firstName: true, lastName: true },
+                },
+              },
+              orderBy: [{ isRequired: 'desc' }, { uploadedAt: 'desc' }],
+            },
+          },
+        });
+      }
     }
 
-    // Role-based IDOR validation: If TEACHER role, must be own profile
-    if (auth.role === 'TEACHER' && teacher.userId !== auth.userId) {
-      return NextResponse.json(
-        { message: 'Access denied. You may only access your own employment documents.' },
-        { status: 403 }
-      );
+    if (!teacher) {
+      return NextResponse.json({ message: 'Teacher record not found for session user' }, { status: 404 });
     }
 
-    // Fetch school configured required documents if available
+    // Fetch school configured required documents
     const schoolSetting = await prisma.schoolSetting.findUnique({
       where: {
         schoolId_category: {
@@ -64,7 +96,7 @@ export async function GET(
 
     const storageService = getMediaStorageService();
 
-    // Generate short-lived signed URLs (15 min TTL) for authorized client consumption
+    // Generate short-lived signed URLs (15 min TTL)
     const documentsWithUrls = await Promise.all(
       teacher.documents.map(async (doc) => {
         let accessUrl = doc.fileUrl;
@@ -72,7 +104,7 @@ export async function GET(
           try {
             accessUrl = await storageService.getSignedUrl(doc.fileUrl, 900);
           } catch {
-            // Keep original if signed URL generation fails
+            // Keep original
           }
         }
 
@@ -108,49 +140,44 @@ export async function GET(
       })
     );
 
-    // Calculate onboarding checklist progress
+    // Calculate checklist
     const checklist = calculateDocumentChecklist(
       teacher.documents.map((d) => ({ documentType: d.documentType, status: d.status })),
       requiredTypes
     );
 
     return NextResponse.json({
+      teacherId: teacher.id,
       documents: documentsWithUrls,
       checklist,
       catalog: STANDARD_TEACHER_DOCUMENTS,
     });
   } catch (error: any) {
-    console.error('[TEACHER_DOCUMENTS_GET_ERROR] Error fetching teacher documents:', error.message);
+    console.error('[TEACHER_PORTAL_DOCUMENTS_GET_ERROR]:', error.message);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }
 
-// POST /api/teachers/[id]/documents - Upload private teacher document to Azure Blob Storage
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// POST /api/teacher/documents - Teacher uploading own document
+export async function POST(req: NextRequest) {
   try {
-    const { id } = await params;
-    const auth = await requireAuth(req, { permission: 'teachers.edit' });
+    const auth = await requireAuth(req, {
+      scope: 'SCHOOL',
+      roles: ['TEACHER', 'DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'STAFF'],
+    });
     if (!auth.authorized) {
       return auth.response;
     }
 
     const teacher = await prisma.teacher.findFirst({
-      where: { id, schoolId: auth.schoolId },
+      where: {
+        userId: auth.userId,
+        schoolId: auth.schoolId,
+      },
     });
 
     if (!teacher) {
-      return NextResponse.json({ message: 'Teacher not found' }, { status: 404 });
-    }
-
-    // Role-based IDOR validation: If TEACHER role, can only upload to own profile
-    if (auth.role === 'TEACHER' && teacher.userId !== auth.userId) {
-      return NextResponse.json(
-        { message: 'Access denied. You may only upload documents for your own profile.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ message: 'Teacher profile not found' }, { status: 404 });
     }
 
     const formData = await req.formData();
@@ -167,7 +194,6 @@ export async function POST(
       return NextResponse.json({ message: 'No file provided' }, { status: 400 });
     }
 
-    // Size limit check (10MB)
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ message: 'File size exceeds maximum allowed limit of 10MB.' }, { status: 400 });
     }
@@ -186,7 +212,6 @@ export async function POST(
       scope: 'private',
     });
 
-    // Store canonical storage key and metadata in database
     const document = await prisma.teacherDocument.create({
       data: {
         schoolId: auth.schoolId,
@@ -207,7 +232,6 @@ export async function POST(
       },
     });
 
-    // Sign temporary SAS URL for immediate UI display
     let signedUrl = uploadResult.storageKey;
     try {
       signedUrl = await storageService.getSignedUrl(uploadResult.storageKey, 900);
@@ -217,7 +241,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Teacher document uploaded successfully and queued for verification.',
+      message: 'Document uploaded successfully and submitted for administrator review.',
       document: {
         id: document.id,
         teacherId: document.teacherId,
@@ -237,7 +261,7 @@ export async function POST(
       },
     });
   } catch (error: any) {
-    console.error('[TEACHER_DOCUMENT_UPLOAD_ERROR] Error uploading teacher document:', error.message);
+    console.error('[TEACHER_PORTAL_DOCUMENT_POST_ERROR]:', error.message);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }

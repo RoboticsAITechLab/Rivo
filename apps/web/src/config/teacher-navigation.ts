@@ -39,4 +39,10 @@ export const TEACHER_NAVIGATION: TeacherNavItem[] = [
     iconName: 'Clock',
     description: 'Your weekly teaching periods schedule',
   },
+  {
+    title: 'Documents & KYC',
+    href: '/teacher/documents',
+    iconName: 'FileCheck',
+    description: 'Upload and track your legal identity, educational degrees and employment verification status',
+  },
 ];

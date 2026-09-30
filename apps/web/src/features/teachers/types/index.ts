@@ -61,6 +61,7 @@ export interface TeacherDocumentItem {
   fileSize?: number | string | null;
   fileUrl: string;
   accessUrl?: string;
+  mimeType?: string | null;
   status?: string; // SUBMITTED, UNDER_REVIEW, VERIFIED, REJECTED, EXPIRED, ARCHIVED
   isRequired?: boolean;
   issueDate?: string | null;
@@ -93,6 +94,7 @@ export interface TeacherTimetableSlotItem {
 
 export interface TeacherDetail {
   id: string;
+  employeeCode?: string;
   personal: TeacherPersonal;
   employment: TeacherEmployment;
   assignments: TeachingAssignment[];
@@ -110,6 +112,7 @@ export interface TeacherDetail {
   totalClassesCount: number;
   totalStudentsCount: number;
   attendanceRate: number;
+  attendancePercentage?: number;
 }
 
 export interface TeacherFilterState {
