@@ -232,8 +232,8 @@ export default function TeacherPermissionsPage() {
               const Icon = meta.icon;
 
               return (
-                <Card key={modKey} className="border-border/70 shadow-sm overflow-hidden">
-                  <CardHeader className="bg-muted/30 border-b border-border/50 pb-3">
+                <Card key={modKey} className="border-border/70 shadow-sm overflow-visible">
+                  <CardHeader className="bg-muted/30 border-b border-border/50 pb-3 rounded-t-xl">
                     <div className="flex items-center gap-2.5">
                       <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
                         <Icon className="h-4 w-4" />
