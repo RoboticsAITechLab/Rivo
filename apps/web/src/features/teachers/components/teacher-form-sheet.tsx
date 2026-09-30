@@ -128,7 +128,18 @@ function TeacherFormWizard({
         }
       })
       .catch(() => {});
+
+    fetch('/api/teachers/next-id')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.nextId) {
+          setNextIdPreview(data.nextId);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const [nextIdPreview, setNextIdPreview] = React.useState<string>('AUTO-GENERATED');
 
   // Form State
   const [firstName, setFirstName] = React.useState(teacherToEdit?.personal.firstName || '');
@@ -505,6 +516,41 @@ function TeacherFormWizard({
                   {photoError && (
                     <p className="text-[11px] text-destructive font-medium">{photoError}</p>
                   )}
+                </div>
+              </div>
+
+              {/* Staff ID & Employment Commencement Box */}
+              <div className="p-3.5 rounded-xl border border-primary/20 bg-primary/5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground">Staff Identification & Code</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                    {employeeId === 'AUTO' ? `Next ID: ${nextIdPreview}` : `Staff ID: ${employeeId}`}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField label="Employee Staff ID / Code" required error={safeErrors.employeeId}>
+                    <Input
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
+                      placeholder={`AUTO (${nextIdPreview})`}
+                      readOnly={Boolean(teacherToEdit)}
+                      disabled={Boolean(teacherToEdit)}
+                      className="bg-background text-xs font-mono uppercase font-semibold"
+                    />
+                    {!teacherToEdit && (
+                      <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                        Leave as &apos;AUTO&apos; for system-generated ID ({nextIdPreview}).
+                      </span>
+                    )}
+                  </FormField>
+                  <FormField label="Date of Joining" required error={safeErrors.joiningDate}>
+                    <Input
+                      type="date"
+                      value={joiningDate}
+                      onChange={(e) => setJoiningDate(e.target.value)}
+                      className="bg-background text-xs"
+                    />
+                  </FormField>
                 </div>
               </div>
 

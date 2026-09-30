@@ -936,6 +936,43 @@ export function TeacherOnboardingWorkspace({
                   </div>
                 </div>
 
+                {/* Staff ID & Employment Commencement Box */}
+                <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="h-4 w-4 text-primary" />
+                      <span className="text-xs font-semibold text-foreground">Staff Identification & Employment</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-mono border-primary/30 text-primary">
+                      {employeeId === 'AUTO' ? `Next ID: ${nextIdPreview}` : `Custom: ${employeeId}`}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField label="Employee Staff ID / Code">
+                      <Input
+                        value={employeeId}
+                        onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
+                        placeholder={`AUTO (${nextIdPreview})`}
+                        className="bg-background text-xs font-mono uppercase font-semibold"
+                      />
+                      <span className="text-[10px] text-muted-foreground mt-1 block">
+                        Leave as &apos;AUTO&apos; for auto-generation (<strong className="text-primary font-mono">{nextIdPreview}</strong>) or type custom staff code.
+                      </span>
+                    </FormField>
+                    <FormField label="Date of Joining" required error={validationErrors.joiningDate}>
+                      <Input
+                        type="date"
+                        value={joiningDate}
+                        onChange={(e) => setJoiningDate(e.target.value)}
+                        className="bg-background text-xs font-mono"
+                      />
+                      <span className="text-[10px] text-muted-foreground mt-1 block">
+                        Official joining / commencement date at institution.
+                      </span>
+                    </FormField>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <FormField label="First Name" required error={validationErrors.firstName}>
                     <Input
@@ -1127,11 +1164,11 @@ export function TeacherOnboardingWorkspace({
                     <Input
                       value={employeeId}
                       onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
-                      placeholder="AUTO (System-generated)"
-                      className="bg-muted/40 text-xs font-mono uppercase"
+                      placeholder={`AUTO (${nextIdPreview})`}
+                      className="bg-muted/40 text-xs font-mono uppercase font-semibold"
                     />
                     <span className="text-[10px] text-muted-foreground mt-1 block">
-                      Leave as &apos;AUTO&apos; to use authoritative institutional generator ({nextIdPreview}).
+                      Leave as &apos;AUTO&apos; to use authoritative generator (<strong className="text-primary font-mono">{nextIdPreview}</strong>) or enter custom code.
                     </span>
                   </FormField>
                   <FormField label="Date of Joining" required error={validationErrors.joiningDate}>
