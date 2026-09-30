@@ -33,7 +33,12 @@ export type SecurityAuditEvent =
   | 'LOGIN_SUCCESS_PARENT_OTP'
   | 'PARENT_SCHOOL_SWITCHED'
   | 'SESSION_CACHE_HIT'
-  | 'SESSION_CACHE_MISS';
+  | 'SESSION_CACHE_MISS'
+  | 'ROLL_ASSIGNED'
+  | 'ROLL_CHANGED'
+  | 'ROLL_REBALANCED'
+  | 'ROLL_MANUAL_OVERRIDE'
+  | 'ROLL_AUTO_REGENERATED';
 
 export interface AuditLogParams {
   event: SecurityAuditEvent;

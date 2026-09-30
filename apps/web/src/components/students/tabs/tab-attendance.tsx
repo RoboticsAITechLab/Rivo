@@ -6,7 +6,15 @@ import { CalendarCheck, CheckCircle, XCircle, Clock, BarChart2 } from 'lucide-re
 import { cn } from '@/lib/utils';
 
 export function TabAttendance({ student }: { student: StudentDetail }) {
-  const { attendanceSummary } = student;
+  const attendanceSummary = student.attendanceSummary || {
+    overallPercentage: student.attendancePercentage || 0,
+    presentDays: 0,
+    absentDays: 0,
+    lateDays: 0,
+    totalWorkingDays: 0,
+    monthlyTrend: [],
+    recentRecords: [],
+  };
 
   return (
     <div className="space-y-4 pt-1 text-xs">
@@ -18,7 +26,7 @@ export function TabAttendance({ student }: { student: StudentDetail }) {
             {attendanceSummary.overallPercentage}%
           </p>
           <span className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-            Good Standing
+            {attendanceSummary.overallPercentage >= 75 ? 'Good Standing' : 'Low Attendance'}
           </span>
         </div>
 
@@ -54,41 +62,43 @@ export function TabAttendance({ student }: { student: StudentDetail }) {
       </div>
 
       {/* Monthly Attendance Progress Visualization */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <BarChart2 className="h-3.5 w-3.5 text-primary" />
-          Monthly Attendance Rate (2026 Academic Term)
-        </h4>
+      {attendanceSummary.monthlyTrend.length > 0 && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <BarChart2 className="h-3.5 w-3.5 text-primary" />
+            Monthly Attendance Rate (Current Academic Term)
+          </h4>
 
-        <div className="space-y-2.5 pt-1">
-          {attendanceSummary.monthlyTrend.map((m) => (
-            <div key={m.month} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-foreground w-12">{m.month}</span>
-                <span className="text-muted-foreground text-[11px]">
-                  {m.presentDays} / {m.workingDays} days
-                </span>
-                <span className="font-bold font-mono text-xs w-12 text-right">
-                  {m.percentage}%
-                </span>
+          <div className="space-y-2.5 pt-1">
+            {attendanceSummary.monthlyTrend.map((m) => (
+              <div key={m.month} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-foreground w-12">{m.month}</span>
+                  <span className="text-muted-foreground text-[11px]">
+                    {m.presentDays} / {m.workingDays} days
+                  </span>
+                  <span className="font-bold font-mono text-xs w-12 text-right">
+                    {m.percentage}%
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-500',
+                      m.percentage >= 90
+                        ? 'bg-emerald-500'
+                        : m.percentage >= 80
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500',
+                    )}
+                    style={{ width: `${m.percentage}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                <div
-                  className={cn(
-                    'h-full rounded-full transition-all duration-500',
-                    m.percentage >= 90
-                      ? 'bg-emerald-500'
-                      : m.percentage >= 80
-                      ? 'bg-amber-500'
-                      : 'bg-rose-500',
-                  )}
-                  style={{ width: `${m.percentage}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Recent Attendance Records Log Table */}
       <div className="rounded-lg border bg-card p-4 space-y-3">
@@ -97,52 +107,58 @@ export function TabAttendance({ student }: { student: StudentDetail }) {
           Recent Daily Logs
         </h4>
 
-        <div className="overflow-x-auto border rounded-md">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground">
-                <th className="py-2 px-3">Date</th>
-                <th className="py-2 px-3">Day</th>
-                <th className="py-2 px-3">Status</th>
-                <th className="py-2 px-3">Punch Time</th>
-                <th className="py-2 px-3">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {attendanceSummary.recentRecords.map((rec) => (
-                <tr key={rec.id} className="hover:bg-muted/30">
-                  <td className="py-2 px-3 font-semibold text-foreground">{rec.date}</td>
-                  <td className="py-2 px-3 text-muted-foreground">{rec.day}</td>
-                  <td className="py-2 px-3">
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold select-none',
-                        rec.status === 'PRESENT' &&
-                          'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-                        rec.status === 'ABSENT' && 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-                        rec.status === 'LATE' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-                      )}
-                    >
+        {attendanceSummary.recentRecords.length === 0 ? (
+          <div className="p-6 text-center border border-dashed rounded-lg text-muted-foreground text-xs">
+            No daily attendance records have been marked for this student in the current session.
+          </div>
+        ) : (
+          <div className="overflow-x-auto border rounded-md">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground">
+                  <th className="py-2 px-3">Date</th>
+                  <th className="py-2 px-3">Day</th>
+                  <th className="py-2 px-3">Status</th>
+                  <th className="py-2 px-3">Punch Time</th>
+                  <th className="py-2 px-3">Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {attendanceSummary.recentRecords.map((rec) => (
+                  <tr key={rec.id} className="hover:bg-muted/30">
+                    <td className="py-2 px-3 font-semibold text-foreground">{rec.date}</td>
+                    <td className="py-2 px-3 text-muted-foreground">{rec.day}</td>
+                    <td className="py-2 px-3">
                       <span
                         className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          rec.status === 'PRESENT' && 'bg-emerald-500',
-                          rec.status === 'ABSENT' && 'bg-rose-500',
-                          rec.status === 'LATE' && 'bg-amber-500',
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold select-none',
+                          rec.status === 'PRESENT' &&
+                            'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                          rec.status === 'ABSENT' && 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+                          rec.status === 'LATE' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
                         )}
-                      />
-                      {rec.status}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">
-                    {rec.punchTime || '—'}
-                  </td>
-                  <td className="py-2 px-3 text-muted-foreground text-[11px]">{rec.notes || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            rec.status === 'PRESENT' && 'bg-emerald-500',
+                            rec.status === 'ABSENT' && 'bg-rose-500',
+                            rec.status === 'LATE' && 'bg-amber-500',
+                          )}
+                        />
+                        {rec.status}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 font-mono text-[11px] text-muted-foreground">
+                      {rec.punchTime || '—'}
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground text-[11px]">{rec.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

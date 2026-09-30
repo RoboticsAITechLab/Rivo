@@ -28,6 +28,7 @@ import { TabActivity } from './tabs/tab-activity';
 import { TabDocuments } from './tabs/tab-documents';
 import { TabCustomFields } from './tabs/tab-custom-fields';
 import { TabRollNumbers } from './tabs/tab-roll-numbers';
+import { TabFees } from './tabs/tab-fees';
 import { cn } from '@/lib/utils';
 
 export type DetailTabKey =
@@ -36,6 +37,7 @@ export type DetailTabKey =
   | 'guardian'
   | 'enrollment'
   | 'roll_numbers'
+  | 'fees'
   | 'attendance'
   | 'homework'
   | 'academic'
@@ -62,6 +64,7 @@ const tabList: { key: DetailTabKey; label: string }[] = [
   { key: 'guardian', label: 'Guardian' },
   { key: 'enrollment', label: 'Enrollment' },
   { key: 'roll_numbers', label: 'Roll Numbers' },
+  { key: 'fees', label: 'Fees & Dues' },
   { key: 'attendance', label: 'Attendance' },
   { key: 'homework', label: 'Homework' },
   { key: 'academic', label: 'Academic' },
@@ -282,6 +285,7 @@ export function StudentDetailSheet({
               <TabEnrollment student={student} houseName={houseDisplayName} />
             )}
             {activeTab === 'roll_numbers' && <TabRollNumbers student={student} />}
+            {activeTab === 'fees' && <TabFees student={student} />}
             {activeTab === 'attendance' && <TabAttendance student={student} />}
             {activeTab === 'homework' && <TabHomework student={student} />}
             {activeTab === 'academic' && <TabAcademic student={student} />}

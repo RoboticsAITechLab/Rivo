@@ -44,8 +44,11 @@ export function AdmissionWorkspace({
   onManageHouses,
 }: AdmissionWorkspaceProps) {
   const [storeClasses, setStoreClasses] = useState<any[]>([]);
+  const [storeCampuses, setStoreCampuses] = useState<{ id: string; name: string }[]>([]);
+  const [storeSessions, setStoreSessions] = useState<{ id: string; name: string }[]>([]);
 
   React.useEffect(() => {
+    // 1. Classes
     fetch('/api/classes')
       .then((res) => res.json())
       .then((data) => {
@@ -57,6 +60,26 @@ export function AdmissionWorkspace({
               sections: (c.sections || []).map((s: any) => ({ id: s.id, name: s.name })),
             }))
           );
+        }
+      })
+      .catch(() => {});
+
+    // 2. Campuses
+    fetch('/api/campuses')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.campuses && Array.isArray(data.campuses) && data.campuses.length > 0) {
+          setStoreCampuses(data.campuses.map((cp: any) => ({ id: cp.id, name: cp.name })));
+        }
+      })
+      .catch(() => {});
+
+    // 3. Academic Sessions
+    fetch('/api/academic-sessions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.sessions && Array.isArray(data.sessions) && data.sessions.length > 0) {
+          setStoreSessions(data.sessions.map((s: any) => ({ id: s.id, name: s.name })));
         }
       })
       .catch(() => {});
@@ -123,6 +146,9 @@ export function AdmissionWorkspace({
   const [className, setClassName] = useState(studentToEdit?.className || 'Class 10');
   const [section, setSection] = useState(studentToEdit?.section || 'A');
   const [rollNumber, setRollNumber] = useState(studentToEdit?.rollNumber || '');
+  const [rollNumberMode, setRollNumberMode] = useState<'AUTO' | 'MANUAL'>(
+    (studentToEdit as any)?.rollNumberMode || 'AUTO'
+  );
   const [academicSession, setAcademicSession] = useState(
     studentToEdit?.academicSession || '2026-27'
   );
@@ -406,11 +432,15 @@ export function AdmissionWorkspace({
     };
 
     const details = buildStudentDetail(rawInput);
-    // Explicitly enforce guardians array & photoUrl
+    // Explicitly enforce guardians array & photoUrl & academic placement details
     details.guardians = guardians;
+    details.documents = documents;
     details.photoUrl = photoUrl;
     details.currentCampus = currentCampus;
     details.houseId = houseId || null;
+    (details as any).rollNumberMode = rollNumberMode;
+    (details as any).campusId = storeCampuses.find((c) => c.name === currentCampus)?.id || undefined;
+    (details as any).academicSessionId = storeSessions.find((s) => s.name === academicSession)?.id || undefined;
     return details;
   };
 
@@ -879,7 +909,7 @@ export function AdmissionWorkspace({
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Class / Grade <span className="text-rose-500">*</span>
@@ -898,11 +928,15 @@ export function AdmissionWorkspace({
                         }}
                         className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       >
-                        {storeClasses.map((c) => (
-                          <option key={c.id} value={c.className}>
-                            {c.className} ({c.gradeLevel})
-                          </option>
-                        ))}
+                        {storeClasses.length > 0 ? (
+                          storeClasses.map((c) => (
+                            <option key={c.id} value={c.className}>
+                              {c.className}
+                            </option>
+                          ))
+                        ) : (
+                          <option value="Class 10">Class 10</option>
+                        )}
                       </select>
                     </div>
 
@@ -915,26 +949,83 @@ export function AdmissionWorkspace({
                         onChange={(e) => setSection(e.target.value)}
                         className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       >
-                        {(storeClasses.find((c) => c.className === className)?.sections || []).map((s: any) => (
-                          <option key={s.id} value={s.name}>
-                            Section {s.name}
-                          </option>
-                        ))}
+                        {(storeClasses.find((c) => c.className === className)?.sections || []).length > 0 ? (
+                          (storeClasses.find((c) => c.className === className)?.sections || []).map((s: any) => (
+                            <option key={s.id} value={s.name}>
+                              Section {s.name}
+                            </option>
+                          ))
+                        ) : (
+                          ['A', 'B', 'C', 'D'].map((s) => (
+                            <option key={s} value={s}>
+                              Section {s}
+                            </option>
+                          ))
+                        )}
                       </select>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Roll Number
-                      </label>
-                      <input
-                        type="text"
-                        value={rollNumber}
-                        onChange={(e) => setRollNumber(e.target.value)}
-                        placeholder="Auto-generated if empty"
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
+                  {/* Roll Number Generation & Allocation Mode */}
+                  <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-800">
+                          Roll Number Mode
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Configure whether the roll number is auto-ranked alphabetically or set manually.
+                        </p>
+                      </div>
+
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-xs self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRollNumberMode('AUTO');
+                            setRollNumber('');
+                          }}
+                          className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                            rollNumberMode === 'AUTO'
+                              ? 'bg-emerald-500 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Auto (Alphabetical)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRollNumberMode('MANUAL')}
+                          className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                            rollNumberMode === 'MANUAL'
+                              ? 'bg-emerald-500 text-white shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Manual
+                        </button>
+                      </div>
                     </div>
+
+                    {rollNumberMode === 'AUTO' ? (
+                      <div className="p-2.5 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-xs text-emerald-800 flex items-center gap-2">
+                        <span className="font-semibold text-emerald-700">✨ Automatic Placement:</span>
+                        <span>Roll number will be calculated deterministically based on full student name (A–Z) order upon admission.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 pt-1">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Manual Roll Number <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={rollNumber}
+                          onChange={(e) => setRollNumber(e.target.value)}
+                          placeholder="e.g. 101, 12, A-04"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -942,12 +1033,26 @@ export function AdmissionWorkspace({
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
                         Academic Session
                       </label>
-                      <input
-                        type="text"
-                        value={academicSession}
-                        onChange={(e) => setAcademicSession(e.target.value)}
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
+                      {storeSessions.length > 0 ? (
+                        <select
+                          value={academicSession}
+                          onChange={(e) => setAcademicSession(e.target.value)}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        >
+                          {storeSessions.map((s) => (
+                            <option key={s.id} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={academicSession}
+                          onChange={(e) => setAcademicSession(e.target.value)}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      )}
                     </div>
 
                     <div>
@@ -971,11 +1076,17 @@ export function AdmissionWorkspace({
                         onChange={(e) => setCurrentCampus(e.target.value)}
                         className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       >
-                        {CAMPUS_OPTIONS.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
+                        {storeCampuses.length > 0
+                          ? storeCampuses.map((c) => (
+                              <option key={c.id} value={c.name}>
+                                {c.name}
+                              </option>
+                            ))
+                          : CAMPUS_OPTIONS.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
                       </select>
                     </div>
                   </div>

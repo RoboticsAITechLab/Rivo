@@ -6,6 +6,8 @@ import { Award } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function TabResults({ student }: { student: StudentDetail }) {
+  const results = student.resultsHistory || [];
+
   return (
     <div className="space-y-4 pt-1 text-xs">
       <div className="rounded-lg border bg-card p-4 space-y-3">
@@ -15,64 +17,70 @@ export function TabResults({ student }: { student: StudentDetail }) {
             Official Published Assessment Roster
           </h4>
           <span className="text-[11px] text-muted-foreground">
-            Academic Session {student.academicSession}
+            Academic Session {student.academicSession || 'Current Term'}
           </span>
         </div>
 
-        <div className="overflow-x-auto border rounded-md">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground">
-                <th className="py-2.5 px-3">Examination Name</th>
-                <th className="py-2.5 px-3">Term</th>
-                <th className="py-2.5 px-3 text-center">Max Marks</th>
-                <th className="py-2.5 px-3 text-center">Obtained</th>
-                <th className="py-2.5 px-3 text-center">Percentage</th>
-                <th className="py-2.5 px-3 text-center">Grade</th>
-                <th className="py-2.5 px-3 text-right">Published Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {student.resultsHistory.map((res) => (
-                <tr key={res.id} className="hover:bg-muted/30">
-                  <td className="py-2.5 px-3 font-semibold text-foreground">
-                    <p className="line-clamp-1">{res.examName}</p>
-                    {res.rank && (
-                      <span className="text-[10px] text-primary font-normal">
-                        Class Rank: #{res.rank}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3 text-muted-foreground">{res.term}</td>
-                  <td className="py-2.5 px-3 text-center font-mono text-muted-foreground">
-                    {res.totalMarks}
-                  </td>
-                  <td className="py-2.5 px-3 text-center font-mono font-bold text-foreground">
-                    {res.obtainedMarks}
-                  </td>
-                  <td className="py-2.5 px-3 text-center font-mono font-semibold text-foreground">
-                    {res.percentage}%
-                  </td>
-                  <td className="py-2.5 px-3 text-center">
-                    <span
-                      className={cn(
-                        'inline-block rounded px-2 py-0.5 text-[10px] font-bold',
-                        res.grade.startsWith('A')
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : 'bg-primary/10 text-primary',
-                      )}
-                    >
-                      {res.grade}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-right text-muted-foreground text-[11px] font-mono">
-                    {res.publishedDate}
-                  </td>
+        {results.length === 0 ? (
+          <div className="p-8 text-center border border-dashed rounded-lg text-muted-foreground text-xs">
+            No published examination results or report cards available for this student in the current session.
+          </div>
+        ) : (
+          <div className="overflow-x-auto border rounded-md">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground">
+                  <th className="py-2.5 px-3">Examination Name</th>
+                  <th className="py-2.5 px-3">Term</th>
+                  <th className="py-2.5 px-3 text-center">Max Marks</th>
+                  <th className="py-2.5 px-3 text-center">Obtained</th>
+                  <th className="py-2.5 px-3 text-center">Percentage</th>
+                  <th className="py-2.5 px-3 text-center">Grade</th>
+                  <th className="py-2.5 px-3 text-right">Published Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {results.map((res) => (
+                  <tr key={res.id} className="hover:bg-muted/30">
+                    <td className="py-2.5 px-3 font-semibold text-foreground">
+                      <p className="line-clamp-1">{res.examName}</p>
+                      {res.rank && (
+                        <span className="text-[10px] text-primary font-normal">
+                          Class Rank: #{res.rank}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 text-muted-foreground">{res.term}</td>
+                    <td className="py-2.5 px-3 text-center font-mono text-muted-foreground">
+                      {res.totalMarks}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono font-bold text-foreground">
+                      {res.obtainedMarks}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono font-semibold text-foreground">
+                      {res.percentage}%
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span
+                        className={cn(
+                          'inline-block rounded px-2 py-0.5 text-[10px] font-bold',
+                          res.grade?.startsWith('A')
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-primary/10 text-primary',
+                        )}
+                      >
+                        {res.grade || 'PASS'}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-muted-foreground text-[11px] font-mono">
+                      {res.publishedDate}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

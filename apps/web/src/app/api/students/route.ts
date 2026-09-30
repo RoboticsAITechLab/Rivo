@@ -105,9 +105,10 @@ export async function GET(req: NextRequest) {
             select: {
               id: true,
               rollNumber: true,
-              class: { select: { name: true } },
-              section: { select: { name: true } },
-              academicSession: { select: { name: true } },
+              rollNumberMode: true,
+              class: { select: { id: true, name: true } },
+              section: { select: { id: true, name: true } },
+              academicSession: { select: { id: true, name: true } },
             },
           },
           parentStudents: {
@@ -147,9 +148,12 @@ export async function GET(req: NextRequest) {
         email: s.email,
         address: s.address,
         campusName: s.campus?.name || 'Main Campus',
+        classId: activeEnrollment?.class?.id || null,
         className: activeEnrollment?.class?.name || 'Unassigned',
+        sectionId: activeEnrollment?.section?.id || null,
         sectionName: activeEnrollment?.section?.name || 'Unassigned',
         rollNumber: activeEnrollment?.rollNumber || null,
+        rollNumberMode: activeEnrollment?.rollNumberMode || 'AUTO',
         sessionName: activeEnrollment?.academicSession?.name || null,
         guardianName: primaryGuardian ? `${primaryGuardian.parent.firstName} ${primaryGuardian.parent.lastName}` : null,
         guardianPhone: primaryGuardian?.parent.phone || null,
@@ -195,15 +199,17 @@ export async function POST(req: NextRequest) {
       email,
       address,
       classId,
+      className,
       sectionId,
+      sectionName,
       campusId,
       photoUrl,
       guardian,
     } = body;
 
-    if (!firstName || !lastName || !classId || !sectionId) {
+    if (!firstName || !lastName) {
       return NextResponse.json(
-        { message: 'firstName, lastName, classId, and sectionId are required.' },
+        { message: 'firstName and lastName are required.' },
         { status: 400 }
       );
     }
@@ -222,7 +228,54 @@ export async function POST(req: NextRequest) {
 
     // Perform atomic transaction
     const newStudent = await prisma.$transaction(async (tx) => {
-      // Resolve admission number (auto-generated if missing or 'AUTO', or manual override)
+      // 1. Resolve Class
+      let resolvedClassId = classId;
+      if (!resolvedClassId && className) {
+        let cls = await tx.class.findFirst({
+          where: { schoolId: auth.schoolId, name: className.trim() },
+        });
+        if (!cls) {
+          cls = await tx.class.create({
+            data: { schoolId: auth.schoolId, name: className.trim() },
+          });
+        }
+        resolvedClassId = cls.id;
+      }
+
+      if (!resolvedClassId) {
+        // Default to first class if available or create default Class 1
+        let firstClass = await tx.class.findFirst({ where: { schoolId: auth.schoolId } });
+        if (!firstClass) {
+          firstClass = await tx.class.create({ data: { schoolId: auth.schoolId, name: 'Class 1' } });
+        }
+        resolvedClassId = firstClass.id;
+      }
+
+      // 2. Resolve Section
+      let resolvedSectionId = sectionId;
+      if (!resolvedSectionId && sectionName) {
+        let sec = await tx.section.findFirst({
+          where: { classId: resolvedClassId, name: sectionName.trim() },
+        });
+        if (!sec) {
+          sec = await tx.section.create({
+            data: { schoolId: auth.schoolId, classId: resolvedClassId, name: sectionName.trim() },
+          });
+        }
+        resolvedSectionId = sec.id;
+      }
+
+      if (!resolvedSectionId) {
+        let firstSec = await tx.section.findFirst({ where: { classId: resolvedClassId } });
+        if (!firstSec) {
+          firstSec = await tx.section.create({
+            data: { schoolId: auth.schoolId, classId: resolvedClassId, name: 'A' },
+          });
+        }
+        resolvedSectionId = firstSec.id;
+      }
+
+      // 3. Resolve admission number (auto-generated if missing or 'AUTO', or manual override)
       let finalAdmissionNumber = admissionNumber?.trim();
       if (!finalAdmissionNumber || finalAdmissionNumber.toUpperCase() === 'AUTO') {
         const { generateNextStudentId } = await import('@/lib/id-generator');
@@ -240,14 +293,52 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 1. Create Student
+      // 4. Resolve Roll Number according to ALPHABETICAL ordering rule or MANUAL override
+      const requestedMode: 'AUTO' | 'MANUAL' =
+        (body.rollNumberMode || 'AUTO').toUpperCase() === 'MANUAL' ? 'MANUAL' : 'AUTO';
+      let finalRollNumber: string;
+
+      if (requestedMode === 'MANUAL' && body.rollNumber && String(body.rollNumber).trim()) {
+        finalRollNumber = String(body.rollNumber).trim();
+        // Check for manual roll number conflict within this class & section
+        const existingRoll = await tx.studentEnrollment.findFirst({
+          where: {
+            schoolId: auth.schoolId,
+            academicSessionId: activeSession.id,
+            classId: resolvedClassId,
+            sectionId: resolvedSectionId,
+            rollNumber: finalRollNumber,
+            status: 'ACTIVE',
+          },
+        });
+        if (existingRoll) {
+          throw new Error(`Roll Number "${finalRollNumber}" is already assigned to another active student in this section.`);
+        }
+      } else {
+        const { calculateNextAlphabeticalRollNumber } = await import('@/lib/students/roll-number-service');
+        const calcResult = await calculateNextAlphabeticalRollNumber({
+          schoolId: auth.schoolId,
+          academicSessionId: activeSession.id,
+          classId: resolvedClassId,
+          sectionId: resolvedSectionId,
+          newStudent: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            admissionNumber: finalAdmissionNumber,
+          },
+          client: tx,
+        });
+        finalRollNumber = calcResult.rollNumber;
+      }
+
+      // 5. Create Student Master Record
       const student = await tx.student.create({
         data: {
           schoolId: auth.schoolId,
           campusId: campusId || null,
           admissionNumber: finalAdmissionNumber,
-          firstName,
-          lastName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           gender: gender || null,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
           bloodGroup: bloodGroup || null,
@@ -255,20 +346,22 @@ export async function POST(req: NextRequest) {
           house: house || null,
           phone: phone || null,
           email: email || null,
-          address: address || null,
+          address: typeof address === 'string' ? address : (address?.street || null),
           photoUrl: photoUrl || null,
           status: 'ACTIVE',
         },
       });
 
-      // 2. Create Student Enrollment
+      // 6. Create Student Enrollment with Alphabetical / Manual Roll Number
       await tx.studentEnrollment.create({
         data: {
           schoolId: auth.schoolId,
           studentId: student.id,
           academicSessionId: activeSession.id,
-          classId,
-          sectionId,
+          classId: resolvedClassId,
+          sectionId: resolvedSectionId,
+          rollNumber: finalRollNumber,
+          rollNumberMode: requestedMode,
           status: 'ACTIVE',
         },
       });
@@ -411,6 +504,43 @@ export async function POST(req: NextRequest) {
           });
         }
       }
+
+      // 4. Persist any intake documents
+      if (Array.isArray(body.documents) && body.documents.length > 0) {
+        for (const doc of body.documents) {
+          if (doc && (doc.fileUrl || doc.fileName)) {
+            await tx.studentDocument.create({
+              data: {
+                studentId: student.id,
+                documentType: doc.type || doc.documentType || 'OTHER',
+                title: doc.title || doc.fileName || 'Intake Document',
+                fileUrl: doc.fileUrl || doc.url || `schools/${auth.schoolId}/students/${student.id}/documents/${doc.fileName}`,
+                fileName: doc.fileName || null,
+                fileSize: doc.fileSize || null,
+                status: 'VERIFIED',
+              },
+            });
+          }
+        }
+      }
+
+      // 5. Record Security Audit Log
+      await tx.securityAuditLog.create({
+        data: {
+          schoolId: auth.schoolId,
+          userId: auth.userId,
+          event: 'STUDENT_CREATED',
+          details: JSON.stringify({
+            studentId: student.id,
+            admissionNumber: finalAdmissionNumber,
+            name: `${student.firstName} ${student.lastName}`.trim(),
+            classId: resolvedClassId,
+            sectionId: resolvedSectionId,
+            rollNumber: finalRollNumber,
+            rollNumberMode: requestedMode,
+          }),
+        },
+      }).catch(() => {});
 
       return student;
     });

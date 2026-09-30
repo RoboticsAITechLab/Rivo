@@ -68,6 +68,10 @@ const StudentImportSheet = dynamic(
   () => import('@/components/students/student-import-sheet').then((m) => m.StudentImportSheet),
   { ssr: false }
 );
+const RollRebalanceDialog = dynamic(
+  () => import('@/components/students/roll-rebalance-dialog').then((m) => m.RollRebalanceDialog),
+  { ssr: false }
+);
 
 const defaultFilters: StudentFilterState = {
   searchQuery: '',
@@ -149,6 +153,7 @@ function StudentsPageContent() {
   const [isBulkArchiveMode, setIsBulkArchiveMode] = React.useState(false);
 
   const [isImportOpen, setIsImportOpen] = React.useState(false);
+  const [isRebalanceOpen, setIsRebalanceOpen] = React.useState(false);
 
   // Fetch real students from API
   const fetchStudents = React.useCallback(async () => {
@@ -269,6 +274,14 @@ function StudentsPageContent() {
           address: typeof studentData.address === 'string' ? studentData.address : (studentData.address?.street || ''),
           className: studentData.className,
           sectionName: studentData.section,
+          rollNumber: studentData.rollNumber,
+          rollNumberMode: (studentData as any).rollNumberMode || 'AUTO',
+          photoUrl: studentData.photoUrl,
+          houseId: studentData.houseId,
+          stream: (studentData as any).stream,
+          campusId: (studentData as any).campusId,
+          guardians: (studentData as any).guardians,
+          documents: (studentData as any).documents,
           guardian: (studentData as any).primaryGuardian || (studentData as any).guardians?.[0] || (studentData.guardianName ? {
             name: studentData.guardianName,
             phone: studentData.guardianPhone,
@@ -453,6 +466,10 @@ function StudentsPageContent() {
                   <Sliders className="h-4 w-4 mr-2" />
                   {viewMode === 'directory' ? 'Custom Fields & Rules' : 'Student Directory'}
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsRebalanceOpen(true)}>
+                  <RefreshCw className="h-4 w-4 mr-2 text-indigo-600" />
+                  Rebalance Auto Rolls
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={fetchStudents}>
                   <RotateCcw className="h-4 w-4 mr-2" />
@@ -628,6 +645,13 @@ function StudentsPageContent() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onImportComplete={() => fetchStudents()}
+      />
+
+      {/* 12. Roll Numbers Rebalance Dialog */}
+      <RollRebalanceDialog
+        isOpen={isRebalanceOpen}
+        onClose={() => setIsRebalanceOpen(false)}
+        onSuccess={() => fetchStudents()}
       />
     </PageContainer>
   );
