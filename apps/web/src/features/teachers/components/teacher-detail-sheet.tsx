@@ -31,6 +31,7 @@ import {
   X,
   FileCheck,
   Lock,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -428,6 +429,17 @@ export function TeacherDetailSheet({
               </Button>
 
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
+                >
+                  <a href={`/school/teachers/${teacher.id}/permissions`}>
+                    <Shield className="h-3.5 w-3.5 text-primary" />
+                    Permissions
+                  </a>
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"

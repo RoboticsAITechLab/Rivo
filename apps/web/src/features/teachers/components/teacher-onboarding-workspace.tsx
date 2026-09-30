@@ -74,17 +74,20 @@ export interface TeacherAssignmentInput {
 }
 
 interface TeacherOnboardingWorkspaceProps {
-  onSuccess?: (createdTeacher: any) => void;
+  teacherIdToEdit?: string;
+  onSuccess?: (createdOrUpdatedTeacher: any) => void;
   onCancel?: () => void;
   isModal?: boolean;
 }
 
 export function TeacherOnboardingWorkspace({
+  teacherIdToEdit,
   onSuccess,
   onCancel,
   isModal = false,
 }: TeacherOnboardingWorkspaceProps) {
   const router = useRouter();
+  const isEditMode = Boolean(teacherIdToEdit);
 
   // Master Data State from real Database
   const [subjects, setSubjects] = React.useState<Array<{ id: string; name: string; code?: string }>>([]);
@@ -103,6 +106,7 @@ export function TeacherOnboardingWorkspace({
   const [customDocTypes, setCustomDocTypes] = React.useState<any[]>([]);
   const [nextIdPreview, setNextIdPreview] = React.useState<string>('AUTO-GENERATED');
   const [isLoadingMasterData, setIsLoadingMasterData] = React.useState(true);
+  const [isLoadingTeacherData, setIsLoadingTeacherData] = React.useState(Boolean(teacherIdToEdit));
   const [subjectsError, setSubjectsError] = React.useState<string | null>(null);
 
   // Form State: Step 1 - Personal Information
@@ -291,6 +295,74 @@ export function TeacherOnboardingWorkspace({
   React.useEffect(() => {
     loadMasterData();
   }, [loadMasterData]);
+
+  // Load existing teacher for editing if teacherIdToEdit is provided
+  React.useEffect(() => {
+    if (!teacherIdToEdit) return;
+
+    let isMounted = true;
+    setIsLoadingTeacherData(true);
+
+    fetch(`/api/teachers/${teacherIdToEdit}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Teacher record not found');
+        return res.json();
+      })
+      .then((data) => {
+        if (!isMounted || !data.teacher) return;
+        const t = data.teacher;
+
+        if (t.firstName) setFirstName(t.firstName);
+        if (t.middleName) setMiddleName(t.middleName);
+        if (t.lastName) setLastName(t.lastName);
+        if (t.email) setEmail(t.email);
+        if (t.phone) setPhone(t.phone);
+        if (t.dateOfBirth) setDateOfBirth(t.dateOfBirth);
+        if (t.gender) setGender(t.gender);
+        if (t.bloodGroup) setBloodGroup(t.bloodGroup);
+        if (t.photoUrl) setPhotoUrl(t.photoUrl);
+        if (t.employeeId) setEmployeeId(t.employeeId);
+        if (t.joiningDate) setJoiningDate(t.joiningDate);
+        if (t.employmentType) setEmploymentType(t.employmentType);
+        if (t.department) setDepartment(t.department);
+        if (t.designation) setDesignation(t.designation);
+        if (t.experienceYears !== undefined) setExperienceYears(Number(t.experienceYears));
+        if (t.campusId) setSelectedCampusId(t.campusId);
+        if (t.qualification) setQualificationDetails(t.qualification);
+        if (t.specialization) setSpecialization(t.specialization);
+        if (t.address) setStreet(t.address);
+        if (t.emergencyContactName) setEmergencyName(t.emergencyContactName);
+        if (t.emergencyContactPhone) setEmergencyPhone(t.emergencyContactPhone);
+        if (t.emergencyContactRelation) setEmergencyRelation(t.emergencyContactRelation);
+
+        if (Array.isArray(t.assignments) && t.assignments.length > 0) {
+          setAssignments(
+            t.assignments.map((a: any) => ({
+              id: a.id || `asg-${Date.now()}-${Math.random()}`,
+              classId: a.classId || '',
+              className: a.className || '',
+              sectionId: a.sectionId || '',
+              sectionName: a.sectionName || '',
+              subjectId: a.subjectId || '',
+              subjectName: a.subjectName || '',
+              streamId: a.streamId || '',
+              periodsPerWeek: a.periodsPerWeek || 6,
+              isClassTeacher: Boolean(a.isClassTeacher),
+            }))
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load teacher for editing:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingTeacherData(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [teacherIdToEdit]);
 
   // Photo Upload Handler with Azure
   const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -588,22 +660,70 @@ export function TeacherOnboardingWorkspace({
         })),
       };
 
-      const res = await fetch('/api/teachers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(teacherPayload),
-      });
+      let activeTeacherId = teacherIdToEdit;
+      let resultingTeacher: any = null;
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to create teacher profile.');
+      if (isEditMode) {
+        const updatePayload = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          photoUrl: photoUrl || null,
+          gender,
+          dateOfBirth: dateOfBirth || null,
+          joiningDate: joiningDate || null,
+          employmentType,
+          experienceYears: Number(experienceYears) || 0,
+          department: department.trim(),
+          designation: designation.trim(),
+          qualification: `${highestQualification}${qualificationDetails ? ` (${qualificationDetails})` : ''} • ${specialization}`.trim(),
+          specialization: specialization.trim() || null,
+          campusId: selectedCampusId || null,
+          address: street.trim() || null,
+          emergencyContactName: emergencyName.trim() || null,
+          emergencyContactRelation: emergencyRelation.trim() || null,
+          emergencyContactPhone: emergencyPhone.trim() || null,
+          assignments: assignments.map((a) => ({
+            classId: a.classId || null,
+            sectionId: a.sectionId || null,
+            streamId: a.streamId || null,
+            subjectId: a.subjectId,
+            periodsPerWeek: a.periodsPerWeek,
+            isClassTeacher: a.isClassTeacher,
+          })),
+        };
+
+        const res = await fetch(`/api/teachers/${teacherIdToEdit}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to update teacher profile.');
+        }
+        resultingTeacher = data.teacher || { id: teacherIdToEdit, firstName, lastName };
+      } else {
+        const res = await fetch('/api/teachers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(teacherPayload),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to create teacher profile.');
+        }
+
+        resultingTeacher = data.teacher;
+        activeTeacherId = resultingTeacher.id;
       }
 
-      const createdTeacher = data.teacher;
       const stagedList = Object.values(stagedDocuments);
 
-      // Step 2: Upload staged documents sequentially linked to newly created teacher ID
-      if (stagedList.length > 0) {
+      // Step 2: Upload staged documents sequentially linked to teacher ID
+      if (stagedList.length > 0 && activeTeacherId) {
         setSubmissionProgress((prev) => ({
           ...prev,
           stage: 'UPLOADING_DOCS',
@@ -627,7 +747,7 @@ export function TeacherOnboardingWorkspace({
           if (doc.issueDate) formData.append('issueDate', doc.issueDate);
           if (doc.expiryDate) formData.append('expiryDate', doc.expiryDate);
 
-          const docRes = await fetch(`/api/teachers/${createdTeacher.id}/documents`, {
+          const docRes = await fetch(`/api/teachers/${activeTeacherId}/documents`, {
             method: 'POST',
             body: formData,
           });
@@ -646,17 +766,17 @@ export function TeacherOnboardingWorkspace({
         totalDocs: stagedList.length,
         currentDocName: 'Complete',
       });
-      setCreatedTeacherResult(createdTeacher);
+      setCreatedTeacherResult(resultingTeacher);
 
       if (onSuccess) {
-        onSuccess(createdTeacher);
+        onSuccess(resultingTeacher);
       }
     } catch (err: any) {
-      console.error('Onboarding execution error:', err);
+      console.error('Teacher save execution error:', err);
       setSubmissionProgress((prev) => ({
         ...prev,
         stage: 'ERROR',
-        errorMsg: err.message || 'An unexpected error occurred during teacher onboarding.',
+        errorMsg: err.message || 'An unexpected error occurred while saving teacher record.',
       }));
     }
   };
@@ -771,14 +891,18 @@ export function TeacherOnboardingWorkspace({
               Teachers Directory
             </Link>
             <span>/</span>
-            <span className="text-foreground font-medium">Add Teacher Workspace</span>
+            <span className="text-foreground font-medium">
+              {isEditMode ? 'Edit Teacher Record' : 'Add Teacher Workspace'}
+            </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            Add Teacher
+            {isEditMode ? (firstName ? `Edit Teacher — ${firstName} ${lastName}` : 'Edit Teacher Record') : 'Add Teacher'}
             <Sparkles className="w-5 h-5 text-primary" />
           </h1>
           <p className="text-xs text-muted-foreground">
-            Create, allocate workload, and verify credentials for faculty onboarding.
+            {isEditMode
+              ? 'Update faculty credentials, departmental details, teaching assignments, and compliance documents.'
+              : 'Create, allocate workload, and verify credentials for faculty onboarding.'}
           </p>
         </div>
 
@@ -790,8 +914,8 @@ export function TeacherOnboardingWorkspace({
             </span>
           </div>
 
-          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs py-1">
-            Status: Ready to Create
+          <Badge variant="outline" className={isEditMode ? 'bg-primary/10 text-primary border-primary/30 text-xs py-1' : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs py-1'}>
+            {isEditMode ? 'Mode: Editing Record' : 'Status: Ready to Create'}
           </Badge>
 
           {onCancel && (
@@ -804,17 +928,17 @@ export function TeacherOnboardingWorkspace({
             size="sm"
             onClick={handleExecuteOnboarding}
             disabled={isSubmitting}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm cursor-pointer"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm cursor-pointer font-semibold"
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Onboarding Faculty...</span>
+                <span>{isEditMode ? 'Saving Changes...' : 'Onboarding Faculty...'}</span>
               </>
             ) : (
               <>
                 <Check className="w-3.5 h-3.5" />
-                <span>Create Teacher</span>
+                <span>{isEditMode ? 'Save Changes' : 'Create Teacher'}</span>
               </>
             )}
           </Button>

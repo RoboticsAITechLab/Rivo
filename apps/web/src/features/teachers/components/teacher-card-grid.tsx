@@ -4,12 +4,13 @@ import * as React from 'react';
 import { TeacherDetail } from '../types';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
-import { Eye, Edit3, MoreVertical, BookOpen, Clock } from 'lucide-react';
+import { Eye, Edit3, MoreVertical, BookOpen, Clock, Shield } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 
 interface TeacherCardGridProps {
@@ -65,25 +66,32 @@ export function TeacherCardGrid({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground p-0">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground p-0 cursor-pointer">
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onClick={() => onViewTeacher(teacher)}>
-                    <Eye className="h-3.5 w-3.5 mr-2" />
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => onViewTeacher(teacher)} className="cursor-pointer">
+                    <Eye className="h-3.5 w-3.5 mr-2 text-primary" />
                     View Details
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onEditTeacher(teacher)}>
+                  <DropdownMenuItem onClick={() => onEditTeacher(teacher)} className="cursor-pointer">
                     <Edit3 className="h-3.5 w-3.5 mr-2" />
                     Edit Record
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onChangeStatus(teacher)}>
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <a href={`/school/teachers/${teacher.id}/permissions`} className="flex items-center w-full">
+                      <Shield className="h-3.5 w-3.5 mr-2 text-primary" />
+                      Manage Permissions
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onChangeStatus(teacher)} className="cursor-pointer">
                     Change Status
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onArchiveTeacher(teacher)}
-                    className="text-destructive"
+                    className="text-destructive cursor-pointer"
                   >
                     Archive
                   </DropdownMenuItem>

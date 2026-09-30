@@ -21,6 +21,7 @@ import {
   Shield,
   MapPin,
   HeartHandshake,
+  Edit3,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -260,9 +261,15 @@ export default function TeacherProfilePage() {
                   Remove Photo
                 </Button>
               )}
+              <Link href={`/school/teachers/${teacher.id}/edit`}>
+                <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 cursor-pointer">
+                  <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Edit Teacher
+                </Button>
+              </Link>
               <Link href={`/school/teachers/${teacher.id}/permissions`}>
-                <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5">
-                  <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                <Button variant="outline" size="sm" className="text-xs h-8 gap-1.5 cursor-pointer">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
                   Permissions
                 </Button>
               </Link>

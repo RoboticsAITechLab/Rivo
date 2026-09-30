@@ -74,8 +74,7 @@ function TeachersPageContent() {
   };
 
   const handleOpenEditTeacher = (teacher: TeacherDetail) => {
-    setTeacherToEdit(teacher);
-    setIsFormOpen(true);
+    router.push(`/school/teachers/${teacher.id}/edit`);
   };
 
   const handleViewTeacher = (teacher: TeacherDetail) => {

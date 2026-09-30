@@ -275,10 +275,10 @@ export default function TeacherPermissionsPage() {
                                 value={perm.scope}
                                 onValueChange={(val) => handleScopeChange(perm.code, val)}
                               >
-                                <SelectTrigger className="h-7 text-xs w-28 bg-background">
+                                <SelectTrigger className="h-8 text-xs w-36 sm:w-40 bg-background font-medium">
                                   <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="w-40">
                                   <SelectItem value="ASSIGNED">Assigned Only</SelectItem>
                                   <SelectItem value="CAMPUS">Campus Wide</SelectItem>
                                   <SelectItem value="SCHOOL">School Wide</SelectItem>

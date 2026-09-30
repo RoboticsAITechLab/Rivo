@@ -268,6 +268,44 @@ export async function PATCH(
         include: { user: true, campus: true },
       });
 
+      // Update assignments if provided
+      if (Array.isArray(body.assignments)) {
+        await tx.teacherAssignment.deleteMany({
+          where: { teacherId: id, schoolId: auth.schoolId },
+        });
+
+        const currentSession = await tx.academicSession.findFirst({
+          where: { schoolId: auth.schoolId, status: 'ACTIVE' },
+        });
+
+        if (currentSession) {
+          for (const a of body.assignments) {
+            if (a.classId && a.sectionId && a.subjectId) {
+              const cls = await tx.class.findFirst({
+                where: { id: a.classId, schoolId: auth.schoolId },
+              });
+              const sub = await tx.subject.findFirst({
+                where: { id: a.subjectId, schoolId: auth.schoolId },
+              });
+              if (cls && sub) {
+                await tx.teacherAssignment.create({
+                  data: {
+                    schoolId: auth.schoolId,
+                    teacherId: id,
+                    classId: a.classId,
+                    sectionId: a.sectionId,
+                    subjectId: a.subjectId,
+                    streamId: a.streamId || null,
+                    academicSessionId: currentSession.id,
+                    isClassTeacher: Boolean(a.isClassTeacher),
+                  },
+                });
+              }
+            }
+          }
+        }
+      }
+
       return teacher;
     });
 
