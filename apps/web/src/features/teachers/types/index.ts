@@ -56,13 +56,25 @@ export interface TeacherDocumentItem {
   documentType: string;
   category?: string;
   title: string;
+  documentNumberMasked?: string | null;
   fileName?: string;
   fileSize?: number | string | null;
   fileUrl: string;
   accessUrl?: string;
-  status?: string;
+  status?: string; // SUBMITTED, UNDER_REVIEW, VERIFIED, REJECTED, EXPIRED, ARCHIVED
+  isRequired?: boolean;
+  issueDate?: string | null;
+  expiryDate?: string | null;
+  expiryStatus?: 'VALID' | 'EXPIRING_SOON' | 'EXPIRED' | 'NO_EXPIRY';
+  daysUntilExpiry?: number | null;
+  verifiedById?: string | null;
+  verifiedByName?: string | null;
+  verifiedAt?: string | null;
+  verificationNote?: string | null;
+  rejectionReason?: string | null;
   uploadedAt?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TeacherTimetableSlotItem {
