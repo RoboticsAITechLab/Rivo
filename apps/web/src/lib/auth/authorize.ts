@@ -172,7 +172,7 @@ export async function getEffectivePermission(params: {
     ) {
       return { granted: true, scope: 'ASSIGNED' };
     }
-    if (permissionCode === 'notices.view') {
+    if (permissionCode === 'notices.view' || permissionCode === 'subjects.view') {
       return { granted: true, scope: 'SCHOOL' };
     }
   }

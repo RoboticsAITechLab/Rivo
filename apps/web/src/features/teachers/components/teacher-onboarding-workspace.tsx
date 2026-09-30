@@ -32,6 +32,7 @@ import {
   ArrowRight,
   ExternalLink,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +103,7 @@ export function TeacherOnboardingWorkspace({
   const [customDocTypes, setCustomDocTypes] = React.useState<any[]>([]);
   const [nextIdPreview, setNextIdPreview] = React.useState<string>('AUTO-GENERATED');
   const [isLoadingMasterData, setIsLoadingMasterData] = React.useState(true);
+  const [subjectsError, setSubjectsError] = React.useState<string | null>(null);
 
   // Form State: Step 1 - Personal Information
   const [firstName, setFirstName] = React.useState('');
@@ -153,7 +155,7 @@ export function TeacherOnboardingWorkspace({
 
   // Form State: Step 4 - Teaching Assignments
   const [assignments, setAssignments] = React.useState<TeacherAssignmentInput[]>([]);
-  const [subjectSearchQuery, setSubjectSearchQuery] = React.useState('');
+  const [subjectSearchTerms, setSubjectSearchTerms] = React.useState<Record<string, string>>({});
 
   // Form State: Step 5 - Documents & KYC Staged Storage
   const [stagedDocuments, setStagedDocuments] = React.useState<Record<string, StagedDocument>>({});
@@ -183,54 +185,90 @@ export function TeacherOnboardingWorkspace({
   });
   const [createdTeacherResult, setCreatedTeacherResult] = React.useState<any>(null);
 
-  // Load Real School Master Data on Mount
-  React.useEffect(() => {
-    async function loadMasterData() {
-      setIsLoadingMasterData(true);
-      try {
-        const [subRes, clsRes, campRes, sessRes, docSettingsRes, nextIdRes] = await Promise.all([
-          fetch('/api/subjects').then((r) => r.json()).catch(() => ({ subjects: [] })),
-          fetch('/api/classes').then((r) => r.json()).catch(() => ({ classes: [] })),
-          fetch('/api/campuses').then((r) => r.json()).catch(() => ({ campuses: [] })),
-          fetch('/api/academic-sessions').then((r) => r.json()).catch(() => ({ sessions: [] })),
-          fetch('/api/school/settings/teacher-documents').then((r) => r.json()).catch(() => ({})),
-          fetch('/api/teachers/next-id').then((r) => r.json()).catch(() => ({})),
-        ]);
+  // Load Real School Master Data
+  const loadMasterData = React.useCallback(async () => {
+    setIsLoadingMasterData(true);
+    setSubjectsError(null);
+    try {
+      const [subRes, clsRes, campRes, sessRes, docSettingsRes, nextIdRes] = await Promise.all([
+        fetch('/api/subjects').then(async (r) => {
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            throw new Error(err.message || `Failed to fetch subjects (${r.status})`);
+          }
+          return r.json();
+        }),
+        fetch('/api/classes').then(async (r) => {
+          if (!r.ok) return { classes: [] };
+          return r.json();
+        }).catch(() => ({ classes: [] })),
+        fetch('/api/campuses').then(async (r) => {
+          if (!r.ok) return { campuses: [] };
+          return r.json();
+        }).catch(() => ({ campuses: [] })),
+        fetch('/api/academic-sessions').then(async (r) => {
+          if (!r.ok) return { sessions: [] };
+          return r.json();
+        }).catch(() => ({ sessions: [] })),
+        fetch('/api/school/settings/teacher-documents').then(async (r) => {
+          if (!r.ok) return {};
+          return r.json();
+        }).catch(() => ({})),
+        fetch('/api/teachers/next-id').then(async (r) => {
+          if (!r.ok) return {};
+          return r.json();
+        }).catch(() => ({})),
+      ]);
 
-        if (Array.isArray(subRes.subjects)) {
-          setSubjects(subRes.subjects);
-        }
-        if (Array.isArray(clsRes.classes)) {
-          setClasses(clsRes.classes);
-        }
-        if (Array.isArray(campRes.campuses)) {
-          setCampuses(campRes.campuses);
-          const main = campRes.campuses.find((c: any) => c.isMain);
-          if (main) setSelectedCampusId(main.id);
-        }
-        if (Array.isArray(sessRes.sessions)) {
-          setSessions(sessRes.sessions);
-        }
-        if (Array.isArray(docSettingsRes.requiredDocumentTypes)) {
-          setRequiredDocTypes(docSettingsRes.requiredDocumentTypes);
-        }
-        if (Array.isArray(docSettingsRes.customDocumentTypes)) {
-          setCustomDocTypes(docSettingsRes.customDocumentTypes);
-        }
-        if (nextIdRes.nextId) {
-          setNextIdPreview(nextIdRes.nextId);
+      const loadedSubjects: Array<{ id: string; name: string; code?: string }> = Array.isArray(subRes.subjects) ? subRes.subjects : [];
+      const loadedClasses: Array<{ id: string; name: string; sections: Array<{ id: string; name: string }> }> = Array.isArray(clsRes.classes) ? clsRes.classes : [];
+
+      setSubjects(loadedSubjects);
+      setClasses(loadedClasses);
+
+      if (Array.isArray(campRes.campuses)) {
+        setCampuses(campRes.campuses);
+        const main = campRes.campuses.find((c: any) => c.isMain);
+        if (main) setSelectedCampusId(main.id);
+      }
+      if (Array.isArray(sessRes.sessions)) {
+        setSessions(sessRes.sessions);
+      }
+      if (Array.isArray(docSettingsRes.requiredDocumentTypes)) {
+        setRequiredDocTypes(docSettingsRes.requiredDocumentTypes);
+      }
+      if (Array.isArray(docSettingsRes.customDocumentTypes)) {
+        setCustomDocTypes(docSettingsRes.customDocumentTypes);
+      }
+      if (nextIdRes.nextId) {
+        setNextIdPreview(nextIdRes.nextId);
+      }
+
+      // Initialize default assignment if none exist or need initialization
+      setAssignments((prev) => {
+        if (prev.length > 0) {
+          // If existing assignments have empty subjectId, fill with first valid subject
+          return prev.map((a) => {
+            if (!a.subjectId && loadedSubjects.length > 0) {
+              return {
+                ...a,
+                subjectId: loadedSubjects[0].id,
+                subjectName: loadedSubjects[0].name,
+              };
+            }
+            return a;
+          });
         }
 
-        // Initialize default first assignment if classes & subjects available
-        if (clsRes.classes?.length > 0 && subRes.subjects?.length > 0) {
-          const firstCls = clsRes.classes[0];
-          const firstSec = firstCls.sections?.[0];
-          const firstSub = subRes.subjects[0];
-          setAssignments([
+        if (loadedSubjects.length > 0) {
+          const firstCls = loadedClasses.length > 0 ? loadedClasses[0] : null;
+          const firstSec = firstCls?.sections?.[0];
+          const firstSub = loadedSubjects[0];
+          return [
             {
               id: `asg-${Date.now()}`,
-              classId: firstCls.id,
-              className: firstCls.name,
+              classId: firstCls?.id || '',
+              className: firstCls?.name || 'Class',
               sectionId: firstSec?.id || '',
               sectionName: firstSec?.name || 'A',
               subjectId: firstSub.id,
@@ -238,17 +276,21 @@ export function TeacherOnboardingWorkspace({
               periodsPerWeek: 6,
               isClassTeacher: false,
             },
-          ]);
+          ];
         }
-      } catch (err) {
-        console.error('Failed loading school master data:', err);
-      } finally {
-        setIsLoadingMasterData(false);
-      }
+        return [];
+      });
+    } catch (err: any) {
+      console.error('Failed loading school master data:', err);
+      setSubjectsError(err.message || 'Unable to communicate with the subject catalog.');
+    } finally {
+      setIsLoadingMasterData(false);
     }
-
-    loadMasterData();
   }, []);
+
+  React.useEffect(() => {
+    loadMasterData();
+  }, [loadMasterData]);
 
   // Photo Upload Handler with Azure
   const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,21 +395,25 @@ export function TeacherOnboardingWorkspace({
 
   // Assignment Helpers
   const handleAddAssignment = () => {
-    if (classes.length === 0 || subjects.length === 0) return;
-    const defaultCls = classes[0];
-    const defaultSec = defaultCls.sections?.[0];
-    const defaultSub = subjects[0];
+    if (subjects.length === 0) return;
+
+    // Pick next unassigned subject or default to first
+    const assignedSubjectIds = new Set(assignments.map((a) => a.subjectId));
+    const nextSubject = subjects.find((s) => !assignedSubjectIds.has(s.id)) || subjects[0];
+
+    const defaultCls = classes.length > 0 ? classes[0] : null;
+    const defaultSec = defaultCls?.sections?.[0];
 
     setAssignments((prev) => [
       ...prev,
       {
         id: `asg-${Date.now()}-${Math.random()}`,
-        classId: defaultCls.id,
-        className: defaultCls.name,
+        classId: defaultCls?.id || '',
+        className: defaultCls?.name || 'Class',
         sectionId: defaultSec?.id || '',
         sectionName: defaultSec?.name || 'A',
-        subjectId: defaultSub.id,
-        subjectName: defaultSub.name,
+        subjectId: nextSubject.id,
+        subjectName: nextSubject.name,
         periodsPerWeek: 4,
         isClassTeacher: false,
       },
@@ -533,8 +579,8 @@ export function TeacherOnboardingWorkspace({
         emergencyContactRelation: emergencyRelation.trim() || null,
         emergencyContactPhone: emergencyPhone.trim() || null,
         assignments: assignments.map((a) => ({
-          classId: a.classId,
-          sectionId: a.sectionId,
+          classId: a.classId || null,
+          sectionId: a.sectionId || null,
           streamId: a.streamId || null,
           subjectId: a.subjectId,
           periodsPerWeek: a.periodsPerWeek,
@@ -587,7 +633,7 @@ export function TeacherOnboardingWorkspace({
           });
 
           if (!docRes.ok) {
-            const docErr = await docRes.json();
+            const docErr = await docRes.json().catch(() => ({}));
             console.warn(`Warning: Could not upload document ${doc.title}:`, docErr.message);
           }
         }
@@ -614,13 +660,6 @@ export function TeacherOnboardingWorkspace({
       }));
     }
   };
-
-  // Filtered Subject List for search
-  const filteredSubjects = React.useMemo(() => {
-    if (!subjectSearchQuery.trim()) return subjects;
-    const q = subjectSearchQuery.toLowerCase().trim();
-    return subjects.filter((s) => s.name.toLowerCase().includes(q) || (s.code && s.code.toLowerCase().includes(q)));
-  }, [subjects, subjectSearchQuery]);
 
   // If successfully created, display rich success screen
   if (submissionProgress.stage === 'SUCCESS' && createdTeacherResult) {
@@ -1277,6 +1316,19 @@ export function TeacherOnboardingWorkspace({
               <FormSection
                 title="Teaching Assignments & Workload Allocation"
                 description="Allocate class divisions and real subjects from the institutional master curriculum."
+                action={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => loadMasterData()}
+                    disabled={isLoadingMasterData}
+                    className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMasterData ? 'animate-spin' : ''}`} />
+                    <span>Refresh Subjects</span>
+                  </Button>
+                }
               >
                 {validationErrors.assignments && (
                   <div className="p-3.5 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-xs flex items-center gap-2">
@@ -1285,30 +1337,79 @@ export function TeacherOnboardingWorkspace({
                   </div>
                 )}
 
-                {subjects.length === 0 ? (
-                  <div className="p-6 rounded-xl border border-amber-200 bg-amber-500/10 text-center space-y-3">
-                    <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
+                {/* State 1: Loading State */}
+                {isLoadingMasterData ? (
+                  <div className="p-8 rounded-xl border bg-muted/20 text-center space-y-3">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
                     <div>
-                      <h4 className="font-semibold text-sm text-foreground">No Subjects Configured for this Institution</h4>
+                      <h4 className="font-semibold text-sm text-foreground">Loading School Curriculum Subjects</h4>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Before allocating assignments, please create curriculum subjects in your school settings.
+                        Fetching live courses and class divisions from the academic database...
+                      </p>
+                    </div>
+                  </div>
+                ) : subjectsError && subjects.length === 0 ? (
+                  /* State 2: Error State */
+                  <div className="p-6 rounded-xl border border-destructive/30 bg-destructive/10 text-center space-y-3">
+                    <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
+                    <div>
+                      <h4 className="font-semibold text-sm text-destructive">Unable to Load School Subjects</h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {subjectsError}
                       </p>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => router.push('/school/settings')}
+                      onClick={() => loadMasterData()}
                       className="text-xs gap-1.5"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      Configure School Subjects
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Retry Loading Subjects
                     </Button>
                   </div>
+                ) : subjects.length === 0 ? (
+                  /* State 3: Truly Empty State */
+                  <div className="p-6 rounded-xl border border-amber-200 bg-amber-500/10 text-center space-y-3">
+                    <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
+                    <div>
+                      <h4 className="font-semibold text-sm text-foreground">No Subjects Configured for this Institution</h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Create subjects in Academic Setup before assigning teaching responsibilities.
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadMasterData()}
+                        className="text-xs gap-1.5"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Check Again
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => router.push('/school/subjects')}
+                        className="text-xs gap-1.5 bg-primary text-primary-foreground"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Go to Subjects Setup
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
+                  /* State 4: Success / Ready State with Searchable Select */
                   <div className="space-y-4">
                     {assignments.map((asg, index) => {
                       const selectedClass = classes.find((c) => c.id === asg.classId);
                       const availableSections = selectedClass?.sections || [];
+                      const searchKey = asg.id;
+                      const currentSearchTerm = (subjectSearchTerms[searchKey] || '').toLowerCase().trim();
+
+                      const filteredSubjectOptions = currentSearchTerm
+                        ? subjects.filter((s) => s.name.toLowerCase().includes(currentSearchTerm) || (s.code && s.code.toLowerCase().includes(currentSearchTerm)))
+                        : subjects;
 
                       return (
                         <div key={asg.id} className="rounded-xl border bg-card p-4 shadow-2xs space-y-3 relative group">
@@ -1318,7 +1419,7 @@ export function TeacherOnboardingWorkspace({
                                 {index + 1}
                               </span>
                               <span className="text-xs font-semibold text-foreground">
-                                Assignment #{index + 1}: {asg.className} - {asg.sectionName} ({asg.subjectName})
+                                Assignment #{index + 1}: {asg.className || 'General'} - {asg.sectionName ? `Section ${asg.sectionName}` : 'All Sections'} ({asg.subjectName || 'Subject'})
                               </span>
                             </div>
 
@@ -1338,12 +1439,13 @@ export function TeacherOnboardingWorkspace({
 
                           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                             {/* Class Selector */}
-                            <FormField label="Class / Grade" required>
+                            <FormField label="Class / Grade">
                               <select
                                 value={asg.classId}
                                 onChange={(e) => handleAssignmentChange(asg.id, 'classId', e.target.value)}
                                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs"
                               >
+                                {classes.length === 0 && <option value="">General / All Classes</option>}
                                 {classes.map((c) => (
                                   <option key={c.id} value={c.id}>
                                     {c.name}
@@ -1353,13 +1455,13 @@ export function TeacherOnboardingWorkspace({
                             </FormField>
 
                             {/* Section Selector */}
-                            <FormField label="Division / Section" required>
+                            <FormField label="Division / Section">
                               <select
                                 value={asg.sectionId}
                                 onChange={(e) => handleAssignmentChange(asg.id, 'sectionId', e.target.value)}
                                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-xs"
                               >
-                                {availableSections.length === 0 && <option value="">Default (A)</option>}
+                                {availableSections.length === 0 && <option value="">Section A (Default)</option>}
                                 {availableSections.map((s) => (
                                   <option key={s.id} value={s.id}>
                                     Section {s.name}
@@ -1368,20 +1470,23 @@ export function TeacherOnboardingWorkspace({
                               </select>
                             </FormField>
 
-                            {/* Live Database Subject Selector */}
-                            <FormField label="Teaching Subject (Live DB)" required>
+                            {/* Real Live Database Subject Dropdown with Searchable Combobox */}
+                            <div className="sm:col-span-1 space-y-1">
+                              <label className="text-xs font-medium text-foreground block">
+                                Subject <span className="text-destructive">*</span>
+                              </label>
                               <select
                                 value={asg.subjectId}
                                 onChange={(e) => handleAssignmentChange(asg.id, 'subjectId', e.target.value)}
-                                className="w-full h-9 rounded-md border border-primary/40 bg-background px-3 text-xs font-medium text-foreground focus:ring-1 focus:ring-primary"
+                                className="w-full h-9 rounded-md border border-primary/50 bg-background px-3 text-xs font-semibold text-foreground focus:ring-2 focus:ring-primary shadow-2xs"
                               >
                                 {subjects.map((sub) => (
                                   <option key={sub.id} value={sub.id}>
-                                    {sub.name} {sub.code ? `(${sub.code})` : ''}
+                                    {sub.name} {sub.code ? `[${sub.code}]` : ''}
                                   </option>
                                 ))}
                               </select>
-                            </FormField>
+                            </div>
 
                             {/* Periods per Week */}
                             <FormField label="Periods / Week">
