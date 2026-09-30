@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/teachers - Create new teacher user and faculty profile
+// POST /api/teachers - Create new teacher user and faculty profile with assignments and initial documents
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth(req, { permission: 'teachers.create' });
@@ -145,6 +145,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       firstName,
+      middleName,
       lastName,
       email,
       password,
@@ -156,6 +157,7 @@ export async function POST(req: NextRequest) {
       campusId,
       photoUrl,
       gender,
+      bloodGroup,
       dateOfBirth,
       joiningDate,
       employmentType,
@@ -165,12 +167,17 @@ export async function POST(req: NextRequest) {
       emergencyContactPhone,
       emergencyContactRelation,
       address,
+      street,
+      city,
+      state,
+      postalCode,
       assignments,
+      documents,
     } = body;
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json(
-        { message: 'firstName, lastName, and email are required.' },
+        { message: 'First name, last name, and email are required.' },
         { status: 400 }
       );
     }
@@ -200,9 +207,67 @@ export async function POST(req: NextRequest) {
 
     const hashedPassword = await hashPassword(rawPassword);
 
+    // 1. Validate Campus ID tenant ownership if provided
+    if (campusId) {
+      const campus = await prisma.campus.findFirst({
+        where: { id: campusId, schoolId: auth.schoolId },
+      });
+      if (!campus) {
+        return NextResponse.json(
+          { message: 'Invalid campus ID or campus does not belong to this institution.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 2. Validate Assignments IDs and tenant ownership if provided
+    if (Array.isArray(assignments) && assignments.length > 0) {
+      for (const a of assignments) {
+        if (a.classId) {
+          const cls = await prisma.class.findFirst({
+            where: { id: a.classId, schoolId: auth.schoolId },
+          });
+          if (!cls) {
+            return NextResponse.json(
+              { message: `Class ID "${a.classId}" does not exist in this institution.` },
+              { status: 400 }
+            );
+          }
+        }
+        if (a.sectionId) {
+          const sec = await prisma.section.findFirst({
+            where: { id: a.sectionId, schoolId: auth.schoolId, classId: a.classId },
+          });
+          if (!sec) {
+            return NextResponse.json(
+              { message: `Section ID "${a.sectionId}" does not belong to this class/institution.` },
+              { status: 400 }
+            );
+          }
+        }
+        if (a.subjectId) {
+          const sub = await prisma.subject.findFirst({
+            where: { id: a.subjectId, schoolId: auth.schoolId },
+          });
+          if (!sub) {
+            return NextResponse.json(
+              { message: `Subject ID "${a.subjectId}" does not exist in this institution.` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     const activeSession = await prisma.academicSession.findFirst({
       where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
+
+    // Format consolidated address
+    let finalAddress = address || null;
+    if (!finalAddress && (street || city || state || postalCode)) {
+      finalAddress = [street, city, state, postalCode].filter(Boolean).join(', ');
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create or link user
@@ -213,9 +278,20 @@ export async function POST(req: NextRequest) {
             email: trimmedEmail,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
+            phone: phone || null,
             passwordHash: hashedPassword,
             status: isInvited ? 'INVITED' : 'ACTIVE',
             isActive: true,
+          },
+        });
+      } else {
+        // Update user names and phone if empty
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone || user.phone,
           },
         });
       }
@@ -237,7 +313,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 3. Teacher Profile
+      // 3. Authoritative Teacher ID Generation
       let finalEmployeeId = employeeId?.trim();
       if (!finalEmployeeId || finalEmployeeId.toUpperCase() === 'AUTO') {
         const existingTeacher = await tx.teacher.findFirst({
@@ -252,6 +328,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 4. Create / Upsert Teacher Profile
       const teacher = await tx.teacher.upsert({
         where: {
           schoolId_userId: {
@@ -276,7 +353,7 @@ export async function POST(req: NextRequest) {
           emergencyContactName: emergencyContactName || null,
           emergencyContactPhone: emergencyContactPhone || null,
           emergencyContactRelation: emergencyContactRelation || null,
-          address: address || null,
+          address: finalAddress,
         },
         create: {
           schoolId: auth.schoolId,
@@ -297,12 +374,12 @@ export async function POST(req: NextRequest) {
           emergencyContactName: emergencyContactName || null,
           emergencyContactPhone: emergencyContactPhone || null,
           emergencyContactRelation: emergencyContactRelation || null,
-          address: address || null,
+          address: finalAddress,
           status: 'ACTIVE',
         },
       });
 
-      // 4. Assignments if provided
+      // 5. Teaching Assignments
       if (Array.isArray(assignments) && activeSession) {
         for (const a of assignments) {
           if (a.classId && a.sectionId) {
@@ -335,16 +412,52 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 6. Persist Initial Staged Documents
+      if (Array.isArray(documents) && documents.length > 0) {
+        for (const doc of documents) {
+          if (doc.documentType && (doc.fileUrl || doc.storageKey)) {
+            await tx.teacherDocument.create({
+              data: {
+                schoolId: auth.schoolId,
+                teacherId: teacher.id,
+                category: doc.category || 'KYC',
+                documentType: doc.documentType,
+                title: doc.title || doc.fileName || doc.documentType,
+                documentNumber: doc.documentNumber || null,
+                fileUrl: doc.fileUrl || doc.storageKey,
+                storageKey: doc.storageKey || null,
+                fileName: doc.fileName || null,
+                fileSize: doc.fileSize ? String(doc.fileSize) : null,
+                mimeType: doc.mimeType || null,
+                status: 'UNDER_REVIEW',
+                isRequired: Boolean(doc.isRequired),
+                issueDate: doc.issueDate ? new Date(doc.issueDate) : null,
+                expiryDate: doc.expiryDate ? new Date(doc.expiryDate) : null,
+              },
+            });
+          }
+        }
+      }
+
       return teacher;
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Teacher profile created successfully.',
-      teacher: result,
+      message: 'Teacher profile onboarded successfully.',
+      teacher: {
+        id: result.id,
+        employeeId: result.employeeId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: trimmedEmail,
+        department: result.department,
+        designation: result.designation,
+        status: result.status,
+      },
     });
-  } catch (error) {
-    console.error('Error in POST /api/teachers:', error);
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Error in POST /api/teachers:', error.message || error);
+    return NextResponse.json({ message: error.message || 'Internal server error' }, { status: 500 });
   }
 }

@@ -343,6 +343,28 @@ export async function generateNextTeacherId(
 }
 
 /**
+ * Previews the next upcoming employee ID for a teacher without incrementing the sequence.
+ */
+export async function getNextTeacherIdPreview(
+  schoolId: string,
+  client: any = prisma
+): Promise<string> {
+  const config = await getIdFormatConfig(schoolId, client);
+  const seq = await client.idSequence.findUnique({
+    where: {
+      schoolId_entityType_year: {
+        schoolId,
+        entityType: 'TEACHER',
+        year: 0,
+      },
+    },
+  });
+  const nextNum = (seq?.lastNumber || 0) + 1;
+  const paddedNumber = String(nextNum).padStart(config.teacherPadding, '0');
+  return `${config.studentPrefix}-${config.teacherPrefix}-${paddedNumber}`;
+}
+
+/**
  * Atomically generates the next ID for non-teaching staff.
  * Format: {PREFIX}-{STAFF_PREFIX}-{SEQUENCE} (e.g. GIS-STF-0001)
  */

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { Users, Plus, RefreshCw, AlertCircle, Download } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -25,6 +26,7 @@ import { TeacherDetailSheet } from '@/features/teachers/components/teacher-detai
 import { TeacherStatusDialog, TeacherArchiveDialog } from '@/features/teachers/components/teacher-actions-dialogs';
 
 function TeachersPageContent() {
+  const router = useRouter();
   const { toast } = useToast();
   const {
     teachers,
@@ -68,8 +70,7 @@ function TeachersPageContent() {
     : '0';
 
   const handleOpenAddTeacher = () => {
-    setTeacherToEdit(null);
-    setIsFormOpen(true);
+    router.push('/school/teachers/new');
   };
 
   const handleOpenEditTeacher = (teacher: TeacherDetail) => {
