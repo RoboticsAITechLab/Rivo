@@ -374,6 +374,55 @@ export async function updateSchoolSetting<K extends SettingCategory>(
   return updatedValue as SchoolSettingMap[K];
 }
 
+// ---------------------------------------------------------------------------
+// Typed Authoritative Configuration Resolvers for Operational Modules
+// ---------------------------------------------------------------------------
+
+export async function getAttendanceSettings(schoolId: string): Promise<SchoolSettingMap['attendance']> {
+  return getSchoolSetting(schoolId, 'attendance');
+}
+
+export async function getTimetableSettings(schoolId: string): Promise<SchoolSettingMap['timetable']> {
+  return getSchoolSetting(schoolId, 'timetable');
+}
+
+export async function getHomeworkSettings(schoolId: string): Promise<SchoolSettingMap['homework']> {
+  return getSchoolSetting(schoolId, 'homework');
+}
+
+export async function getExamSettings(schoolId: string): Promise<SchoolSettingMap['examinations']> {
+  return getSchoolSetting(schoolId, 'examinations');
+}
+
+export async function getResultSettings(schoolId: string): Promise<SchoolSettingMap['results']> {
+  return getSchoolSetting(schoolId, 'results');
+}
+
+export async function getFeeSettings(schoolId: string): Promise<SchoolSettingMap['fees']> {
+  return getSchoolSetting(schoolId, 'fees');
+}
+
+export async function getCommunicationSettings(schoolId: string): Promise<SchoolSettingMap['communication']> {
+  return getSchoolSetting(schoolId, 'communication');
+}
+
+export async function getNotificationSettings(schoolId: string): Promise<SchoolSettingMap['notifications']> {
+  return getSchoolSetting(schoolId, 'notifications');
+}
+
+export async function getDocumentSettings(schoolId: string): Promise<SchoolSettingMap['documents']> {
+  return getSchoolSetting(schoolId, 'documents');
+}
+
+export async function getSecuritySettings(schoolId: string): Promise<SchoolSettingMap['security']> {
+  return getSchoolSetting(schoolId, 'security');
+}
+
+export async function getBrandingSettings(schoolId: string): Promise<SchoolSettingMap['branding']> {
+  return getSchoolSetting(schoolId, 'branding');
+}
+
+
 /**
  * Get unified School Profile (merged from `School` table and `profile` settings).
  */

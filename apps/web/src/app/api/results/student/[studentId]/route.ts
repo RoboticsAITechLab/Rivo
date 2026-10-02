@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/authorize';
 import { ResultsService } from '@/lib/results/results-service';
+import { getResultSettings } from '@/lib/settings/settings-service';
 
 export async function GET(
   req: NextRequest,
@@ -16,6 +17,22 @@ export async function GET(
 
     const isParent = auth.role === 'PARENT';
     const isStudent = auth.role === 'STUDENT';
+    const isTeacher = auth.role === 'TEACHER';
+
+    // Enforce Institutional Result Visibility Policy
+    const resultSettings = await getResultSettings(auth.schoolId);
+    if ((isParent || isStudent || isTeacher) && resultSettings.resultVisibility === 'ADMIN_ONLY') {
+      return NextResponse.json(
+        { message: 'Exam results are currently restricted to Administrative staff per institutional settings.' },
+        { status: 403 }
+      );
+    }
+    if ((isParent || isStudent) && resultSettings.resultVisibility === 'TEACHERS') {
+      return NextResponse.json(
+        { message: 'Exam results have not yet been released to students and parents per institutional settings.' },
+        { status: 403 }
+      );
+    }
 
     const data = await ResultsService.getStudentMarksheet({
       schoolId: auth.schoolId,
@@ -24,6 +41,7 @@ export async function GET(
       parentUserId: isParent ? auth.userId : undefined,
       requirePublished: isParent || isStudent,
     });
+
 
     if (!data) {
       return NextResponse.json(

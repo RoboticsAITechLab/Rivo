@@ -5,6 +5,8 @@ import {
   ResultPublicationStatus,
   SubjectResultStatus,
 } from '@prisma/client';
+import { getResultSettings } from '@/lib/settings/settings-service';
+
 
 export interface GradingBand {
   minPercentage: number;
@@ -170,6 +172,17 @@ export class ResultsService {
     enteredByUserId: string;
   }) {
     const { schoolId, examTermId, paperId, marks, enteredByUserId } = params;
+
+    // Enforce Results Configuration Policy
+    const resultSettings = await getResultSettings(schoolId);
+    if (resultSettings.lockPublishedResults) {
+      const publishedCount = await prisma.examResult.count({
+        where: { schoolId, examTermId, status: 'PUBLISHED' },
+      });
+      if (publishedCount > 0) {
+        throw new Error('Cannot modify marks: Results for this examination term are locked after publication as per institutional settings.');
+      }
+    }
 
     const paper = await prisma.examPaper.findFirst({
       where: {

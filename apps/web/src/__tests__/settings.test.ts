@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { prisma } from '@/lib/prisma';
 import {
   getSchoolSetting,
@@ -14,6 +17,7 @@ async function runSettingsTestSuite() {
   console.log('===============================================================');
   console.log('RIVO SETTINGS & CONFIGURATION MASTER TEST SUITE');
   console.log('===============================================================\n');
+
 
   let passed = 0;
   let failed = 0;
@@ -345,3 +349,5 @@ runSettingsTestSuite().catch((err) => {
   console.error('Test execution crashed:', err);
   process.exit(1);
 });
+
+

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
+import { getAttendanceSettings } from '@/lib/settings/settings-service';
 
 // GET /api/attendance - Fetch attendance roster or school-wide attendance metrics
 export async function GET(req: NextRequest) {
@@ -189,6 +190,50 @@ export async function POST(req: NextRequest) {
 
     const schoolId = auth.schoolId;
 
+    // Enforce Institutional Attendance Settings
+    const attendanceSettings = await getAttendanceSettings(schoolId);
+
+    if (!attendanceSettings.attendanceEnabled) {
+      return NextResponse.json(
+        { message: 'Attendance tracking is disabled in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    if (auth.role === 'TEACHER' && !attendanceSettings.teacherCanMark) {
+      return NextResponse.json(
+        { message: 'Faculty attendance marking is disabled in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (attendanceSettings.lockPreviousRecords && targetDate.getTime() < today.getTime()) {
+      const isAdmin = ['ADMIN', 'PRINCIPAL', 'DIRECTOR', 'OWNER'].includes(auth.role) || (auth.session as any)?.platformRole === 'PLATFORM_ADMIN';
+      if (!isAdmin || !attendanceSettings.adminCanCorrect) {
+        return NextResponse.json(
+          { message: 'Attendance records for past dates are locked per institutional policy.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Validate supported attendance status codes
+    const supported = new Set(attendanceSettings.supportedStatuses || ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
+    for (const rec of records) {
+      if (rec.status && !supported.has(rec.status)) {
+        return NextResponse.json(
+          { message: `Attendance status "${rec.status}" is not enabled in institution settings.` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Verify tenant ownership of class
     const classRecord = await prisma.class.findFirst({
       where: { id: classId, schoolId },
@@ -206,9 +251,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Section not found for this class' }, { status: 404 });
     }
 
-    const targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
-
     // Fetch active academic session
     const activeSession = await prisma.academicSession.findFirst({
       where: { schoolId, status: 'ACTIVE' },
@@ -217,6 +259,7 @@ export async function POST(req: NextRequest) {
     if (!activeSession) {
       return NextResponse.json({ message: 'No active academic session found' }, { status: 400 });
     }
+
 
     // Save or update register atomically
     const result = await prisma.$transaction(async (tx) => {

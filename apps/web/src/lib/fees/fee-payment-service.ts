@@ -10,6 +10,8 @@ import {
   generateNextPaymentNumber,
   generateNextReceiptNumber,
 } from '@/lib/id-generator';
+import { getFeeSettings } from '@/lib/settings/settings-service';
+
 
 export interface RecordPaymentInput {
   academicSessionId: string;
@@ -75,6 +77,8 @@ export async function recordFeePayment(
     throw new Error('Valid student enrollment not found for this school and session.');
   }
 
+  const feeSettings = await getFeeSettings(schoolId);
+
   // Generate sequential Payment ID and Receipt ID before entering the atomic settlement transaction
   const year = new Date().getFullYear();
   const paymentNumber = await generateNextPaymentNumber(schoolId, { year });
@@ -103,7 +107,7 @@ export async function recordFeePayment(
 
     if (paymentAmount.greaterThan(totalOutstanding)) {
       throw new Error(
-        `Payment amount (₹${paymentAmount}) exceeds total outstanding balance (₹${totalOutstanding}). Overpayment is not permitted.`
+        `Payment amount (${feeSettings.currencySymbol}${paymentAmount}) exceeds total outstanding balance (${feeSettings.currencySymbol}${totalOutstanding}). Overpayment is not permitted.`
       );
     }
 
@@ -124,7 +128,7 @@ export async function recordFeePayment(
         }
         if (allocDec.greaterThan(ob.balanceAmount)) {
           throw new Error(
-            `Allocated amount (₹${allocDec}) exceeds remaining balance (₹${ob.balanceAmount}) for '${ob.title}'.`
+            `Allocated amount (${feeSettings.currencySymbol}${allocDec}) exceeds remaining balance (${feeSettings.currencySymbol}${ob.balanceAmount}) for '${ob.title}'.`
           );
         }
         explicitSum = explicitSum.add(allocDec);
@@ -133,10 +137,11 @@ export async function recordFeePayment(
 
       if (!explicitSum.equals(paymentAmount)) {
         throw new Error(
-          `Sum of manual allocations (₹${explicitSum}) does not match total payment amount (₹${paymentAmount}).`
+          `Sum of manual allocations (${feeSettings.currencySymbol}${explicitSum}) does not match total payment amount (${feeSettings.currencySymbol}${paymentAmount}).`
         );
       }
     } else {
+
       // Default: Oldest due first
       let unallocated = paymentAmount;
       for (const ob of pendingObligations) {

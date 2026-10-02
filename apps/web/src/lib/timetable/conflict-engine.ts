@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { getTimetableSettings } from '@/lib/settings/settings-service';
 
 export interface TimetableConflictCheckInput {
   schoolId: string;
@@ -35,9 +36,9 @@ export interface TimetableConflictResult {
 
 /**
  * Validates timetable slot assignment against real-world school scheduling rules:
- * 1. A teacher cannot be in two classes at the same day & period/time.
- * 2. A class-section-stream cannot have two subjects/teachers at the same day & period.
- * 3. A physical room cannot be double-booked at the same day & period.
+ * 1. A teacher cannot be in two classes at the same day & period/time (if teacherConflictDetection enabled).
+ * 2. A class-section-stream cannot have two subjects/teachers at the same day & period (if classConflictDetection enabled).
+ * 3. A physical room cannot be double-booked at the same day & period (if roomConflictDetection enabled).
  */
 export async function validateTimetableSlotConflict(
   input: TimetableConflictCheckInput,
@@ -56,93 +57,99 @@ export async function validateTimetableSlotConflict(
     excludeSlotId,
   } = input;
 
+  const timetableSettings = await getTimetableSettings(schoolId);
+
   // 1. Teacher Conflict: Check if teacher is assigned elsewhere at this session/day/period
-  const conflictingTeacherSlot = await tx.timetableSlot.findFirst({
-    where: {
-      schoolId,
-      academicSessionId,
-      teacherId,
-      dayOfWeek,
-      periodNumber,
-      ...(excludeSlotId ? { id: { not: excludeSlotId } } : {}),
-    },
-    include: {
-      class: true,
-      section: true,
-      subject: true,
-      teacher: {
-        include: { user: true },
-      },
-    },
-  });
-
-  if (conflictingTeacherSlot) {
-    const teacherName = conflictingTeacherSlot.teacher?.user
-      ? `${conflictingTeacherSlot.teacher.user.firstName} ${conflictingTeacherSlot.teacher.user.lastName}`.trim()
-      : 'Teacher';
-    const conflictingClass = conflictingTeacherSlot.class?.name || 'Unknown Class';
-    const conflictingSection = conflictingTeacherSlot.section?.name || 'Unknown Section';
-    const conflictingSubject = conflictingTeacherSlot.subject?.name || 'Unknown Subject';
-
-    return {
-      hasConflict: true,
-      type: 'TEACHER_CONFLICT',
-      message: `${teacherName} is already scheduled for ${conflictingClass} (${conflictingSection}) — ${conflictingSubject} during Period ${periodNumber} on ${dayOfWeek}.`,
-      details: {
-        teacherName,
-        conflictingClass,
-        conflictingSection,
-        conflictingSubject,
+  if (timetableSettings.teacherConflictDetection) {
+    const conflictingTeacherSlot = await tx.timetableSlot.findFirst({
+      where: {
+        schoolId,
+        academicSessionId,
+        teacherId,
         dayOfWeek,
         periodNumber,
-        startTime: conflictingTeacherSlot.startTime,
-        endTime: conflictingTeacherSlot.endTime,
-        roomNumber: conflictingTeacherSlot.roomNumber || undefined,
+        ...(excludeSlotId ? { id: { not: excludeSlotId } } : {}),
       },
-    };
+      include: {
+        class: true,
+        section: true,
+        subject: true,
+        teacher: {
+          include: { user: true },
+        },
+      },
+    });
+
+    if (conflictingTeacherSlot) {
+      const teacherName = conflictingTeacherSlot.teacher?.user
+        ? `${conflictingTeacherSlot.teacher.user.firstName} ${conflictingTeacherSlot.teacher.user.lastName}`.trim()
+        : 'Teacher';
+      const conflictingClass = conflictingTeacherSlot.class?.name || 'Unknown Class';
+      const conflictingSection = conflictingTeacherSlot.section?.name || 'Unknown Section';
+      const conflictingSubject = conflictingTeacherSlot.subject?.name || 'Unknown Subject';
+
+      return {
+        hasConflict: true,
+        type: 'TEACHER_CONFLICT',
+        message: `${teacherName} is already scheduled for ${conflictingClass} (${conflictingSection}) — ${conflictingSubject} during Period ${periodNumber} on ${dayOfWeek}.`,
+        details: {
+          teacherName,
+          conflictingClass,
+          conflictingSection,
+          conflictingSubject,
+          dayOfWeek,
+          periodNumber,
+          startTime: conflictingTeacherSlot.startTime,
+          endTime: conflictingTeacherSlot.endTime,
+          roomNumber: conflictingTeacherSlot.roomNumber || undefined,
+        },
+      };
+    }
   }
 
   // 2. Class/Section/Stream Conflict: Check if the class-section-stream is already occupied
-  const conflictingClassSlot = await tx.timetableSlot.findFirst({
-    where: {
-      schoolId,
-      academicSessionId,
-      classId,
-      sectionId,
-      streamId: streamId || null,
-      dayOfWeek,
-      periodNumber,
-      ...(excludeSlotId ? { id: { not: excludeSlotId } } : {}),
-    },
-    include: {
-      subject: true,
-      teacher: {
-        include: { user: true },
-      },
-    },
-  });
-
-  if (conflictingClassSlot) {
-    const existingSubject = conflictingClassSlot.subject?.name || 'another subject';
-    const assignedTeacher = conflictingClassSlot.teacher?.user
-      ? `${conflictingClassSlot.teacher.user.firstName} ${conflictingClassSlot.teacher.user.lastName}`.trim()
-      : 'another teacher';
-
-    return {
-      hasConflict: true,
-      type: 'CLASS_SECTION_CONFLICT',
-      message: `Period ${periodNumber} on ${dayOfWeek} is already assigned to ${existingSubject} (${assignedTeacher}).`,
-      details: {
-        conflictingSubject: existingSubject,
-        teacherName: assignedTeacher,
+  if (timetableSettings.classConflictDetection) {
+    const conflictingClassSlot = await tx.timetableSlot.findFirst({
+      where: {
+        schoolId,
+        academicSessionId,
+        classId,
+        sectionId,
+        streamId: streamId || null,
         dayOfWeek,
         periodNumber,
+        ...(excludeSlotId ? { id: { not: excludeSlotId } } : {}),
       },
-    };
+      include: {
+        subject: true,
+        teacher: {
+          include: { user: true },
+        },
+      },
+    });
+
+    if (conflictingClassSlot) {
+      const existingSubject = conflictingClassSlot.subject?.name || 'another subject';
+      const assignedTeacher = conflictingClassSlot.teacher?.user
+        ? `${conflictingClassSlot.teacher.user.firstName} ${conflictingClassSlot.teacher.user.lastName}`.trim()
+        : 'another teacher';
+
+      return {
+        hasConflict: true,
+        type: 'CLASS_SECTION_CONFLICT',
+        message: `Period ${periodNumber} on ${dayOfWeek} is already assigned to ${existingSubject} (${assignedTeacher}).`,
+        details: {
+          conflictingSubject: existingSubject,
+          teacherName: assignedTeacher,
+          dayOfWeek,
+          periodNumber,
+        },
+      };
+    }
   }
 
   // 3. Room Conflict: Check if physical facility is already booked
-  if (roomNumber && roomNumber.trim()) {
+  if (timetableSettings.roomConflictDetection && roomNumber && roomNumber.trim()) {
     const trimmedRoom = roomNumber.trim();
     const conflictingRoomSlot = await tx.timetableSlot.findFirst({
       where: {
@@ -177,3 +184,4 @@ export async function validateTimetableSlotConflict(
 
   return { hasConflict: false };
 }
+

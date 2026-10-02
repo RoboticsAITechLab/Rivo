@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/authorize';
 import { NoticeService } from '@/lib/notices/notice-service';
+import { getCommunicationSettings } from '@/lib/settings/settings-service';
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -54,6 +55,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Enforce Institutional Communication Settings
+    const commSettings = await getCommunicationSettings(auth.schoolId);
+    if (auth.role === 'TEACHER' && !commSettings.teacherCanCreate) {
+      return NextResponse.json(
+        { message: 'Faculty circular/notice creation is disabled in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    let effectivePublish = !!publishImmediately;
+    if (auth.role === 'TEACHER' && !commSettings.teacherCanPublish) {
+      effectivePublish = false; // Requires administrative broadcast approval
+    }
+
     const notice = await NoticeService.createNotice({
       schoolId: auth.schoolId,
       authorId: auth.userId,
@@ -63,7 +78,7 @@ export async function POST(req: NextRequest) {
       targetType,
       classId,
       sectionId,
-      publishImmediately: !!publishImmediately,
+      publishImmediately: effectivePublish,
     });
 
     return NextResponse.json(notice, { status: 201 });
@@ -75,3 +90,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PasswordPolicy } from '@/features/settings/types';
 import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
@@ -12,7 +11,8 @@ import {
   Key, 
   AlertOctagon, 
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,39 +28,88 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+const defaultPolicy: PasswordPolicy = {
+  minLength: 8,
+  requireUppercase: true,
+  requireLowercase: true,
+  requireNumbers: true,
+  requireSpecialChars: false,
+  expiryDays: 0,
+  maxFailedAttempts: 5,
+  lockoutMinutes: 15,
+};
+
 export default function PasswordPolicySettingsPage() {
-  const store = useSchoolStore();
-  const currentPolicy = store.passwordPolicy;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [sessionTimeout, setSessionTimeout] = useState(1440);
 
-  const [formData, setFormData] = useState<PasswordPolicy>({
-    minLength: 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumbers: true,
-    requireSpecialChars: false,
-    expiryDays: 0,
-    maxFailedAttempts: 5,
-    lockoutMinutes: 15,
-  });
+  const {
+    currentValues: formData,
+    setCurrentValues: setFormData,
+    isDirty,
+    markSaved,
+    resetForm,
+    showUnsavedDialog,
+    setShowUnsavedDialog,
+  } = useUnsavedChanges<PasswordPolicy>(defaultPolicy);
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=security');
+      const json = await res.json();
+      if (res.ok && json.data?.passwordPolicy) {
+        setFormData(json.data.passwordPolicy);
+        setSessionTimeout(json.data.sessionTimeoutMinutes || 1440);
+        markSaved(json.data.passwordPolicy);
+      }
+    } catch (err) {
+      console.error('Failed to load password policy settings:', err);
+      toast.error('Failed to load institutional security settings');
+    } finally {
+      setLoading(false);
+    }
+  }, [markSaved, setFormData]);
 
   useEffect(() => {
-    if (currentPolicy) {
-      setFormData(currentPolicy);
-    }
-  }, [currentPolicy]);
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleChange = <K extends keyof PasswordPolicy>(key: K, value: PasswordPolicy[K]) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-    setIsDirty(true);
+    setFormData({ ...formData, [key]: value });
   };
 
-  const handleSave = () => {
-    schoolStore.updatePasswordPolicy(formData);
-    setIsDirty(false);
-    toast.success('Password complexity and lockout policy saved');
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'security',
+          value: {
+            sessionTimeoutMinutes: sessionTimeout,
+            passwordPolicy: formData,
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save security policy');
+      }
+
+      markSaved(formData);
+      toast.success('Institutional password complexity and lockout policy saved and enforced.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update security settings');
+    } finally {
+      setSaving(false);
+    }
   };
+
 
   return (
     <div className="space-y-6">
@@ -74,10 +123,28 @@ export default function PasswordPolicySettingsPage() {
             Enforce password complexity standards, rotation rules, and brute-force lockout safeguards.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Policy
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={resetForm}
+              className="text-xs h-8"
+            >
+              Reset
+            </Button>
+          )}
+          <Button
+            onClick={() => handleSave()}
+            disabled={!isDirty || saving}
+            className="gap-2 shrink-0 h-8 text-xs"
+          >
+            {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Saving...' : 'Save Policy'}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -239,10 +306,14 @@ export default function PasswordPolicySettingsPage() {
       </div>
 
       <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
+        open={showUnsavedDialog} 
+        onDiscard={() => resetForm()} 
+        onContinueEditing={() => setShowUnsavedDialog(false)} 
+        onSave={async () => {
+          await handleSave();
+        }}
       />
     </div>
   );
 }
+
