@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useReducer, Suspense, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -18,150 +18,553 @@ import {
   Phone,
   Smartphone,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth/auth-context';
 
+/* ─── Motion ─────────────────────────────────────────────── */
+// `motion` package (same API as framer-motion) is already installed
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+
+/* ─── Types ─────────────────────────────────────────────── */
+type AuthMode = 'STAFF' | 'PARENT';
+type LoginStep = 'credentials' | 'mfa';
+type ParentPhase = 'input' | 'otp';
+
+/* ─── Role redirect helper ──────────────────────────────── */
+function resolveRoleRedirect(user: { scope?: string; roleType?: string }, returnUrl?: string | null): string {
+  if (user.scope === 'PLATFORM' || user.roleType === 'PLATFORM_ADMIN') return '/platform/dashboard';
+  if (user.roleType === 'TEACHER') return returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
+  if (user.roleType === 'PARENT') return '/parent';
+  if (user.roleType === 'FEE_MANAGER') return returnUrl && returnUrl !== '/school' ? returnUrl : '/school/fees';
+  if (['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'STAFF'].includes(user.roleType || ''))
+    return returnUrl || '/school';
+  return '/school';
+}
+
+/* ─── Slide variants ────────────────────────────────────── */
+const EASE_OUT_QUINT = [0.16, 1, 0.3, 1] as const;
+
+function slideVariants(reduced: boolean) {
+  if (reduced) {
+    return {
+      enter: { opacity: 0 },
+      center: { opacity: 1, transition: { duration: 0.15 } },
+      exit:  { opacity: 0, transition: { duration: 0.1 } },
+    };
+  }
+  return {
+    enter: (dir: number) => ({ x: dir > 0 ? 24 : -24, opacity: 0 }),
+    center: { x: 0, opacity: 1, transition: { duration: 0.22, ease: EASE_OUT_QUINT } },
+    exit: (dir: number) => ({ x: dir > 0 ? -24 : 24, opacity: 0, transition: { duration: 0.18, ease: EASE_OUT_QUINT } }),
+  };
+}
+
+/* ─── Inline styles ─────────────────────────────────────── */
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+  .lf-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 24px;
+    box-shadow:
+      0 25px 60px -15px rgba(15, 23, 42, 0.16),
+      0 10px 25px -5px rgba(15, 23, 42, 0.06),
+      0 0 0 1px rgba(226, 232, 240, 0.7);
+    overflow: hidden;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Header strip */
+  .lf-header {
+    padding: 1.75rem 1.75rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .lf-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+    margin: 0 0 0.25rem;
+  }
+  .lf-subtitle {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  /* Tab switcher */
+  .lf-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 3px;
+    margin-top: 1rem;
+  }
+  .lf-tab {
+    padding: 0.5rem;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    transition: color 150ms ease;
+    position: relative;
+  }
+  .lf-tab--active {
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .lf-tab--parent.lf-tab--active {
+    color: #059669;
+  }
+
+  /* Body */
+  .lf-body {
+    padding: 1.5rem 1.75rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Error alert */
+  .lf-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem;
+    background: #fff5f5;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    margin-bottom: 1.25rem;
+  }
+  .lf-alert__icon { color: #ef4444; flex-shrink: 0; margin-top: 1px; }
+  .lf-alert__title { font-size: 12px; font-weight: 600; color: #991b1b; margin-bottom: 2px; }
+  .lf-alert__msg   { font-size: 11px; color: #b91c1c; }
+
+  /* Success alert */
+  .lf-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 10px;
+    margin-bottom: 1.25rem;
+  }
+  .lf-success__icon  { color: #16a34a; flex-shrink: 0; margin-top: 1px; }
+  .lf-success__title { font-size: 12px; font-weight: 600; color: #14532d; margin-bottom: 2px; }
+  .lf-success__msg   { font-size: 11px; color: #166534; }
+
+  /* Form fields */
+  .lf-field { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1rem; }
+  .lf-field:last-of-type { margin-bottom: 0; }
+  .lf-label { font-size: 12px; font-weight: 600; color: #374151; }
+  .lf-label__req { color: #ef4444; margin-left: 2px; }
+  .lf-label__opt { color: #94a3b8; font-weight: 400; margin-left: 4px; }
+
+  .lf-input-wrap { position: relative; }
+  .lf-input-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    pointer-events: none;
+    width: 15px;
+    height: 15px;
+  }
+  .lf-input {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px 0 38px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #0f172a;
+    background: #fff;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+    box-sizing: border-box;
+  }
+  .lf-input::placeholder { color: #cbd5e1; }
+  .lf-input:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+  }
+  .lf-input--error {
+    border-color: #f87171;
+  }
+  .lf-input--error:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
+  }
+  .lf-input--mono {
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.15em;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding-left: 38px;
+  }
+  .lf-input--no-icon { padding-left: 12px; }
+  .lf-input-toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #94a3b8;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 150ms ease;
+  }
+  .lf-input-toggle:hover { color: #475569; }
+  .lf-input-toggle:focus-visible { outline: 2px solid #10b981; outline-offset: 1px; }
+  .lf-field-err { font-size: 11px; color: #ef4444; font-weight: 500; }
+
+  /* Parent type switcher */
+  .lf-type-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+  .lf-type-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0.5rem;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid #e2e8f0;
+    background: transparent;
+    color: #64748b;
+    transition: all 150ms ease;
+  }
+  .lf-type-btn--active {
+    border-color: #10b981;
+    background: rgba(16,185,129,0.06);
+    color: #059669;
+  }
+
+  /* Helpers row */
+  .lf-helpers {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    font-size: 12px;
+  }
+  .lf-remember {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #475569;
+    cursor: pointer;
+    user-select: none;
+  }
+  .lf-remember input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    accent-color: #10b981;
+    cursor: pointer;
+  }
+  .lf-forgot {
+    color: #059669;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: color 120ms ease;
+  }
+  .lf-forgot:hover { color: #047857; text-decoration: underline; }
+  .lf-forgot:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+
+  /* Footer */
+  .lf-footer {
+    padding: 1.25rem 1.75rem 1.75rem;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* Primary button */
+  .lf-btn {
+    width: 100%;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Inter', system-ui, sans-serif;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 150ms ease;
+    letter-spacing: 0.005em;
+  }
+  .lf-btn--primary {
+    background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    border-radius: 12px;
+    font-weight: 700;
+  }
+  .lf-btn--primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+    transform: translateY(-1px);
+  }
+  .lf-btn--primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .lf-btn--primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .lf-btn--ghost {
+    background: transparent;
+    color: #64748b;
+    border: none;
+    font-size: 12px;
+    font-weight: 500;
+    height: auto;
+    padding: 4px 8px;
+    width: auto;
+    gap: 4px;
+    border-radius: 6px;
+    transition: color 120ms ease;
+  }
+  .lf-btn--ghost:hover { color: #0f172a; }
+
+  /* Footer link row */
+  .lf-footer-link {
+    text-align: center;
+    font-size: 12px;
+    color: #94a3b8;
+    padding-top: 0.875rem;
+    border-top: 1px solid #f1f5f9;
+  }
+  .lf-footer-link a {
+    color: #0284c7;
+    font-weight: 700;
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+  .lf-footer-link a:hover { color: #0369a1; text-decoration: underline; }
+
+  /* MFA header */
+  .lf-mfa-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    color: #059669;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 2px 8px rgba(16,185,129,0.15);
+  }
+
+  /* OTP input */
+  .lf-otp-info {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 0.375rem;
+    line-height: 1.5;
+  }
+
+  /* Cooldown / resend row */
+  .lf-resend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.625rem;
+    font-size: 12px;
+  }
+  .lf-resend-row button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 12px;
+    padding: 0;
+  }
+  .lf-resend-active { color: #059669; font-weight: 600; }
+  .lf-resend-active:hover { text-decoration: underline; }
+  .lf-resend-cooldown { color: #94a3b8; cursor: not-allowed !important; }
+
+  /* Recovery toggle */
+  .lf-recovery-toggle {
+    text-align: right;
+    margin-top: 0.75rem;
+  }
+  .lf-recovery-toggle button {
+    background: none;
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: #059669;
+    cursor: pointer;
+    font-family: 'Inter', system-ui, sans-serif;
+    padding: 2px 0;
+    transition: color 120ms ease;
+  }
+  .lf-recovery-toggle button:hover { color: #047857; text-decoration: underline; }
+
+  /* Hint text */
+  .lf-hint {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin-top: 0.25rem;
+  }
+
+  .lf-note {
+    font-size: 11px;
+    color: #94a3b8;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .lf-btn--primary { transition: none !important; transform: none !important; }
+  }
+`;
+
+/* ────────────────────────────────────────────────────────── */
+/*  Main Login Form                                          */
+/* ────────────────────────────────────────────────────────── */
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get('returnUrl') || '/school';
+  const prefersReduced = useReducedMotion() ?? false;
+  const variants = slideVariants(prefersReduced);
 
   const { login, verifyMfaChallenge, user, authState } = useAuth();
 
-  const [authMode, setAuthMode] = useState<'STAFF' | 'PARENT'>('STAFF');
+  /* ── auth mode: STAFF | PARENT ─── */
+  const [authMode, setAuthMode] = useState<AuthMode>('STAFF');
+
+  /* ── STAFF state ─── */
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-
-  // Parent OTP State
-  const [parentType, setParentType] = useState<'PHONE' | 'EMAIL'>('PHONE');
-  const [parentPhone, setParentPhone] = useState('');
-  const [parentEmail, setParentEmail] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [maskedTarget, setMaskedTarget] = useState('');
-  const [cooldown, setCooldown] = useState(0);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-
-  // Field validation errors
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-
-  // Form submission and server error
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // MFA 2-Step Verification State
-  const [mfaStep, setMfaStep] = useState(false);
+  /* ── MFA state ─── */
+  const [loginStep, setLoginStep] = useState<LoginStep>('credentials');
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
 
-  // Countdown timer for OTP cooldown
+  /* ── PARENT state ─── */
+  const [parentType, setParentType] = useState<'PHONE' | 'EMAIL'>('PHONE');
+  const [parentPhone, setParentPhone] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [parentPhase, setParentPhase] = useState<ParentPhase>('input');
+  const [otpCode, setOtpCode] = useState('');
+  const [maskedTarget, setMaskedTarget] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  /* slide direction tracking */
+  const [direction, setDirection] = useState(1);
+  const prevStep = useRef<string>('credentials');
+
+  /* Hydration guard: motion injects different style attr types on SSR vs client */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  /* ── Cooldown timer ─── */
   useEffect(() => {
     if (cooldown <= 0) return;
-    const timer = setInterval(() => {
-      setCooldown((c) => (c > 0 ? c - 1 : 0));
-    }, 1000);
+    const timer = setInterval(() => setCooldown(c => (c > 0 ? c - 1 : 0)), 1000);
     return () => clearInterval(timer);
   }, [cooldown]);
 
-function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
-  if (user.scope === 'PLATFORM' || user.roleType === 'PLATFORM_ADMIN') {
-    return '/platform/dashboard';
-  }
-  if (user.roleType === 'TEACHER') {
-    return returnUrl && returnUrl !== '/school' ? returnUrl : '/teacher/dashboard';
-  }
-  if (user.roleType === 'PARENT') {
-    return '/parent';
-  }
-  if (user.roleType === 'FEE_MANAGER') {
-    return returnUrl && returnUrl !== '/school' ? returnUrl : '/school/fees';
-  }
-  if (
-    user.roleType === 'DIRECTOR' ||
-    user.roleType === 'PRINCIPAL' ||
-    user.roleType === 'ADMIN' ||
-    user.roleType === 'SCHOOL_ADMIN' ||
-    user.roleType === 'OWNER' ||
-    user.roleType === 'STAFF'
-  ) {
-    return returnUrl || '/school';
-  }
-  return '/school';
-}
-
-  // Redirect if already authenticated
+  /* ── Redirect if already authenticated ─── */
   useEffect(() => {
     if (authState === 'AUTHENTICATED' && user) {
       router.replace(resolveRoleRedirect(user, returnUrl));
     }
   }, [authState, user, router, returnUrl]);
 
-  const validateForm = (): boolean => {
-    let isValid = true;
+  /* ── Form validation ─── */
+  const validateCredentials = (): boolean => {
+    let ok = true;
     setServerError(null);
 
-    // Validate email
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
+    if (!email.trim()) {
       setEmailError('Email is required.');
-      isValid = false;
+      ok = false;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setEmailError('Enter a valid email address.');
+      ok = false;
     } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(trimmedEmail)) {
-        setEmailError('Enter a valid email address.');
-        isValid = false;
-      } else {
-        setEmailError(null);
-      }
+      setEmailError(null);
     }
 
-    // Validate password
     if (!password) {
       setPasswordError('Password is required.');
-      isValid = false;
+      ok = false;
     } else {
       setPasswordError(null);
     }
-
-    return isValid;
+    return ok;
   };
 
+  /* ── STAFF submit ─── */
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm() || isSubmitting) {
-      return;
-    }
+    if (!validateCredentials() || isSubmitting) return;
 
     setIsSubmitting(true);
     setServerError(null);
-
     try {
-      const result = await login({
-        email: email.trim(),
-        password,
-        rememberMe,
-      });
+      const result = await login({ email: email.trim(), password, rememberMe });
 
-      // 1. If MFA challenge is required
       if (result.success && result.mfaRequired && result.mfaChallengeToken) {
         setMfaChallengeToken(result.mfaChallengeToken);
-        setMfaStep(true);
-        setPassword(''); // Clear password from browser memory
+        setPassword('');
+        setDirection(1);
+        setLoginStep('mfa');
         setMfaError(null);
         return;
       }
-
-      // 2. Direct session established
       if (result.success && result.user) {
         window.location.href = resolveRoleRedirect(result.user, returnUrl);
       } else {
@@ -172,9 +575,8 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
             : result.errorCode === 'NETWORK_ERROR'
             ? 'Unable to connect. Please try again.'
             : result.errorCode === 'SERVICE_UNAVAILABLE'
-            ? 'Authentication service is currently unavailable.'
+            ? 'Authentication service is temporarily unavailable.'
             : 'Something went wrong. Please try again.');
-
         setServerError(errorMsg);
       }
     } catch {
@@ -184,6 +586,7 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
     }
   };
 
+  /* ── Parent OTP ─── */
   const handleSendParentOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setServerError(null);
@@ -192,7 +595,6 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
       setServerError(`Please enter your registered ${parentType === 'PHONE' ? 'mobile number' : 'email address'}.`);
       return;
     }
-
     setIsSendingOtp(true);
     try {
       const res = await fetch('/api/auth/parent/otp/request', {
@@ -204,9 +606,9 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
       if (!res.ok) {
         setServerError(data.message || 'Failed to send verification code.');
       } else {
-        setOtpSent(true);
         setMaskedTarget(data.identifier || identifier);
         setCooldown(data.cooldownSeconds || 60);
+        setParentPhase('otp');
       }
     } catch {
       setServerError('Network error while requesting verification code.');
@@ -223,37 +625,27 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
       setServerError('Please enter the 6-digit verification code.');
       return;
     }
-
     setIsVerifyingOtp(true);
     try {
       const identifier = parentType === 'PHONE' ? parentPhone.trim() : parentEmail.trim();
       const res = await fetch('/api/auth/parent/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(parentType === 'PHONE' ? { phone: identifier } : { email: identifier }),
-          code: cleanOtp,
-        }),
+        body: JSON.stringify({ ...(parentType === 'PHONE' ? { phone: identifier } : { email: identifier }), code: cleanOtp }),
       });
       const data = await res.json();
-
       if (!res.ok) {
         setServerError(data.message || 'Invalid or expired verification code.');
         return;
       }
-
-      // Check if MFA is required
       if (data.mfaRequired && data.challengeToken) {
         setMfaChallengeToken(data.challengeToken);
-        setMfaStep(true);
+        setLoginStep('mfa');
         setOtpCode('');
         setMfaError(null);
         return;
       }
-
-      if (data.success) {
-        window.location.href = '/parent';
-      }
+      if (data.success) window.location.href = '/parent';
     } catch {
       setServerError('Network error while verifying code.');
     } finally {
@@ -261,22 +653,19 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
     }
   };
 
+  /* ── MFA ─── */
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mfaChallengeToken || isVerifyingMfa) return;
-
     const trimmedCode = mfaCode.trim();
     if (!trimmedCode) {
-      setMfaError(useRecoveryCode ? 'Please enter a recovery code.' : 'Please enter the 6-digit verification code.');
+      setMfaError(useRecoveryCode ? 'Please enter a recovery code.' : 'Please enter the 6-digit code.');
       return;
     }
-
     setIsVerifyingMfa(true);
     setMfaError(null);
-
     try {
       const result = await verifyMfaChallenge(mfaChallengeToken, trimmedCode, useRecoveryCode);
-
       if (result.success && result.user) {
         window.location.href = resolveRoleRedirect(result.user, returnUrl);
       } else {
@@ -290,596 +679,511 @@ function resolveRoleRedirect(user: any, returnUrl?: string | null): string {
   };
 
   const resetToCredentials = () => {
-    setMfaStep(false);
+    setDirection(-1);
+    setLoginStep('credentials');
     setMfaChallengeToken(null);
     setMfaCode('');
     setMfaError(null);
     setUseRecoveryCode(false);
   };
 
-  // STEP 2: MFA VERIFICATION CARD
-  if (mfaStep) {
-    return (
-      <Card className="shadow-sm border-slate-200/80 bg-white animate-in fade-in-50 duration-200">
-        <CardHeader className="space-y-1.5 pb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-xl font-bold tracking-tight text-slate-900">
-                Two-Factor Verification
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                {useRecoveryCode
-                  ? 'Enter one of your 8-character single-use recovery codes.'
-                  : 'Enter the 6-digit code from your authenticator app.'}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-
-        <form onSubmit={handleMfaSubmit} noValidate>
-          <CardContent className="space-y-4">
-            {mfaError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in-0 duration-200"
-              >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
-                <div className="space-y-0.5">
-                  <p className="font-semibold text-red-800">Verification Failed</p>
-                  <p>{mfaError}</p>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label
-                htmlFor="mfaCode"
-                className="block text-xs font-semibold text-slate-700"
-              >
-                {useRecoveryCode ? 'Recovery Code' : '6-Digit Authenticator Code'}{' '}
-                <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <KeyRound
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none"
-                  aria-hidden="true"
-                />
-                <Input
-                  id="mfaCode"
-                  name="mfaCode"
-                  type="text"
-                  inputMode={useRecoveryCode ? 'text' : 'numeric'}
-                  autoComplete="one-time-code"
-                  autoFocus
-                  disabled={isVerifyingMfa}
-                  maxLength={useRecoveryCode ? 16 : 6}
-                  value={mfaCode}
-                  onChange={(e) => {
-                    const val = useRecoveryCode
-                      ? e.target.value.toUpperCase()
-                      : e.target.value.replace(/\D/g, '').slice(0, 6);
-                    setMfaCode(val);
-                    if (mfaError) setMfaError(null);
-                  }}
-                  placeholder={useRecoveryCode ? 'e.g. A1B2-C3D4' : '000000'}
-                  className="pl-9 font-mono tracking-widest text-center text-base sm:text-lg h-11 border-slate-200 font-bold"
-                />
-              </div>
-              <p className="text-[11px] text-slate-500">
-                {useRecoveryCode
-                  ? 'Each recovery code can only be used once.'
-                  : 'Codes rotate every 30 seconds.'}
-              </p>
-            </div>
-
-            <div className="pt-1 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setUseRecoveryCode(!useRecoveryCode);
-                  setMfaCode('');
-                  setMfaError(null);
-                }}
-                className="text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline outline-none"
-              >
-                {useRecoveryCode
-                  ? 'Use authenticator app code instead'
-                  : 'Lost your device? Use recovery code'}
-              </button>
-            </div>
-          </CardContent>
-
-          <CardFooter className="flex flex-col space-y-3 pt-2">
-            <Button
-              type="submit"
-              disabled={isVerifyingMfa || (!useRecoveryCode && mfaCode.length !== 6)}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
-            >
-              {isVerifyingMfa ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />
-                  Verifying code...
-                </>
-              ) : (
-                'Verify & Continue'
-              )}
-            </Button>
-
-            <button
-              type="button"
-              onClick={resetToCredentials}
-              className="inline-flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 py-1 transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to email and password
-            </button>
-          </CardFooter>
-        </form>
-      </Card>
-    );
-  }
-
-  // STEP 1: CREDENTIALS CARD
+  /* ─────────────────── RENDER ─────────────────── */
   return (
-    <Card className="shadow-sm border-slate-200/80 bg-white">
-      <CardHeader className="space-y-3 pb-3">
-        <div className="space-y-1">
-          <CardTitle className="text-xl font-bold tracking-tight text-slate-900">
-            {authMode === 'PARENT' ? 'Parent Portal' : 'Welcome back'}
-          </CardTitle>
-          <CardDescription className="text-xs text-slate-500">
-            {authMode === 'PARENT'
-              ? 'Sign in with your registered mobile number or email using one-time verification.'
-              : 'Sign in to your school staff or administrator account.'}
-          </CardDescription>
-        </div>
+    <>
+      <style>{css}</style>
 
-        {/* Portal Switcher Tabs */}
-        <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode('STAFF');
-              setServerError(null);
-            }}
-            className={`py-1.5 rounded-md transition-all ${
-              authMode === 'STAFF'
-                ? 'bg-white shadow text-slate-900 font-bold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Staff Login
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode('PARENT');
-              setServerError(null);
-            }}
-            className={`py-1.5 rounded-md transition-all ${
-              authMode === 'PARENT'
-                ? 'bg-white shadow text-primary font-bold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Parent Portal (OTP)
-          </button>
-        </div>
-      </CardHeader>
-
-      {/* PARENT LOGIN FORM */}
-      {authMode === 'PARENT' ? (
-        <form onSubmit={otpSent ? handleVerifyParentOtp : handleSendParentOtp} noValidate>
-          <CardContent className="space-y-4">
-            {serverError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in-0 duration-200"
+      <div className="lf-card">
+        {/* ── Header ── */}
+        <div className="lf-header">
+          <AnimatePresence mode="wait" initial={false}>
+            {loginStep === 'mfa' ? (
+              <motion.div
+                key="mfa-header"
+                initial={false}
+                animate={mounted ? { opacity: 1, y: 0 } : undefined}
+                exit={mounted ? { opacity: 0 } : undefined}
+                transition={{ duration: 0.2, ease: EASE_OUT_QUINT }}
+                suppressHydrationWarning
               >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
-                <div className="space-y-0.5">
-                  <p className="font-semibold text-red-800">Authentication failed</p>
-                  <p>{serverError}</p>
+                <div className="lf-mfa-icon-wrap">
+                  <ShieldCheck size={22} />
                 </div>
-              </div>
+                <h1 className="lf-title">Two-Factor Verification</h1>
+                <p className="lf-subtitle">
+                  {useRecoveryCode
+                    ? 'Enter one of your 8-character single-use recovery codes.'
+                    : 'Enter the 6-digit code from your authenticator app.'}
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="login-header"
+                initial={false}
+                animate={mounted ? { opacity: 1 } : undefined}
+                exit={mounted ? { opacity: 0 } : undefined}
+                transition={{ duration: 0.2 }}
+                suppressHydrationWarning
+              >
+                <h1 className="lf-title">
+                  {authMode === 'PARENT' ? 'Parent Portal' : 'Welcome back'}
+                </h1>
+                <p className="lf-subtitle">
+                  {authMode === 'PARENT'
+                    ? 'Sign in with your registered mobile number or email using one-time verification.'
+                    : 'Sign in to your school administrator or staff account.'}
+                </p>
+
+                {/* Tab switcher — only shown on credentials step */}
+                <div className="lf-tabs" role="tablist" aria-label="Login portal">
+                  <button
+                    role="tab"
+                    aria-selected={authMode === 'STAFF'}
+                    className={`lf-tab ${authMode === 'STAFF' ? 'lf-tab--active' : ''}`}
+                    onClick={() => { setAuthMode('STAFF'); setServerError(null); }}
+                  >
+                    Staff Login
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={authMode === 'PARENT'}
+                    className={`lf-tab lf-tab--parent ${authMode === 'PARENT' ? 'lf-tab--active' : ''}`}
+                    onClick={() => { setAuthMode('PARENT'); setServerError(null); }}
+                  >
+                    Parent (OTP)
+                  </button>
+                </div>
+              </motion.div>
             )}
+          </AnimatePresence>
+        </div>
 
-            {!otpSent ? (
-              <>
-                <div className="flex items-center gap-2 pb-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setParentType('PHONE');
-                      setServerError(null);
-                    }}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border flex items-center justify-center gap-1.5 transition-colors ${
-                      parentType === 'PHONE'
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Smartphone className="h-3.5 w-3.5" />
-                    Phone Number
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setParentType('EMAIL');
-                      setServerError(null);
-                    }}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md border flex items-center justify-center gap-1.5 transition-colors ${
-                      parentType === 'EMAIL'
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    Email Address
-                  </button>
-                </div>
+        {/* ── Body ── */}
+        <div className="lf-body">
+          <AnimatePresence custom={direction} mode="wait" initial={false}>
 
-                {parentType === 'PHONE' ? (
-                  <div className="space-y-1.5">
-                    <label htmlFor="parentPhone" className="block text-xs font-semibold text-slate-700">
-                      Registered Mobile Number <span className="text-red-500">*</span>
+            {/* ── MFA STEP ── */}
+            {loginStep === 'mfa' && (
+              <motion.div
+                key="mfa"
+                custom={direction}
+                variants={mounted ? variants : undefined}
+                initial={false}
+                animate={mounted ? 'center' : undefined}
+                exit={mounted ? 'exit' : undefined}
+                suppressHydrationWarning
+              >
+                <form onSubmit={handleMfaSubmit} noValidate>
+                  {mfaError && (
+                    <div className="lf-alert" role="alert" aria-live="assertive">
+                      <AlertCircle size={15} className="lf-alert__icon" />
+                      <div>
+                        <p className="lf-alert__title">Verification Failed</p>
+                        <p className="lf-alert__msg">{mfaError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="lf-field">
+                    <label htmlFor="mfaCode" className="lf-label">
+                      {useRecoveryCode ? 'Recovery Code' : '6-Digit Code'}
+                      <span className="lf-label__req">*</span>
                     </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                      <Input
-                        id="parentPhone"
-                        type="tel"
-                        inputMode="tel"
-                        disabled={isSendingOtp}
-                        value={parentPhone}
-                        onChange={(e) => {
-                          setParentPhone(e.target.value);
-                          if (serverError) setServerError(null);
+                    <div className="lf-input-wrap">
+                      <KeyRound className="lf-input-icon" aria-hidden="true" />
+                      <input
+                        id="mfaCode"
+                        name="mfaCode"
+                        type="text"
+                        inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                        autoComplete="one-time-code"
+                        autoFocus
+                        disabled={isVerifyingMfa}
+                        maxLength={useRecoveryCode ? 16 : 6}
+                        value={mfaCode}
+                        onChange={e => {
+                          const val = useRecoveryCode
+                            ? e.target.value.toUpperCase()
+                            : e.target.value.replace(/\D/g, '').slice(0, 6);
+                          setMfaCode(val);
+                          if (mfaError) setMfaError(null);
                         }}
-                        placeholder="e.g. 9876543210 or +91 98765 43210"
-                        className="pl-9 text-xs sm:text-sm border-slate-200"
+                        placeholder={useRecoveryCode ? 'e.g. A1B2-C3D4' : '000000'}
+                        className="lf-input lf-input--mono"
+                        aria-invalid={!!mfaError}
                       />
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Standard Indian mobile numbers will automatically resolve to +91 format.
+                    <p className="lf-hint">
+                      {useRecoveryCode ? 'Each recovery code can only be used once.' : 'Codes rotate every 30 seconds.'}
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <label htmlFor="parentEmail" className="block text-xs font-semibold text-slate-700">
-                      Registered Email Address <span className="text-red-500">*</span>
+
+                  <div className="lf-recovery-toggle">
+                    <button
+                      type="button"
+                      onClick={() => { setUseRecoveryCode(!useRecoveryCode); setMfaCode(''); setMfaError(null); }}
+                    >
+                      {useRecoveryCode ? 'Use authenticator app instead' : 'Lost device? Use recovery code'}
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <button
+                      type="submit"
+                      disabled={isVerifyingMfa || (!useRecoveryCode && mfaCode.length !== 6)}
+                      className="lf-btn lf-btn--primary"
+                    >
+                      {isVerifyingMfa
+                        ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" /> Verifying...</>
+                        : 'Verify & Continue'}
+                    </button>
+
+                    <button type="button" className="lf-btn lf-btn--ghost" onClick={resetToCredentials}>
+                      <ArrowLeft size={13} aria-hidden="true" />
+                      Back to email &amp; password
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+
+            {/* ── STAFF CREDENTIALS ── */}
+            {loginStep === 'credentials' && authMode === 'STAFF' && (
+              <motion.div
+                key="staff"
+                custom={direction}
+                variants={mounted ? variants : undefined}
+                initial={false}
+                animate={mounted ? 'center' : undefined}
+                exit={mounted ? 'exit' : undefined}
+                suppressHydrationWarning
+              >
+                <form onSubmit={handleCredentialsSubmit} noValidate>
+                  {serverError && (
+                    <div className="lf-alert" role="alert" aria-live="assertive">
+                      <AlertCircle size={15} className="lf-alert__icon" />
+                      <div>
+                        <p className="lf-alert__title">Authentication failed</p>
+                        <p className="lf-alert__msg">{serverError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  <div className="lf-field">
+                    <label htmlFor="email" className="lf-label">
+                      Email <span className="lf-label__req">*</span>
                     </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                      <Input
-                        id="parentEmail"
+                    <div className="lf-input-wrap">
+                      <Mail className="lf-input-icon" aria-hidden="true" />
+                      <input
+                        id="email"
+                        name="email"
                         type="email"
-                        inputMode="email"
-                        disabled={isSendingOtp}
-                        value={parentEmail}
-                        onChange={(e) => {
-                          setParentEmail(e.target.value);
-                          if (serverError) setServerError(null);
+                        autoComplete="email"
+                        disabled={isSubmitting}
+                        value={email}
+                        onChange={e => { setEmail(e.target.value); if (emailError) setEmailError(null); }}
+                        onBlur={() => {
+                          if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+                            setEmailError('Enter a valid email address.');
                         }}
-                        placeholder="parent@example.com"
-                        className="pl-9 text-xs sm:text-sm border-slate-200"
+                        placeholder="admin@school.edu"
+                        aria-invalid={!!emailError}
+                        aria-describedby={emailError ? 'email-error' : undefined}
+                        className={`lf-input ${emailError ? 'lf-input--error' : ''}`}
                       />
                     </div>
+                    {emailError && <p id="email-error" role="alert" className="lf-field-err">{emailError}</p>}
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-semibold">Code Dispatched</p>
-                    <p className="text-[11px] opacity-90">
-                      We sent a 6-digit verification code to <span className="font-mono font-bold">{maskedTarget}</span>.
-                    </p>
+
+                  {/* Password */}
+                  <div className="lf-field">
+                    <label htmlFor="password" className="lf-label">
+                      Password <span className="lf-label__req">*</span>
+                    </label>
+                    <div className="lf-input-wrap">
+                      <Lock className="lf-input-icon" aria-hidden="true" />
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        disabled={isSubmitting}
+                        value={password}
+                        onChange={e => { setPassword(e.target.value); if (passwordError) setPasswordError(null); }}
+                        placeholder="Enter your password"
+                        aria-invalid={!!passwordError}
+                        aria-describedby={passwordError ? 'password-error' : undefined}
+                        className={`lf-input ${passwordError ? 'lf-input--error' : ''}`}
+                        style={{ paddingRight: 40 }}
+                      />
+                      <button
+                        type="button"
+                        className="lf-input-toggle"
+                        onClick={() => setShowPassword(p => !p)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                    {passwordError && <p id="password-error" role="alert" className="lf-field-err">{passwordError}</p>}
                   </div>
-                </div>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="otpCode" className="block text-xs font-semibold text-slate-700">
-                    Enter 6-Digit OTP <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                    <Input
-                      id="otpCode"
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      autoFocus
-                      disabled={isVerifyingOtp}
-                      value={otpCode}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                        setOtpCode(val);
-                        if (serverError) setServerError(null);
-                      }}
-                      placeholder="000000"
-                      className="pl-9 text-center font-mono font-bold text-base sm:text-lg tracking-widest h-11 border-slate-200"
-                    />
+                  {/* Remember + Forgot */}
+                  <div className="lf-helpers">
+                    <label className="lf-remember" htmlFor="remember-device">
+                      <input
+                        id="remember-device"
+                        type="checkbox"
+                        checked={rememberMe}
+                        disabled={isSubmitting}
+                        onChange={e => setRememberMe(e.target.checked)}
+                      />
+                      Remember this device
+                    </label>
+                    <Link href="/forgot-password" className="lf-forgot">Forgot password?</Link>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpSent(false);
-                      setOtpCode('');
-                      setServerError(null);
-                    }}
-                    className="text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
-                  >
-                    Change {parentType === 'PHONE' ? 'phone' : 'email'}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={cooldown > 0 || isSendingOtp}
-                    onClick={() => handleSendParentOtp()}
-                    className={`font-semibold ${
-                      cooldown > 0
-                        ? 'text-slate-400 cursor-not-allowed'
-                        : 'text-primary hover:underline cursor-pointer'
-                    }`}
-                  >
-                    {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-
-          <CardFooter className="flex flex-col space-y-4 pt-2">
-            {!otpSent ? (
-              <Button
-                type="submit"
-                disabled={isSendingOtp}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
-              >
-                {isSendingOtp ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Sending verification code...
-                  </>
-                ) : (
-                  'Send Verification Code'
-                )}
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={isVerifyingOtp || otpCode.length !== 6}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
-              >
-                {isVerifyingOtp ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Verifying code...
-                  </>
-                ) : (
-                  'Verify & Sign In'
-                )}
-              </Button>
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <button type="submit" disabled={isSubmitting} className="lf-btn lf-btn--primary">
+                      {isSubmitting
+                        ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" /> Signing in...</>
+                        : <>Sign In <ArrowRight size={14} aria-hidden="true" /></>}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             )}
 
-            <div className="w-full text-center border-t border-slate-100 pt-3">
-              <p className="text-[11px] text-slate-500">
-                School-enrolled parent accounts are pre-registered by school administration.
-              </p>
-            </div>
-          </CardFooter>
-        </form>
-      ) : (
-        <form onSubmit={handleCredentialsSubmit} noValidate>
-        <CardContent className="space-y-4">
-          {/* Server / Auth Error Alert */}
-          {serverError && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2.5 animate-in fade-in-0 duration-200"
-            >
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
-              <div className="space-y-0.5">
-                <p className="font-semibold text-red-800">Authentication failed</p>
-                <p>{serverError}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Email Field */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="email"
-              className="block text-xs font-semibold text-slate-700"
-            >
-              Email <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Mail
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none"
-                aria-hidden="true"
-              />
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                disabled={isSubmitting}
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (emailError) setEmailError(null);
-                }}
-                onBlur={() => {
-                  if (email.trim()) {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!emailRegex.test(email.trim())) {
-                      setEmailError('Enter a valid email address.');
-                    }
-                  }
-                }}
-                placeholder="admin@school.edu"
-                aria-invalid={!!emailError}
-                aria-describedby={emailError ? 'email-error' : undefined}
-                className={`pl-9 text-xs sm:text-sm ${
-                  emailError
-                    ? 'border-red-500 focus-visible:ring-red-400'
-                    : 'border-slate-200'
-                }`}
-              />
-            </div>
-            {emailError && (
-              <p
-                id="email-error"
-                role="alert"
-                className="text-[11px] text-red-600 font-medium"
+            {/* ── PARENT PORTAL ── */}
+            {loginStep === 'credentials' && authMode === 'PARENT' && (
+              <motion.div
+                key="parent"
+                custom={direction}
+                variants={mounted ? variants : undefined}
+                initial={false}
+                animate={mounted ? 'center' : undefined}
+                exit={mounted ? 'exit' : undefined}
+                suppressHydrationWarning
               >
-                {emailError}
-              </p>
+                <form
+                  onSubmit={parentPhase === 'otp' ? handleVerifyParentOtp : handleSendParentOtp}
+                  noValidate
+                >
+                  {serverError && (
+                    <div className="lf-alert" role="alert" aria-live="assertive">
+                      <AlertCircle size={15} className="lf-alert__icon" />
+                      <div>
+                        <p className="lf-alert__title">Authentication failed</p>
+                        <p className="lf-alert__msg">{serverError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    {parentPhase === 'input' && (
+                      <motion.div
+                        key="parent-input"
+                        initial={false}
+                        animate={mounted ? { opacity: 1, y: 0 } : undefined}
+                        exit={mounted ? { opacity: 0, y: -6, transition: { duration: 0.14 } } : undefined}
+                        transition={{ duration: 0.18, ease: EASE_OUT_QUINT }}
+                        suppressHydrationWarning
+                      >
+                        {/* Type switcher */}
+                        <div className="lf-type-row">
+                          <button
+                            type="button"
+                            className={`lf-type-btn ${parentType === 'PHONE' ? 'lf-type-btn--active' : ''}`}
+                            onClick={() => { setParentType('PHONE'); setServerError(null); }}
+                          >
+                            <Smartphone size={13} aria-hidden="true" />
+                            Phone Number
+                          </button>
+                          <button
+                            type="button"
+                            className={`lf-type-btn ${parentType === 'EMAIL' ? 'lf-type-btn--active' : ''}`}
+                            onClick={() => { setParentType('EMAIL'); setServerError(null); }}
+                          >
+                            <Mail size={13} aria-hidden="true" />
+                            Email Address
+                          </button>
+                        </div>
+
+                        {parentType === 'PHONE' ? (
+                          <div className="lf-field">
+                            <label htmlFor="parentPhone" className="lf-label">
+                              Registered Mobile Number <span className="lf-label__req">*</span>
+                            </label>
+                            <div className="lf-input-wrap">
+                              <Phone className="lf-input-icon" aria-hidden="true" />
+                              <input
+                                id="parentPhone"
+                                type="tel"
+                                inputMode="tel"
+                                disabled={isSendingOtp}
+                                value={parentPhone}
+                                onChange={e => { setParentPhone(e.target.value); if (serverError) setServerError(null); }}
+                                placeholder="e.g. 9876543210 or +91 98765 43210"
+                                className="lf-input"
+                              />
+                            </div>
+                            <p className="lf-hint">Standard Indian mobile numbers resolve to +91 format.</p>
+                          </div>
+                        ) : (
+                          <div className="lf-field">
+                            <label htmlFor="parentEmail" className="lf-label">
+                              Registered Email Address <span className="lf-label__req">*</span>
+                            </label>
+                            <div className="lf-input-wrap">
+                              <Mail className="lf-input-icon" aria-hidden="true" />
+                              <input
+                                id="parentEmail"
+                                type="email"
+                                inputMode="email"
+                                disabled={isSendingOtp}
+                                value={parentEmail}
+                                onChange={e => { setParentEmail(e.target.value); if (serverError) setServerError(null); }}
+                                placeholder="parent@example.com"
+                                className="lf-input"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: '1.5rem' }}>
+                          <button type="submit" disabled={isSendingOtp} className="lf-btn lf-btn--primary">
+                            {isSendingOtp
+                              ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" /> Sending code...</>
+                              : 'Send Verification Code'}
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {parentPhase === 'otp' && (
+                      <motion.div
+                        key="parent-otp"
+                        initial={false}
+                        animate={mounted ? { opacity: 1, y: 0 } : undefined}
+                        exit={mounted ? { opacity: 0, y: -6, transition: { duration: 0.14 } } : undefined}
+                        transition={{ duration: 0.18, ease: EASE_OUT_QUINT }}
+                        suppressHydrationWarning
+                      >
+                        <div className="lf-success" role="status">
+                          <CheckCircle2 size={15} className="lf-success__icon" />
+                          <div>
+                            <p className="lf-success__title">Code dispatched</p>
+                            <p className="lf-success__msg">
+                              We sent a 6-digit code to <strong style={{ fontFamily: 'JetBrains Mono,monospace' }}>{maskedTarget}</strong>.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="lf-field">
+                          <label htmlFor="otpCode" className="lf-label">
+                            6-Digit Verification Code <span className="lf-label__req">*</span>
+                          </label>
+                          <div className="lf-input-wrap">
+                            <KeyRound className="lf-input-icon" aria-hidden="true" />
+                            <input
+                              id="otpCode"
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={6}
+                              autoFocus
+                              disabled={isVerifyingOtp}
+                              value={otpCode}
+                              onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0,6)); if (serverError) setServerError(null); }}
+                              placeholder="000000"
+                              className="lf-input lf-input--mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="lf-resend-row">
+                          <button
+                            type="button"
+                            onClick={() => { setParentPhase('input'); setOtpCode(''); setServerError(null); }}
+                            style={{ color: '#64748b' }}
+                          >
+                            Change {parentType === 'PHONE' ? 'phone' : 'email'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={cooldown > 0 || isSendingOtp}
+                            onClick={() => handleSendParentOtp()}
+                            className={cooldown > 0 ? 'lf-resend-cooldown' : 'lf-resend-active'}
+                          >
+                            {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                          </button>
+                        </div>
+
+                        <div style={{ marginTop: '1.5rem' }}>
+                          <button
+                            type="submit"
+                            disabled={isVerifyingOtp || otpCode.length !== 6}
+                            className="lf-btn lf-btn--primary"
+                          >
+                            {isVerifyingOtp
+                              ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" /> Verifying...</>
+                              : 'Verify & Sign In'}
+                          </button>
+                        </div>
+
+                        <p className="lf-note" style={{ marginTop: '1rem' }}>
+                          School-enrolled parent accounts are pre-registered by school administration.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </form>
+              </motion.div>
             )}
-          </div>
 
-          {/* Password Field with Visibility Toggle */}
-          <div className="space-y-1.5">
-            <label
-              htmlFor="password"
-              className="block text-xs font-semibold text-slate-700"
-            >
-              Password <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Lock
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none"
-                aria-hidden="true"
-              />
-              <Input
-                id="password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                disabled={isSubmitting}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (passwordError) setPasswordError(null);
-                }}
-                placeholder="Enter your password"
-                aria-invalid={!!passwordError}
-                aria-describedby={passwordError ? 'password-error' : undefined}
-                className={`pl-9 pr-10 text-xs sm:text-sm ${
-                  passwordError
-                    ? 'border-red-500 focus-visible:ring-red-400'
-                    : 'border-slate-200'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" aria-hidden="true" />
-                ) : (
-                  <Eye className="h-4 w-4" aria-hidden="true" />
-                )}
-              </button>
-            </div>
-            {passwordError && (
-              <p
-                id="password-error"
-                role="alert"
-                className="text-[11px] text-red-600 font-medium"
-              >
-                {passwordError}
-              </p>
-            )}
-          </div>
+          </AnimatePresence>
+        </div>
 
-          {/* Remember me and Forgot password row */}
-          <div className="flex items-center justify-between pt-0.5 text-xs">
-            <label
-              htmlFor="remember-device"
-              className="flex items-center gap-2 text-slate-600 select-none cursor-pointer"
-            >
-              <input
-                id="remember-device"
-                type="checkbox"
-                checked={rememberMe}
-                disabled={isSubmitting}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 accent-emerald-600 cursor-pointer"
-              />
-              <span>Remember this device</span>
-            </label>
-
-            <Link
-              href="/forgot-password"
-              className="font-medium text-emerald-700 hover:text-emerald-800 hover:underline outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded px-1"
-            >
-              Forgot password?
+        {/* ── Footer ── */}
+        <div className="lf-footer">
+          <div className="lf-footer-link">
+            Don&apos;t have an account?{' '}
+            <Link href="/signup">
+              Create school account <ArrowRight size={11} style={{ display:'inline', verticalAlign:'middle' }} aria-hidden="true" />
             </Link>
           </div>
-        </CardContent>
+        </div>
+      </div>
 
-        <CardFooter className="flex flex-col space-y-4 pt-2">
-          <Button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 text-xs sm:text-sm h-10 shadow-sm"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </Button>
-
-          {/* Link to School Admin Signup */}
-          <div className="w-full text-center border-t border-slate-100 pt-4">
-            <p className="text-xs text-slate-500">
-              Don&apos;t have an account?{' '}
-              <Link
-                href="/signup"
-                className="font-semibold text-emerald-700 hover:text-emerald-800 hover:underline inline-flex items-center gap-1"
-              >
-                Create school account
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </p>
-          </div>
-        </CardFooter>
-      </form>
-      )}
-    </Card>
+      {/* Spin keyframe */}
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </>
   );
 }
 
+/* ─── Page export (Suspense wrapper for useSearchParams) ── */
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <Card className="shadow-sm border-slate-200/80 bg-white p-8 text-center">
-          <div className="flex flex-col items-center justify-center space-y-3">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-            <p className="text-xs text-slate-500">Loading sign in portal...</p>
-          </div>
-        </Card>
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 16,
+            padding: '3rem',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.75rem',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+          }}
+        >
+          <Loader2 size={24} style={{ color: '#94a3b8', animation: 'spin 1s linear infinite' }} aria-hidden="true" />
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>Loading sign in portal...</p>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>
       }
     >
       <LoginFormContent />
