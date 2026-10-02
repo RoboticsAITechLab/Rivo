@@ -9,60 +9,55 @@ export function useUnsavedChanges<T = any>(initialValues?: T) {
   const [manualDirty, setManualDirty] = React.useState(false);
   const [pendingNavigation, setPendingNavigation] = React.useState<(() => void) | null>(null);
 
-  const prevInitialRef = React.useRef(initialValues);
-  if (initialValues && initialValues !== prevInitialRef.current) {
-    prevInitialRef.current = initialValues;
-    setInitialSnapshot(initialValues);
-    setCurrentValues(initialValues);
-  }
-
   const isDirty = React.useMemo(() => {
     if (manualDirty) return true;
-    if (!initialValues) return manualDirty;
+    if (initialSnapshot === undefined || currentValues === undefined) return false;
     return JSON.stringify(currentValues) !== JSON.stringify(initialSnapshot);
-  }, [currentValues, initialSnapshot, manualDirty, initialValues]);
+  }, [currentValues, initialSnapshot, manualDirty]);
 
-  const setIsDirty = (dirty: boolean) => {
+  const setIsDirty = React.useCallback((dirty: boolean) => {
     setManualDirty(dirty);
-  };
+  }, []);
 
-  const markSaved = (savedValues?: T) => {
+  const markSaved = React.useCallback((savedValues?: T) => {
     if (savedValues !== undefined) {
       setInitialSnapshot(savedValues);
       setCurrentValues(savedValues);
+    } else {
+      setInitialSnapshot(currentValues);
     }
     setManualDirty(false);
     setShowUnsavedDialog(false);
-  };
+  }, [currentValues]);
 
-  const resetForm = () => {
+  const resetForm = React.useCallback(() => {
     setCurrentValues(initialSnapshot);
     setManualDirty(false);
     setShowUnsavedDialog(false);
-  };
+  }, [initialSnapshot]);
 
-  const confirmNavigation = (action: () => void) => {
+  const confirmNavigation = React.useCallback((action: () => void) => {
     if (isDirty) {
       setPendingNavigation(() => action);
       setShowUnsavedDialog(true);
     } else {
       action();
     }
-  };
+  }, [isDirty]);
 
-  const confirmLeave = () => {
+  const confirmLeave = React.useCallback(() => {
     setManualDirty(false);
     setShowUnsavedDialog(false);
     if (pendingNavigation) {
       pendingNavigation();
       setPendingNavigation(null);
     }
-  };
+  }, [pendingNavigation]);
 
-  const cancelLeave = () => {
+  const cancelLeave = React.useCallback(() => {
     setShowUnsavedDialog(false);
     setPendingNavigation(null);
-  };
+  }, []);
 
   return {
     currentValues,
@@ -83,3 +78,4 @@ export function useUnsavedChanges<T = any>(initialValues?: T) {
     onContinueEditing: cancelLeave,
   };
 }
+

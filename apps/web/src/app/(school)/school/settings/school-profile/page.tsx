@@ -171,7 +171,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="schoolName"
                 value={form.schoolName || ''}
-                onChange={(e) => setForm({ ...form, schoolName: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, schoolName: e.target.value }))}
                 placeholder="e.g. St. Xavier's Senior Secondary School"
                 className="text-xs"
               />
@@ -187,7 +187,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="shortName"
                 value={form.shortName || ''}
-                onChange={(e) => setForm({ ...form, shortName: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, shortName: e.target.value }))}
                 placeholder="e.g. SXSSS"
                 className="text-xs"
               />
@@ -203,7 +203,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="schoolCode"
                 value={form.schoolCode || ''}
-                onChange={(e) => setForm({ ...form, schoolCode: e.target.value.toUpperCase() })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, schoolCode: e.target.value.toUpperCase() }))}
                 placeholder="e.g. SCH-001"
                 className="text-xs font-mono uppercase"
               />
@@ -230,7 +230,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="affiliation"
                 value={form.affiliation || ''}
-                onChange={(e) => setForm({ ...form, affiliation: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, affiliation: e.target.value }))}
                 placeholder="e.g. CBSE / ICSE / State Board / Cambridge"
                 className="text-xs"
               />
@@ -243,7 +243,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="registrationNumber"
                 value={form.registrationNumber || ''}
-                onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, registrationNumber: e.target.value }))}
                 placeholder="e.g. CBSE/AFF/2024/98765"
                 className="text-xs font-mono"
               />
@@ -271,7 +271,7 @@ export default function SchoolProfilePage() {
                 id="email"
                 type="email"
                 value={form.email || ''}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, email: e.target.value }))}
                 placeholder="contact@school.edu.in"
                 className="text-xs"
               />
@@ -284,7 +284,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="phone"
                 value={form.phone || ''}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, phone: e.target.value }))}
                 placeholder="+91 98765 43210"
                 className="text-xs"
               />
@@ -297,7 +297,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="website"
                 value={form.website || ''}
-                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, website: e.target.value }))}
                 placeholder="https://www.school.edu.in"
                 className="text-xs"
               />
@@ -310,7 +310,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="address"
                 value={form.address || ''}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, address: e.target.value }))}
                 placeholder="123 Education Boulevard, Institutional Area"
                 className="text-xs"
               />
@@ -323,7 +323,7 @@ export default function SchoolProfilePage() {
               <Input
                 id="city"
                 value={form.city || ''}
-                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                onChange={(e) => setForm((prev: any) => ({ ...prev, city: e.target.value }))}
                 placeholder="New Delhi"
                 className="text-xs"
               />
@@ -337,7 +337,7 @@ export default function SchoolProfilePage() {
                 <Input
                   id="state"
                   value={form.state || ''}
-                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  onChange={(e) => setForm((prev: any) => ({ ...prev, state: e.target.value }))}
                   placeholder="Delhi"
                   className="text-xs"
                 />
@@ -349,7 +349,7 @@ export default function SchoolProfilePage() {
                 <Input
                   id="pinCode"
                   value={form.pinCode || ''}
-                  onChange={(e) => setForm({ ...form, pinCode: e.target.value })}
+                  onChange={(e) => setForm((prev: any) => ({ ...prev, pinCode: e.target.value }))}
                   placeholder="110001"
                   className="text-xs font-mono"
                 />
@@ -357,6 +357,7 @@ export default function SchoolProfilePage() {
             </div>
           </div>
         </div>
+
 
         {/* Section D: Associated Branding Preview */}
         <div className="space-y-3 pt-2">
