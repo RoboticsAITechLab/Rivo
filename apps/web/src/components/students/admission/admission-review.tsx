@@ -160,8 +160,18 @@ export function AdmissionReview({
               <span className="font-bold text-slate-800">{data.section || '—'}</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-slate-400">Academic Stream:</span>
+              <span className="font-medium text-slate-800">{(data as any).stream || 'General / None'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Campus Location:</span>
+              <span className="font-medium text-slate-800">{data.currentCampus || 'Main Campus'}</span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-slate-400">Roll Number:</span>
-              <span className="font-mono font-bold text-slate-800">{data.rollNumber || 'Auto'}</span>
+              <span className="font-mono font-bold text-slate-800">
+                {(data as any).rollNumberMode === 'MANUAL' ? data.rollNumber || 'Manual' : 'Auto (Alphabetical A–Z)'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Academic Session:</span>
@@ -388,3 +398,4 @@ export function AdmissionReview({
     </div>
   );
 }
+

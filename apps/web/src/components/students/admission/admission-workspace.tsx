@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { StudentDetail, AdmissionType, StudentGuardian, StudentDocument } from '@/types/student';
 import { CustomFieldDefinition } from '@/types/custom-fields';
 import { SchoolHouse } from '@/types/house';
 import { Button } from '@/components/ui/button';
-import { X, Save, CheckCircle2, ArrowRight, Eye, Sparkles } from 'lucide-react';
+import { X, Save, CheckCircle2, ArrowRight, Eye, Sparkles, Hash, Layers } from 'lucide-react';
 import { PhotoUploadBox } from './photo-upload-box';
 import { GuardianManager } from './guardian-manager';
 import { DocumentManager } from './document-manager';
@@ -16,6 +17,7 @@ import { UnsavedDialog } from './unsaved-dialog';
 import { SubmitSuccessDialog } from './submit-success-dialog';
 import { AdmissionReview } from './admission-review';
 import { buildStudentDetail } from '@/lib/student-utils';
+
 interface AdmissionWorkspaceProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,11 +45,14 @@ export function AdmissionWorkspace({
   onViewStudentProfile,
   onManageHouses,
 }: AdmissionWorkspaceProps) {
+  const prefersReducedMotion = useReducedMotion();
   const [storeClasses, setStoreClasses] = useState<any[]>([]);
   const [storeCampuses, setStoreCampuses] = useState<{ id: string; name: string }[]>([]);
   const [storeSessions, setStoreSessions] = useState<{ id: string; name: string }[]>([]);
+  const [storeStreams, setStoreStreams] = useState<{ id: string; name: string }[]>([]);
+  const [nextIdPreview, setNextIdPreview] = useState<string>('');
 
-  React.useEffect(() => {
+  useEffect(() => {
     // 1. Classes
     fetch('/api/classes')
       .then((res) => res.json())
@@ -83,7 +88,29 @@ export function AdmissionWorkspace({
         }
       })
       .catch(() => {});
-  }, []);
+
+    // 4. Streams
+    fetch('/api/streams')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.streams && Array.isArray(data.streams)) {
+          setStoreStreams(data.streams.map((st: any) => ({ id: st.id, name: st.name })));
+        }
+      })
+      .catch(() => {});
+
+    // 5. Next Student ID Preview
+    if (!studentToEdit) {
+      fetch('/api/students/next-id')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.nextId) {
+            setNextIdPreview(data.nextId);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [studentToEdit]);
 
   // Mode: Form editing vs Pre-submission Review
   const [isReviewMode, setIsReviewMode] = useState(false);
@@ -145,6 +172,7 @@ export function AdmissionWorkspace({
   // SECTION 4: Academic Placement
   const [className, setClassName] = useState(studentToEdit?.className || 'Class 10');
   const [section, setSection] = useState(studentToEdit?.section || 'A');
+  const [stream, setStream] = useState<string>((studentToEdit as any)?.stream || '');
   const [rollNumber, setRollNumber] = useState(studentToEdit?.rollNumber || '');
   const [rollNumberMode, setRollNumberMode] = useState<'AUTO' | 'MANUAL'>(
     (studentToEdit as any)?.rollNumberMode || 'AUTO'
@@ -438,6 +466,7 @@ export function AdmissionWorkspace({
     details.photoUrl = photoUrl;
     details.currentCampus = currentCampus;
     details.houseId = houseId || null;
+    (details as any).stream = stream || undefined;
     (details as any).rollNumberMode = rollNumberMode;
     (details as any).campusId = storeCampuses.find((c) => c.name === currentCampus)?.id || undefined;
     (details as any).academicSessionId = storeSessions.find((s) => s.name === academicSession)?.id || undefined;
@@ -556,16 +585,20 @@ export function AdmissionWorkspace({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-bold text-slate-900">
                   {studentToEdit ? `Edit Student: ${studentToEdit.name}` : 'New Student Admission'}
                 </h2>
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Workspace
                 </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  <Hash className="w-3 h-3 text-emerald-600" />
+                  ID: {studentToEdit?.admissionNumber || nextIdPreview || 'AUTO-GENERATED'}
+                </span>
               </div>
               <p className="text-xs text-slate-500">
-                Complete student intake, compliance verification, and institutional onboarding.
+                Register and onboard a student with institutional verification, multi-guardian links, and academic placement.
               </p>
             </div>
           </div>
@@ -586,7 +619,7 @@ export function AdmissionWorkspace({
             <button
               type="button"
               onClick={handleCloseAttempt}
-              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors"
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               title="Close Workspace"
             >
               <X className="w-5 h-5" />
@@ -613,21 +646,38 @@ export function AdmissionWorkspace({
 
           {/* RIGHT COLUMN: FORM WORKSPACE OR PRE-SUBMISSION REVIEW */}
           <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-white">
-            {isReviewMode ? (
-              <AdmissionReview
-                data={buildCurrentStudentRecord('ACTIVE')}
-                customFields={customFields.filter((cf) => cf.active && cf.showInAdmission)}
-                houses={houses}
-                onEditSection={(secId) => {
-                  setIsReviewMode(false);
-                  setActiveSectionId(secId);
-                  const element = document.getElementById(`section-${secId}`);
-                  element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-                onConfirmSubmit={handleSubmit}
-              />
-            ) : (
-              <form onSubmit={(e) => e.preventDefault()} className="space-y-10 max-w-3xl mx-auto">
+            <AnimatePresence mode="wait">
+              {isReviewMode ? (
+                <motion.div
+                  key="review-mode"
+                  initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <AdmissionReview
+                    data={buildCurrentStudentRecord('ACTIVE')}
+                    customFields={customFields.filter((cf) => cf.active && cf.showInAdmission)}
+                    houses={houses}
+                    onEditSection={(secId) => {
+                      setIsReviewMode(false);
+                      setActiveSectionId(secId);
+                      const element = document.getElementById(`section-${secId}`);
+                      element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    onConfirmSubmit={handleSubmit}
+                  />
+                </motion.div>
+              ) : (
+                <motion.form
+                  key="form-mode"
+                  initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                  onSubmit={(e) => e.preventDefault()}
+                  className="space-y-10 max-w-3xl mx-auto"
+                >
                 {/* SECTION 1: PERSONAL INFORMATION */}
                 <section id="section-personal" className="space-y-4 pt-2">
                   <div className="border-b border-slate-200/80 pb-2">
@@ -1091,6 +1141,37 @@ export function AdmissionWorkspace({
                     </div>
                   </div>
 
+                  {/* Academic Stream (Optional) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Academic Stream (Optional)
+                      </label>
+                      {storeStreams.length > 0 ? (
+                        <select
+                          value={stream}
+                          onChange={(e) => setStream(e.target.value)}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        >
+                          <option value="">General Curriculum / None</option>
+                          {storeStreams.map((st) => (
+                            <option key={st.id} value={st.name}>
+                              {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={stream}
+                          onChange={(e) => setStream(e.target.value)}
+                          placeholder="e.g. Science, Commerce, Arts (Optional)"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      )}
+                    </div>
+                  </div>
+
                   {/* House Allocation (Optional & Configurable) */}
                   <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2">
                     <div>
@@ -1473,10 +1554,11 @@ export function AdmissionWorkspace({
                     </div>
                   )}
                 </section>
-              </form>
+              </motion.form>
             )}
-          </div>
+          </AnimatePresence>
         </div>
+      </div>
 
         {/* WORKSPACE FOOTER */}
         <footer className="px-6 py-4 border-t border-slate-200/80 bg-slate-50 flex items-center justify-between gap-4 shrink-0">

@@ -343,6 +343,35 @@ export async function generateNextTeacherId(
 }
 
 /**
+ * Previews the next upcoming student admission number without incrementing the sequence.
+ */
+export async function getNextStudentIdPreview(
+  schoolId: string,
+  options?: { year?: number; client?: any }
+): Promise<string> {
+  const client = options?.client || prisma;
+  const config = await getIdFormatConfig(schoolId, client);
+  const currentYear = options?.year || new Date().getFullYear();
+  const yearKey = config.includeYear ? currentYear : 0;
+
+  const seq = await client.idSequence.findUnique({
+    where: {
+      schoolId_entityType_year: {
+        schoolId,
+        entityType: 'STUDENT',
+        year: yearKey,
+      },
+    },
+  });
+
+  const nextNum = (seq?.lastNumber || 0) + 1;
+  const paddedNumber = String(nextNum).padStart(config.studentPadding, '0');
+  return config.includeYear
+    ? `${config.studentPrefix}-${currentYear}-${paddedNumber}`
+    : `${config.studentPrefix}-${paddedNumber}`;
+}
+
+/**
  * Previews the next upcoming employee ID for a teacher without incrementing the sequence.
  */
 export async function getNextTeacherIdPreview(
