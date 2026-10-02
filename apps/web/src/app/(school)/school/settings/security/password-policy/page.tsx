@@ -74,7 +74,9 @@ export default function PasswordPolicySettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleChange = <K extends keyof PasswordPolicy>(key: K, value: PasswordPolicy[K]) => {
     setFormData({ ...formData, [key]: value });

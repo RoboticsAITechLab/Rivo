@@ -57,7 +57,9 @@ export default function BrandingSettingsPage() {
 
   React.useEffect(() => {
     fetchBranding();
-  }, [fetchBranding]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

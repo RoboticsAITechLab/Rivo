@@ -70,7 +70,9 @@ export default function SchoolProfilePage() {
 
   React.useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const isConfigured = Boolean(form.schoolName?.trim() && form.schoolCode?.trim());
 

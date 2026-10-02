@@ -52,7 +52,9 @@ export default function AttendanceSettingsPage() {
 
   React.useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleToggleStatus = (statusKey: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED') => {
     const current = form.supportedStatuses || [];

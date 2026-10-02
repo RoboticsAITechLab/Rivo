@@ -9,41 +9,49 @@ export function useUnsavedChanges<T = any>(initialValues?: T) {
   const [manualDirty, setManualDirty] = React.useState(false);
   const [pendingNavigation, setPendingNavigation] = React.useState<(() => void) | null>(null);
 
+  const currentValuesRef = React.useRef(currentValues);
+  currentValuesRef.current = currentValues;
+
+  const initialSnapshotRef = React.useRef(initialSnapshot);
+  initialSnapshotRef.current = initialSnapshot;
+
   const isDirty = React.useMemo(() => {
     if (manualDirty) return true;
     if (initialSnapshot === undefined || currentValues === undefined) return false;
     return JSON.stringify(currentValues) !== JSON.stringify(initialSnapshot);
   }, [currentValues, initialSnapshot, manualDirty]);
 
+  const isDirtyRef = React.useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
   const setIsDirty = React.useCallback((dirty: boolean) => {
     setManualDirty(dirty);
   }, []);
 
   const markSaved = React.useCallback((savedValues?: T) => {
+    const val = savedValues !== undefined ? savedValues : currentValuesRef.current;
+    setInitialSnapshot(val);
     if (savedValues !== undefined) {
-      setInitialSnapshot(savedValues);
       setCurrentValues(savedValues);
-    } else {
-      setInitialSnapshot(currentValues);
     }
     setManualDirty(false);
     setShowUnsavedDialog(false);
-  }, [currentValues]);
+  }, []);
 
   const resetForm = React.useCallback(() => {
-    setCurrentValues(initialSnapshot);
+    setCurrentValues(initialSnapshotRef.current);
     setManualDirty(false);
     setShowUnsavedDialog(false);
-  }, [initialSnapshot]);
+  }, []);
 
   const confirmNavigation = React.useCallback((action: () => void) => {
-    if (isDirty) {
+    if (isDirtyRef.current) {
       setPendingNavigation(() => action);
       setShowUnsavedDialog(true);
     } else {
       action();
     }
-  }, [isDirty]);
+  }, []);
 
   const confirmLeave = React.useCallback(() => {
     setManualDirty(false);
@@ -78,4 +86,5 @@ export function useUnsavedChanges<T = any>(initialValues?: T) {
     onContinueEditing: cancelLeave,
   };
 }
+
 
