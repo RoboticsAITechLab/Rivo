@@ -13,9 +13,14 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim() || '';
-    const classId = searchParams.get('classId');
-    const sectionId = searchParams.get('sectionId');
+    const classParam = searchParams.get('classId') || searchParams.get('className');
+    const sectionParam = searchParams.get('sectionId') || searchParams.get('sectionName') || searchParams.get('section');
+    const sessionParam = searchParams.get('sessionId') || searchParams.get('academicSession') || searchParams.get('session');
     const status = searchParams.get('status');
+    const houseParam = searchParams.get('house') || searchParams.get('houseId');
+    const genderParam = searchParams.get('gender');
+    const sortBy = searchParams.get('sortBy') || 'admissionNumber';
+    const sortOrder = (searchParams.get('sortOrder') || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)));
     const skip = (page - 1) * pageSize;
@@ -29,22 +34,94 @@ export async function GET(req: NextRequest) {
       where.status = status as Prisma.StudentWhereInput['status'];
     }
 
+    if (houseParam && houseParam !== 'ALL') {
+      if (houseParam === 'NONE') {
+        where.house = null;
+      } else {
+        where.house = houseParam;
+      }
+    }
+
+    if (genderParam && genderParam !== 'ALL') {
+      where.gender = { equals: genderParam, mode: 'insensitive' };
+    }
+
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
         { admissionNumber: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        {
+          enrollments: {
+            some: {
+              rollNumber: { contains: search, mode: 'insensitive' },
+            },
+          },
+        },
+        {
+          parentStudents: {
+            some: {
+              parent: {
+                OR: [
+                  { firstName: { contains: search, mode: 'insensitive' } },
+                  { lastName: { contains: search, mode: 'insensitive' } },
+                  { phone: { contains: search, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        },
       ];
     }
 
-    // Filter by class / section via enrollment
-    if ((classId && classId !== 'ALL') || (sectionId && sectionId !== 'ALL')) {
+    // Filter by class / section / session via enrollment
+    const enrollmentConditions: Prisma.StudentEnrollmentWhereInput = {
+      status: 'ACTIVE',
+    };
+
+    let hasEnrollmentFilter = false;
+
+    if (classParam && classParam !== 'ALL') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(classParam);
+      if (isUuid) {
+        enrollmentConditions.classId = classParam;
+      } else {
+        enrollmentConditions.class = {
+          name: { equals: classParam, mode: 'insensitive' },
+        };
+      }
+      hasEnrollmentFilter = true;
+    }
+
+    if (sectionParam && sectionParam !== 'ALL') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sectionParam);
+      if (isUuid) {
+        enrollmentConditions.sectionId = sectionParam;
+      } else {
+        enrollmentConditions.section = {
+          name: { equals: sectionParam, mode: 'insensitive' },
+        };
+      }
+      hasEnrollmentFilter = true;
+    }
+
+    if (sessionParam && sessionParam !== 'ALL') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionParam);
+      if (isUuid) {
+        enrollmentConditions.academicSessionId = sessionParam;
+      } else {
+        enrollmentConditions.academicSession = {
+          name: { equals: sessionParam, mode: 'insensitive' },
+        };
+      }
+      hasEnrollmentFilter = true;
+    }
+
+    if (hasEnrollmentFilter) {
       where.enrollments = {
-        some: {
-          ...(classId && classId !== 'ALL' ? { classId } : {}),
-          ...(sectionId && sectionId !== 'ALL' ? { sectionId } : {}),
-          status: 'ACTIVE',
-        },
+        some: enrollmentConditions,
       };
     }
 
@@ -67,11 +144,20 @@ export async function GET(req: NextRequest) {
 
       where.enrollments = {
         some: {
+          ...(where.enrollments?.some || {}),
           classId: { in: assignedClassIds },
           sectionId: { in: assignedSectionIds },
           status: 'ACTIVE',
         },
       };
+    }
+
+    // Determine orderBy
+    let orderBy: Prisma.StudentOrderByWithRelationInput | Prisma.StudentOrderByWithRelationInput[] = { admissionNumber: sortOrder };
+    if (sortBy === 'name' || sortBy === 'firstName') {
+      orderBy = [{ firstName: sortOrder }, { lastName: sortOrder }];
+    } else if (sortBy === 'createdAt') {
+      orderBy = { createdAt: sortOrder };
     }
 
     const [total, students] = await Promise.all([
@@ -80,7 +166,7 @@ export async function GET(req: NextRequest) {
         where,
         skip,
         take: pageSize,
-        orderBy: { admissionNumber: 'asc' },
+        orderBy,
         select: {
           id: true,
           admissionNumber: true,
@@ -101,9 +187,10 @@ export async function GET(req: NextRequest) {
             select: { name: true },
           },
           enrollments: {
-            where: { status: 'ACTIVE' },
+            orderBy: { createdAt: 'desc' },
             select: {
               id: true,
+              status: true,
               rollNumber: true,
               rollNumberMode: true,
               class: { select: { id: true, name: true } },
@@ -129,7 +216,7 @@ export async function GET(req: NextRequest) {
 
     // Format for client consumption
     const formatted = students.map((s) => {
-      const activeEnrollment = s.enrollments[0];
+      const activeEnrollment = s.enrollments.find((e) => e.status === 'ACTIVE') || s.enrollments[0];
       const primaryGuardian = s.parentStudents.find((ps) => ps.isPrimaryContact) || s.parentStudents[0];
 
       return {

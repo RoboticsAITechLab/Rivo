@@ -183,7 +183,8 @@ export function StudentDetailSheet({
                 <span className="font-mono font-semibold text-primary">{student.admissionNumber}</span>
                 <span>•</span>
                 <span className="font-medium text-foreground">
-                  {student.className}-{student.section} (Roll #{student.rollNumber})
+                  {student.className}-{student.section}
+                  {student.rollNumber && student.rollNumber !== '—' ? ` (Roll #${student.rollNumber})` : ' (Roll not assigned)'}
                 </span>
                 <span>•</span>
                 <span>Mentor: {student.currentTeacher}</span>

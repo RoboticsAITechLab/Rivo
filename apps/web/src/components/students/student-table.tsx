@@ -52,13 +52,34 @@ export function StudentTable({
     {
       key: 'admissionNumber',
       header: 'Admission No',
-      width: '130px',
+      width: '125px',
       sortable: true,
       render: (row) => (
         <span className="font-mono text-xs font-semibold text-primary">
           {row.admissionNumber}
         </span>
       ),
+    },
+    {
+      key: 'rollNumber',
+      header: 'Roll No',
+      width: '85px',
+      sortable: true,
+      render: (row) => {
+        const hasRoll = Boolean(row.rollNumber && row.rollNumber !== '—' && row.rollNumber !== '01' && row.rollNumber.trim() !== '');
+        return (
+          <span
+            className={cn(
+              'font-mono text-xs font-semibold px-2 py-0.5 rounded border inline-flex items-center justify-center min-w-[32px]',
+              hasRoll
+                ? 'bg-muted/70 text-foreground border-border/70 shadow-2xs'
+                : 'text-muted-foreground/70 border-dashed border-border/40 font-normal italic text-[11px]'
+            )}
+          >
+            {row.rollNumber && row.rollNumber !== '' ? row.rollNumber : '—'}
+          </span>
+        );
+      },
     },
     {
       key: 'name',
@@ -85,10 +106,14 @@ export function StudentTable({
               <div className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                 {row.name}
               </div>
-              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate">
                 <span>{row.gender}</span>
-                <span>•</span>
-                <span>Roll #{row.rollNumber}</span>
+                {row.phone && (
+                  <>
+                    <span>•</span>
+                    <span className="font-mono">{row.phone}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -98,7 +123,7 @@ export function StudentTable({
     {
       key: 'className',
       header: 'Class / Sec',
-      width: '120px',
+      width: '110px',
       sortable: true,
       render: (row) => (
         <span className="text-xs font-medium text-foreground">

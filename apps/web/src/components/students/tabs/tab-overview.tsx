@@ -36,7 +36,9 @@ export function TabOverview({ student }: { student: StudentDetail }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-foreground">Roll No. #{student.rollNumber}</span>
+              <span className="text-sm font-bold text-foreground">
+                {student.rollNumber && student.rollNumber !== '—' ? `Roll No. #${student.rollNumber}` : 'Roll: Not Assigned'}
+              </span>
               <StatusBadge status={student.status} />
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">

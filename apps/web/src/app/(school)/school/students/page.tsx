@@ -92,7 +92,7 @@ function mapApiStudentToDetail(s: any): StudentDetail {
     status: (s.status as StudentStatus) || 'ACTIVE',
     className: s.className || 'General',
     section: s.sectionName || 'A',
-    rollNumber: s.rollNumber || '01',
+    rollNumber: s.rollNumber && s.rollNumber !== '' ? s.rollNumber : '—',
     academicSession: s.sessionName || 'Current Session',
     houseId: s.house || null,
     guardianName: s.guardianName || 'Parent / Guardian',
@@ -100,6 +100,7 @@ function mapApiStudentToDetail(s: any): StudentDetail {
     email: s.email || '',
     phone: s.phone || '',
     street: typeof s.address === 'string' ? s.address : (s.address?.street || ''),
+    enrollmentDate: s.createdAt ? s.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
   });
 }
 
@@ -223,10 +224,19 @@ function StudentsPageContent() {
         params.set('status', filters.status);
       }
       if (filters.className && filters.className !== 'ALL') {
-        params.set('classId', filters.className);
+        params.set('className', filters.className);
       }
       if (filters.section && filters.section !== 'ALL') {
-        params.set('sectionId', filters.section);
+        params.set('section', filters.section);
+      }
+      if (filters.academicSession && filters.academicSession !== 'ALL') {
+        params.set('session', filters.academicSession);
+      }
+      if (filters.houseId && filters.houseId !== 'ALL') {
+        params.set('house', filters.houseId);
+      }
+      if (filters.gender && filters.gender !== 'ALL') {
+        params.set('gender', filters.gender);
       }
 
       const res = await fetch(`/api/students?${params.toString()}`);
@@ -244,7 +254,17 @@ function StudentsPageContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, pageSize, filters.searchQuery, filters.status, filters.className, filters.section]);
+  }, [
+    currentPage,
+    pageSize,
+    filters.searchQuery,
+    filters.status,
+    filters.className,
+    filters.section,
+    filters.academicSession,
+    filters.houseId,
+    filters.gender,
+  ]);
 
   React.useEffect(() => {
     fetchStudents();
