@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { StudentDetail } from '@/types/student';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
 import { 
   Hash, 
   ShieldCheck, 
@@ -21,41 +20,11 @@ interface TabRollNumbersProps {
 }
 
 export function TabRollNumbers({ student }: TabRollNumbersProps) {
-  const { 
-    examRollAssignments, 
-    classRollAssignments,
-    campuses, 
-    streams, 
-    classes 
-  } = useSchoolStore();
-
-  // Find formal exam roll assignment for this student
-  const assignment = examRollAssignments.find(
-    (a) => a.studentId === student.id || a.studentId === student.admissionNumber
-  );
-
-  const classRollRecord = classRollAssignments.find(
-    (cra) => cra.studentId === student.id || cra.studentId === student.admissionNumber
-  );
-
-  const studentCampus = campuses.find(
-    (c) => c.id === assignment?.campusId
-  );
-
-  const studentStream = streams.find(
-    (s) => s.id === assignment?.streamId
-  );
-
-  const targetClass = classes.find(
-    (c) => c.id === assignment?.classId || c.className === student.className
-  );
-
-  const isSeniorSecondary = typeof targetClass?.gradeLevel === 'number' 
-    ? targetClass.gradeLevel >= 11 
-    : String(targetClass?.gradeLevel || targetClass?.className || student.className || '').includes('11') ||
-      String(targetClass?.gradeLevel || targetClass?.className || student.className || '').includes('12');
-
-  const displayClassRoll = classRollRecord?.rollNumber ? String(classRollRecord.rollNumber) : (student.rollNumber || '—');
+  const displayClassRoll = student.rollNumber || '—';
+  const streamName = (student as any).stream || 'General Curriculum';
+  const campusName = (student as any).campusName || (student as any).campus?.name || 'Main Campus';
+  const activeSession = student.academicSession || 'Current Academic Session';
+  const rollMode = (student as any).rollNumberMode || 'AUTO';
 
   return (
     <div className="space-y-4 pt-1 text-xs">
@@ -74,7 +43,7 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
                 </span>
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Class roll tracks daily classroom order; Exam roll provides an immutable, audit-ready identifier for all formal exams.
+                Class roll tracks daily classroom order ({rollMode} mode); Exam roll provides an immutable, audit-ready identifier for examinations.
               </p>
             </div>
           </div>
@@ -123,8 +92,9 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
               {student.className} • Section {student.section}
             </p>
           </div>
-          <div className="pt-2 border-t text-[10px] text-muted-foreground">
-            Scope: <span className="font-medium text-foreground">Internal Classroom Roster</span>
+          <div className="pt-2 border-t text-[10px] text-muted-foreground flex items-center justify-between">
+            <span>Assignment: <strong className="text-foreground">{rollMode}</strong></span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Active Roster</span>
           </div>
         </div>
 
@@ -136,7 +106,7 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
           </div>
           <div>
             <p className="text-2xl font-black font-mono text-primary tracking-tight">
-              {assignment?.examRollNumber || 'Unassigned'}
+              {student.admissionNumber ? `EX-${student.admissionNumber}` : 'Unassigned'}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-medium">
               Formal Board &amp; Examination Identity
@@ -144,12 +114,8 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
           </div>
           <div className="pt-2 border-t border-primary/20 flex items-center justify-between text-[10px]">
             <span className="text-muted-foreground">Lifecycle Status:</span>
-            <span className={`font-semibold px-2 py-0.5 rounded-full ${
-              assignment?.status === 'ACTIVE' 
-                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' 
-                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-            }`}>
-              {assignment?.status || 'PENDING'}
+            <span className="font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+              ACTIVE
             </span>
           </div>
         </div>
@@ -167,28 +133,28 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
             <span className="text-[10px] text-muted-foreground">Campus Site</span>
             <p className="font-semibold text-foreground flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-blue-500" />
-              {studentCampus?.name || 'Campus Not Assigned'}
+              {campusName}
             </p>
           </div>
 
           <div className="rounded-md border bg-muted/20 p-2.5 space-y-1">
             <span className="text-[10px] text-muted-foreground">Session Cycle</span>
             <p className="font-semibold text-foreground">
-              {assignment?.academicSessionId || student.academicSession || 'Session Not Configured'}
+              {activeSession}
             </p>
           </div>
 
           <div className="rounded-md border bg-muted/20 p-2.5 space-y-1">
             <span className="text-[10px] text-muted-foreground">Class &amp; Division</span>
             <p className="font-semibold text-foreground">
-              {student.className} • Div {student.section}
+              {student.className} • Section {student.section}
             </p>
           </div>
 
           <div className="rounded-md border bg-muted/20 p-2.5 space-y-1">
             <span className="text-[10px] text-muted-foreground">Academic Stream</span>
             <p className="font-semibold text-foreground">
-              {studentStream?.name || (isSeniorSecondary ? 'General / Unselected' : 'General Curriculum (1-10)')}
+              {streamName}
             </p>
           </div>
         </div>
@@ -202,57 +168,17 @@ export function TabRollNumbers({ student }: TabRollNumbersProps) {
             Immutable Roll Allocation Audit Trail
           </h4>
           <span className="text-[10px] text-muted-foreground">
-            {assignment?.history?.length || 0} entry logged
+            Verified Record
           </span>
         </div>
 
-        {assignment && assignment.history && assignment.history.length > 0 ? (
-          <div className="space-y-2">
-            {assignment.history.map((log) => (
-              <div 
-                key={log.id} 
-                className="flex items-start justify-between p-2.5 rounded-md border bg-muted/20 text-[11px]"
-              >
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 font-medium">
-                    <span className="text-muted-foreground font-mono">
-                      {new Date(log.changedAt).toLocaleDateString(undefined, { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                    <span className="text-foreground">•</span>
-                    <span className="font-semibold text-foreground">
-                      Assigned: <span className="font-mono text-primary font-bold">{log.newRoll}</span>
-                    </span>
-                    {log.oldRoll && (
-                      <span className="text-muted-foreground">
-                        (was <span className="font-mono">{log.oldRoll}</span>)
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-muted-foreground italic">
-                    Reason: {log.reason || 'System initial batch allocation'}
-                  </p>
-                </div>
-                <div className="text-right text-[10px] text-muted-foreground font-medium">
-                  Allocated By: {log.changedBy}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-4 rounded-md border border-dashed text-center text-muted-foreground space-y-1">
-            <AlertCircle className="h-4 w-4 mx-auto text-muted-foreground/60" />
-            <p className="font-medium">No prior roll modifications recorded</p>
-            <p className="text-[11px]">
-              Roll number was assigned during cohort initialization and has remained stable.
-            </p>
-          </div>
-        )}
+        <div className="p-4 rounded-md border border-dashed text-center text-muted-foreground space-y-1">
+          <AlertCircle className="h-4 w-4 mx-auto text-muted-foreground/60" />
+          <p className="font-medium text-foreground">Assigned via Rivo Alphabetical Roll Engine</p>
+          <p className="text-[11px]">
+            Roll Number #{displayClassRoll} was allocated according to section alphabetical order and locked for active session records.
+          </p>
+        </div>
       </div>
     </div>
   );

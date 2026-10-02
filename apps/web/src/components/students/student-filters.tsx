@@ -7,6 +7,17 @@ import { Button } from '@/components/ui/button';
 import { StudentFilterState } from '@/types/student';
 import { SchoolHouse } from '@/types/house';
 
+export interface FilterClassOption {
+  id: string;
+  name: string;
+  sections?: Array<{ id: string; name: string }>;
+}
+
+export interface FilterSessionOption {
+  id: string;
+  name: string;
+}
+
 interface StudentFiltersProps {
   filters: StudentFilterState;
   onFilterChange: <K extends keyof StudentFilterState>(key: K, value: StudentFilterState[K]) => void;
@@ -14,6 +25,8 @@ interface StudentFiltersProps {
   totalStudents: number;
   filteredCount: number;
   houses?: SchoolHouse[];
+  classes?: FilterClassOption[];
+  sessions?: FilterSessionOption[];
 }
 
 export function StudentFilters({
@@ -23,6 +36,8 @@ export function StudentFilters({
   totalStudents,
   filteredCount,
   houses = [],
+  classes = [],
+  sessions = [],
 }: StudentFiltersProps) {
   // Compute active filters count
   const activeFiltersCount = [
@@ -35,6 +50,10 @@ export function StudentFilters({
     filters.gender !== 'ALL',
     filters.attendanceRange !== 'ALL',
   ].filter(Boolean).length;
+
+  // Selected class's sections for dependent section filtering
+  const selectedClass = classes.find((c) => c.name === filters.className || c.id === filters.className);
+  const availableSections = selectedClass?.sections || [];
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-3.5 shadow-2xs">
@@ -77,7 +96,7 @@ export function StudentFilters({
 
       {/* Filter Select Controls Grid */}
       <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border/60">
-        {/* Session */}
+        {/* Academic Session */}
         <select
           value={filters.academicSession}
           onChange={(e) => onFilterChange('academicSession', e.target.value)}
@@ -85,25 +104,32 @@ export function StudentFilters({
           aria-label="Filter by Academic Session"
         >
           <option value="ALL">All Sessions</option>
-          <option value="2026-27">Session 2026-27</option>
-          <option value="2025-26">Session 2025-26</option>
+          {sessions.map((s) => (
+            <option key={s.id} value={s.name}>
+              {s.name}
+            </option>
+          ))}
         </select>
 
         {/* Class */}
         <select
           value={filters.className}
-          onChange={(e) => onFilterChange('className', e.target.value)}
+          onChange={(e) => {
+            onFilterChange('className', e.target.value);
+            onFilterChange('section', 'ALL'); // reset section when class changes
+          }}
           className="h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           aria-label="Filter by Class"
         >
           <option value="ALL">All Classes</option>
-          <option value="Class 9">Class 9</option>
-          <option value="Class 10">Class 10</option>
-          <option value="Class 11">Class 11</option>
-          <option value="Class 12">Class 12</option>
+          {classes.map((cls) => (
+            <option key={cls.id} value={cls.name}>
+              {cls.name}
+            </option>
+          ))}
         </select>
 
-        {/* Section */}
+        {/* Section (dependent on Class if selected, or all standard sections) */}
         <select
           value={filters.section}
           onChange={(e) => onFilterChange('section', e.target.value)}
@@ -111,9 +137,19 @@ export function StudentFilters({
           aria-label="Filter by Section"
         >
           <option value="ALL">All Sections</option>
-          <option value="A">Section A</option>
-          <option value="B">Section B</option>
-          <option value="C">Section C</option>
+          {availableSections.length > 0 ? (
+            availableSections.map((sec) => (
+              <option key={sec.id} value={sec.name}>
+                Section {sec.name}
+              </option>
+            ))
+          ) : (
+            <>
+              <option value="A">Section A</option>
+              <option value="B">Section B</option>
+              <option value="C">Section C</option>
+            </>
+          )}
         </select>
 
         {/* Status */}
@@ -125,12 +161,10 @@ export function StudentFilters({
         >
           <option value="ALL">All Statuses</option>
           <option value="ACTIVE">Active</option>
-          <option value="DRAFT">Draft</option>
           <option value="INACTIVE">Inactive</option>
           <option value="SUSPENDED">Suspended</option>
           <option value="GRADUATED">Graduated</option>
           <option value="TRANSFERRED">Transferred</option>
-          <option value="ARCHIVED">Archived</option>
         </select>
 
         {/* House Filter */}
@@ -159,6 +193,7 @@ export function StudentFilters({
           <option value="ALL">All Genders</option>
           <option value="Male">Male</option>
           <option value="Female">Female</option>
+          <option value="Other">Other</option>
         </select>
 
         {/* Attendance Range */}

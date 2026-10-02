@@ -12,12 +12,6 @@ import {
   Sliders,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { initialMockHouses } from '@/data/mock-houses';
-import {
-  initialCustomFields,
-  initialAdmissionSectionsConfig,
-  initialDocumentPolicy,
-} from '@/data/mock-custom-fields';
 import { StudentDetail, StudentFilterState, StudentStatus } from '@/types/student';
 import { SchoolHouse } from '@/types/house';
 import { buildStudentDetail } from '@/lib/student-utils';
@@ -34,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { StudentMetrics } from '@/components/students/student-metrics';
-import { StudentFilters } from '@/components/students/student-filters';
+import { StudentFilters, FilterClassOption, FilterSessionOption } from '@/components/students/student-filters';
 import { StudentBulkToolbar } from '@/components/students/student-bulk-toolbar';
 import { StudentTable } from '@/components/students/student-table';
 import { StudentPagination } from '@/components/students/student-pagination';
@@ -99,7 +93,7 @@ function mapApiStudentToDetail(s: any): StudentDetail {
     className: s.className || 'General',
     section: s.sectionName || 'A',
     rollNumber: s.rollNumber || '01',
-    academicSession: s.sessionName || '2026-2027',
+    academicSession: s.sessionName || 'Current Session',
     houseId: s.house || null,
     guardianName: s.guardianName || 'Parent / Guardian',
     guardianPhone: s.guardianPhone || '',
@@ -119,13 +113,31 @@ function StudentsPageContent() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Live classes, sessions, and houses state
+  const [classes, setClasses] = React.useState<FilterClassOption[]>([]);
+  const [sessions, setSessions] = React.useState<FilterSessionOption[]>([]);
+  const [houses, setHouses] = React.useState<SchoolHouse[]>([]);
+  const [customFields, setCustomFields] = React.useState<any[]>([]);
+  const [admissionSections, setAdmissionSections] = React.useState<any[]>([
+    { id: 'personal', title: 'Personal Details', description: 'Basic student identity', enabled: true, required: true, isSystemRequired: true },
+    { id: 'contact', title: 'Address & Contact', description: 'Residential coordinates', enabled: true, required: true, isSystemRequired: true },
+    { id: 'guardians', title: 'Parent / Guardian', description: 'Parent details & contacts', enabled: true, required: true, isSystemRequired: true },
+    { id: 'academic', title: 'Academic Placement', description: 'Class, Section & Roll Assignment', enabled: true, required: true, isSystemRequired: true },
+    { id: 'documents', title: 'Intake Documents', description: 'Birth certificate, marksheets, identity', enabled: true, required: false, isSystemRequired: false },
+  ]);
+  const [documentPolicy, setDocumentPolicy] = React.useState<{
+    birthCertificate: 'OPTIONAL' | 'REQUIRED' | 'DISABLED';
+    previousMarksheetForTransfer: 'REQUIRED' | 'OPTIONAL';
+    transferCertificateForTransfer: 'REQUIRED' | 'OPTIONAL';
+  }>({
+    birthCertificate: 'REQUIRED',
+    previousMarksheetForTransfer: 'REQUIRED',
+    transferCertificateForTransfer: 'REQUIRED',
+  });
+
   // Navigation view mode & configuration state
   const [viewMode, setViewMode] = React.useState<'directory' | 'config'>('directory');
   const [configSubtab, setConfigSubtab] = React.useState<'fields' | 'policies' | 'houses'>('fields');
-  const [houses, setHouses] = React.useState<SchoolHouse[]>(initialMockHouses);
-  const [customFields, setCustomFields] = React.useState(initialCustomFields);
-  const [admissionSections, setAdmissionSections] = React.useState(initialAdmissionSectionsConfig);
-  const [documentPolicy, setDocumentPolicy] = React.useState(initialDocumentPolicy);
 
   // Filters state
   const [filters, setFilters] = React.useState<StudentFilterState>(defaultFilters);
@@ -154,6 +166,45 @@ function StudentsPageContent() {
 
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isRebalanceOpen, setIsRebalanceOpen] = React.useState(false);
+
+  // Fetch classes, academic sessions, and houses on mount
+  React.useEffect(() => {
+    // 1. Classes
+    fetch('/api/classes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.classes) {
+          setClasses(
+            data.classes.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              sections: (c.sections || []).map((s: any) => ({ id: s.id, name: s.name })),
+            }))
+          );
+        }
+      })
+      .catch((err) => console.error('Error fetching classes:', err));
+
+    // 2. Academic Sessions
+    fetch('/api/academic-sessions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.sessions) {
+          setSessions(data.sessions.map((s: any) => ({ id: s.id, name: s.name })));
+        }
+      })
+      .catch((err) => console.error('Error fetching sessions:', err));
+
+    // 3. Houses
+    fetch('/api/houses')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.houses) {
+          setHouses(data.houses);
+        }
+      })
+      .catch((err) => console.error('Error fetching houses:', err));
+  }, []);
 
   // Fetch real students from API
   const fetchStudents = React.useCallback(async () => {
@@ -536,6 +587,8 @@ function StudentsPageContent() {
             totalStudents={totalStudents}
             filteredCount={totalStudents}
             houses={houses}
+            classes={classes}
+            sessions={sessions}
           />
 
           {/* 4. Bulk Operations Toolbar */}
