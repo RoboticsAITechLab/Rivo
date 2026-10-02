@@ -47,7 +47,7 @@ export function TabOverview({ student }: { student: StudentDetail }) {
           </div>
         </div>
       </div>
-
+ 
       {/* Snapshot Cards */}
       <div className="rounded-lg border bg-card p-3.5 space-y-3">
         <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">

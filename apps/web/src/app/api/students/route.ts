@@ -315,15 +315,28 @@ export async function POST(req: NextRequest) {
 
     // Perform atomic transaction
     const newStudent = await prisma.$transaction(async (tx) => {
-      // 1. Resolve Class
+      // 1. Resolve Class & Section with case-insensitive and hyphenated split handling
+      let rawClassName = (className || '').trim();
+      let rawSectionName = (sectionName || '').trim();
+
+      // Check if className has a hyphenated section like "Class 10-A" or "10-B"
+      const hyphenMatch = rawClassName.match(/^(.+?)\s*-\s*([A-Za-z0-9])$/);
+      if (hyphenMatch && !rawSectionName) {
+        rawClassName = hyphenMatch[1].trim();
+        rawSectionName = hyphenMatch[2].trim().toUpperCase();
+      }
+
       let resolvedClassId = classId;
-      if (!resolvedClassId && className) {
+      if (!resolvedClassId && rawClassName) {
         let cls = await tx.class.findFirst({
-          where: { schoolId: auth.schoolId, name: className.trim() },
+          where: {
+            schoolId: auth.schoolId,
+            name: { equals: rawClassName, mode: 'insensitive' },
+          },
         });
         if (!cls) {
           cls = await tx.class.create({
-            data: { schoolId: auth.schoolId, name: className.trim() },
+            data: { schoolId: auth.schoolId, name: rawClassName },
           });
         }
         resolvedClassId = cls.id;
@@ -340,13 +353,16 @@ export async function POST(req: NextRequest) {
 
       // 2. Resolve Section
       let resolvedSectionId = sectionId;
-      if (!resolvedSectionId && sectionName) {
+      if (!resolvedSectionId && rawSectionName) {
         let sec = await tx.section.findFirst({
-          where: { classId: resolvedClassId, name: sectionName.trim() },
+          where: {
+            classId: resolvedClassId,
+            name: { equals: rawSectionName, mode: 'insensitive' },
+          },
         });
         if (!sec) {
           sec = await tx.section.create({
-            data: { schoolId: auth.schoolId, classId: resolvedClassId, name: sectionName.trim() },
+            data: { schoolId: auth.schoolId, classId: resolvedClassId, name: rawSectionName },
           });
         }
         resolvedSectionId = sec.id;
@@ -452,6 +468,20 @@ export async function POST(req: NextRequest) {
           status: 'ACTIVE',
         },
       });
+
+      // 7. Auto-rebalance entire section in alphabetical order if AUTO mode
+      if (requestedMode === 'AUTO') {
+        const { executeRollNumberRebalance } = await import('@/lib/students/roll-number-service');
+        await executeRollNumberRebalance({
+          schoolId: auth.schoolId,
+          academicSessionId: activeSession.id,
+          classId: resolvedClassId,
+          sectionId: resolvedSectionId,
+          performedByUserId: auth.userId,
+          actor: 'Student Admission Auto-Order',
+          client: tx,
+        });
+      }
 
       // 3. Create or link Guardian(s) with identity-conflict safety
       const rawGuardians: any[] = Array.isArray(body.guardians) && body.guardians.length > 0

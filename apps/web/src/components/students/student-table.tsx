@@ -66,7 +66,7 @@ export function StudentTable({
       width: '85px',
       sortable: true,
       render: (row) => {
-        const hasRoll = Boolean(row.rollNumber && row.rollNumber !== '—' && row.rollNumber !== '01' && row.rollNumber.trim() !== '');
+        const hasRoll = Boolean(row.rollNumber && row.rollNumber !== '—' && row.rollNumber.trim() !== '');
         return (
           <span
             className={cn(

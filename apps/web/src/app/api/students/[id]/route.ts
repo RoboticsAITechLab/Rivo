@@ -330,6 +330,19 @@ export async function PATCH(
             rollNumberMode: requestedMode,
           },
         });
+
+        if (requestedMode === 'AUTO') {
+          const { executeRollNumberRebalance } = await import('@/lib/students/roll-number-service');
+          await executeRollNumberRebalance({
+            schoolId: auth.schoolId,
+            academicSessionId: activeEnrollment.academicSessionId,
+            classId: targetClassId,
+            sectionId: targetSectionId,
+            performedByUserId: auth.userId,
+            actor: 'Student Edit Auto-Order',
+            client: tx,
+          });
+        }
       }
 
       return student;
