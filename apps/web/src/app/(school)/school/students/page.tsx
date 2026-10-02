@@ -72,6 +72,7 @@ const defaultFilters: StudentFilterState = {
   academicSession: 'ALL',
   className: 'ALL',
   section: 'ALL',
+  stream: 'ALL',
   status: 'ALL',
   houseId: 'ALL',
   gender: 'ALL',
@@ -114,9 +115,10 @@ function StudentsPageContent() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Live classes, sessions, and houses state
+  // Live classes, sessions, streams, and houses state
   const [classes, setClasses] = React.useState<FilterClassOption[]>([]);
   const [sessions, setSessions] = React.useState<FilterSessionOption[]>([]);
+  const [streams, setStreams] = React.useState<any[]>([]);
   const [houses, setHouses] = React.useState<SchoolHouse[]>([]);
   const [customFields, setCustomFields] = React.useState<any[]>([]);
   const [admissionSections, setAdmissionSections] = React.useState<any[]>([
@@ -168,7 +170,7 @@ function StudentsPageContent() {
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isRebalanceOpen, setIsRebalanceOpen] = React.useState(false);
 
-  // Fetch classes, academic sessions, and houses on mount
+  // Fetch classes, academic sessions, streams, and houses on mount
   React.useEffect(() => {
     // 1. Classes
     fetch('/api/classes')
@@ -196,7 +198,17 @@ function StudentsPageContent() {
       })
       .catch((err) => console.error('Error fetching sessions:', err));
 
-    // 3. Houses
+    // 3. Streams
+    fetch('/api/streams')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.streams) {
+          setStreams(data.streams);
+        }
+      })
+      .catch((err) => console.error('Error fetching streams:', err));
+
+    // 4. Houses
     fetch('/api/houses')
       .then((res) => res.json())
       .then((data) => {
@@ -228,6 +240,9 @@ function StudentsPageContent() {
       }
       if (filters.section && filters.section !== 'ALL') {
         params.set('section', filters.section);
+      }
+      if (filters.stream && filters.stream !== 'ALL') {
+        params.set('stream', filters.stream);
       }
       if (filters.academicSession && filters.academicSession !== 'ALL') {
         params.set('session', filters.academicSession);
@@ -261,6 +276,7 @@ function StudentsPageContent() {
     filters.status,
     filters.className,
     filters.section,
+    filters.stream,
     filters.academicSession,
     filters.houseId,
     filters.gender,
@@ -609,6 +625,7 @@ function StudentsPageContent() {
             houses={houses}
             classes={classes}
             sessions={sessions}
+            streams={streams}
           />
 
           {/* 4. Bulk Operations Toolbar */}

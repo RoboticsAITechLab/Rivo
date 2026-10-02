@@ -16,13 +16,6 @@ export async function GET(req: NextRequest) {
     const sectionId = searchParams.get('sectionId');
     let academicSessionId = searchParams.get('academicSessionId');
 
-    if (!classId || !sectionId) {
-      return NextResponse.json(
-        { message: 'classId and sectionId are required query parameters.' },
-        { status: 400 }
-      );
-    }
-
     if (!academicSessionId) {
       const activeSession = await prisma.academicSession.findFirst({
         where: { schoolId: auth.schoolId, status: 'ACTIVE' },

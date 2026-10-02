@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const houseParam = searchParams.get('house') || searchParams.get('houseId');
     const genderParam = searchParams.get('gender');
+    const streamParam = searchParams.get('stream');
     const sortBy = searchParams.get('sortBy') || 'admissionNumber';
     const sortOrder = (searchParams.get('sortOrder') || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest) {
 
     if (status && status !== 'ALL') {
       where.status = status as Prisma.StudentWhereInput['status'];
+    }
+
+    if (streamParam && streamParam !== 'ALL') {
+      where.stream = { equals: streamParam, mode: 'insensitive' };
     }
 
     if (houseParam && houseParam !== 'ALL') {

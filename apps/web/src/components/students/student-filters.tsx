@@ -18,6 +18,11 @@ export interface FilterSessionOption {
   name: string;
 }
 
+export interface FilterStreamOption {
+  id: string;
+  name: string;
+}
+
 interface StudentFiltersProps {
   filters: StudentFilterState;
   onFilterChange: <K extends keyof StudentFilterState>(key: K, value: StudentFilterState[K]) => void;
@@ -27,6 +32,7 @@ interface StudentFiltersProps {
   houses?: SchoolHouse[];
   classes?: FilterClassOption[];
   sessions?: FilterSessionOption[];
+  streams?: FilterStreamOption[];
 }
 
 export function StudentFilters({
@@ -38,6 +44,7 @@ export function StudentFilters({
   houses = [],
   classes = [],
   sessions = [],
+  streams = [],
 }: StudentFiltersProps) {
   // Compute active filters count
   const activeFiltersCount = [
@@ -45,6 +52,7 @@ export function StudentFilters({
     filters.academicSession !== 'ALL',
     filters.className !== 'ALL',
     filters.section !== 'ALL',
+    filters.stream && filters.stream !== 'ALL',
     filters.status !== 'ALL',
     filters.houseId !== 'ALL',
     filters.gender !== 'ALL',
@@ -148,6 +156,30 @@ export function StudentFilters({
               <option value="A">Section A</option>
               <option value="B">Section B</option>
               <option value="C">Section C</option>
+            </>
+          )}
+        </select>
+
+        {/* Stream Filter */}
+        <select
+          value={filters.stream || 'ALL'}
+          onChange={(e) => onFilterChange('stream', e.target.value)}
+          className="h-8.5 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Filter by Stream"
+        >
+          <option value="ALL">All Streams</option>
+          {streams.length > 0 ? (
+            streams.map((st) => (
+              <option key={st.id} value={st.name}>
+                {st.name}
+              </option>
+            ))
+          ) : (
+            <>
+              <option value="Science">Science</option>
+              <option value="Commerce">Commerce</option>
+              <option value="Arts">Arts</option>
+              <option value="General">General</option>
             </>
           )}
         </select>

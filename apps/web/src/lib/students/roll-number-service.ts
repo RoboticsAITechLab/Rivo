@@ -254,8 +254,8 @@ export async function previewRollNumberRebalance(
   let db: Prisma.TransactionClient | PrismaClient;
   let params: {
     schoolId: string;
-    academicSessionId: string;
-    classId: string;
+    academicSessionId?: string;
+    classId?: string | null;
     sectionId?: string | null;
     client?: Prisma.TransactionClient | PrismaClient;
   };
@@ -268,12 +268,15 @@ export async function previewRollNumberRebalance(
     params = arg2;
   }
 
+  const isAllClasses = !params.classId || params.classId === 'ALL';
+  const isAllSections = !params.sectionId || params.sectionId === 'ALL';
+
   const enrollments = await (db as any).studentEnrollment.findMany({
     where: {
       schoolId: params.schoolId,
-      academicSessionId: params.academicSessionId,
-      classId: params.classId,
-      ...(params.sectionId ? { sectionId: params.sectionId } : {}),
+      ...(params.academicSessionId ? { academicSessionId: params.academicSessionId } : {}),
+      ...(!isAllClasses ? { classId: params.classId } : {}),
+      ...(!isAllSections ? { sectionId: params.sectionId } : {}),
       status: 'ACTIVE',
     },
     include: {
@@ -285,72 +288,95 @@ export async function previewRollNumberRebalance(
           admissionNumber: true,
         },
       },
+      class: { select: { id: true, name: true } },
+      section: { select: { id: true, name: true } },
     },
   });
 
-  const manualRollNumbers = new Set<string>();
-  const manualItems: RollRebalancePreviewItem[] = [];
-  const autoCandidates: (StudentRollCandidate & { enrollment: typeof enrollments[0] })[] = [];
-
+  // Group enrollments by section scope key: `${classId}_${sectionId}`
+  const groups = new Map<string, typeof enrollments>();
   for (const enr of enrollments) {
-    const isManual = enr.rollNumberMode?.toUpperCase() === 'MANUAL' && enr.rollNumber;
-    if (isManual && enr.rollNumber) {
-      const cleanRoll = String(enr.rollNumber).trim();
-      manualRollNumbers.add(cleanRoll);
-      manualItems.push({
-        enrollmentId: enr.id,
-        studentId: enr.student.id,
-        studentName: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
-        admissionNumber: enr.student.admissionNumber,
-        currentRollNumber: enr.rollNumber,
-        projectedRollNumber: cleanRoll,
-        mode: 'MANUAL',
-        isModified: false,
-      });
-    } else {
-      autoCandidates.push({
-        enrollmentId: enr.id,
-        studentId: enr.student.id,
-        firstName: enr.student.firstName,
-        lastName: enr.student.lastName,
-        admissionNumber: enr.student.admissionNumber,
-        rollNumber: enr.rollNumber,
-        rollNumberMode: 'AUTO',
-        enrollment: enr,
-      });
+    const key = `${enr.classId}_${enr.sectionId || 'default'}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
     }
+    groups.get(key)!.push(enr);
   }
 
-  // Sort AUTO candidates strictly alphabetically
-  autoCandidates.sort(compareStudentAlphabetical);
+  const allItems: RollRebalancePreviewItem[] = [];
+  let totalManualCount = 0;
+  let totalAutoCount = 0;
 
-  const autoItems: RollRebalancePreviewItem[] = [];
-  let currentInteger = 1;
+  for (const [_key, sectionEnrollments] of groups.entries()) {
+    const manualRollNumbers = new Set<string>();
+    const sectionManualItems: RollRebalancePreviewItem[] = [];
+    const sectionAutoCandidates: (StudentRollCandidate & { enrollment: typeof sectionEnrollments[0] })[] = [];
 
-  for (const candidate of autoCandidates) {
-    while (manualRollNumbers.has(String(currentInteger))) {
+    for (const enr of sectionEnrollments) {
+      const isManual = enr.rollNumberMode?.toUpperCase() === 'MANUAL' && enr.rollNumber;
+      if (isManual && enr.rollNumber) {
+        const cleanRoll = String(enr.rollNumber).trim();
+        manualRollNumbers.add(cleanRoll);
+        sectionManualItems.push({
+          enrollmentId: enr.id,
+          studentId: enr.student.id,
+          studentName: `${enr.student.firstName} ${enr.student.lastName}`.trim(),
+          admissionNumber: enr.student.admissionNumber,
+          currentRollNumber: enr.rollNumber,
+          projectedRollNumber: cleanRoll,
+          mode: 'MANUAL',
+          isModified: false,
+        });
+      } else {
+        sectionAutoCandidates.push({
+          enrollmentId: enr.id,
+          studentId: enr.student.id,
+          firstName: enr.student.firstName,
+          lastName: enr.student.lastName,
+          admissionNumber: enr.student.admissionNumber,
+          rollNumber: enr.rollNumber,
+          rollNumberMode: 'AUTO',
+          enrollment: enr,
+        });
+      }
+    }
+
+    totalManualCount += sectionManualItems.length;
+    totalAutoCount += sectionAutoCandidates.length;
+
+    // Sort section AUTO candidates strictly alphabetically
+    sectionAutoCandidates.sort(compareStudentAlphabetical);
+
+    const sectionAutoItems: RollRebalancePreviewItem[] = [];
+    let currentInteger = 1;
+
+    for (const candidate of sectionAutoCandidates) {
+      while (manualRollNumbers.has(String(currentInteger))) {
+        currentInteger++;
+      }
+
+      const projectedRoll = String(currentInteger);
+      const isModified = candidate.rollNumber !== projectedRoll;
+
+      sectionAutoItems.push({
+        enrollmentId: candidate.enrollmentId!,
+        studentId: candidate.studentId!,
+        studentName: `${candidate.firstName} ${candidate.lastName}`.trim(),
+        admissionNumber: candidate.admissionNumber || '',
+        currentRollNumber: candidate.rollNumber || null,
+        projectedRollNumber: projectedRoll,
+        mode: 'AUTO',
+        isModified,
+      });
+
       currentInteger++;
     }
 
-    const projectedRoll = String(currentInteger);
-    const isModified = candidate.rollNumber !== projectedRoll;
-
-    autoItems.push({
-      enrollmentId: candidate.enrollmentId!,
-      studentId: candidate.studentId!,
-      studentName: `${candidate.firstName} ${candidate.lastName}`.trim(),
-      admissionNumber: candidate.admissionNumber || '',
-      currentRollNumber: candidate.rollNumber || null,
-      projectedRollNumber: projectedRoll,
-      mode: 'AUTO',
-      isModified,
-    });
-
-    currentInteger++;
+    allItems.push(...sectionManualItems, ...sectionAutoItems);
   }
 
-  // Merge and sort all items by projected numeric/lexicographical order
-  const allItems = [...manualItems, ...autoItems].sort((a, b) => {
+  // Sort overall output list
+  allItems.sort((a, b) => {
     const numA = parseInt(a.projectedRollNumber, 10);
     const numB = parseInt(b.projectedRollNumber, 10);
     if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
@@ -358,18 +384,17 @@ export async function previewRollNumberRebalance(
   });
 
   const previewResult: RollRebalanceResult = {
-    classId: params.classId,
-    sectionId: params.sectionId,
-    academicSessionId: params.academicSessionId,
+    classId: params.classId || 'ALL',
+    sectionId: params.sectionId || 'ALL',
+    academicSessionId: params.academicSessionId || 'ACTIVE',
     totalStudents: enrollments.length,
-    autoAssignedCount: autoCandidates.length,
-    manualPreservedCount: manualItems.length,
+    autoAssignedCount: totalAutoCount,
+    manualPreservedCount: totalManualCount,
     updatedCount: allItems.filter((i) => i.isModified).length,
     items: allItems,
     success: true,
   };
 
-  // Allow treating as array of items for legacy/test helpers
   const enrichedItems = allItems.map((item) => ({
     ...item,
     proposedRollNumber: parseInt(item.projectedRollNumber, 10) || item.projectedRollNumber,

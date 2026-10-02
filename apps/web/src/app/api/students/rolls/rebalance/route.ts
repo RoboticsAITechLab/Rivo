@@ -15,13 +15,6 @@ export async function POST(req: NextRequest) {
     const { classId, sectionId } = body;
     let { academicSessionId } = body;
 
-    if (!classId || !sectionId) {
-      return NextResponse.json(
-        { message: 'classId and sectionId are required fields.' },
-        { status: 400 }
-      );
-    }
-
     if (!academicSessionId) {
       const activeSession = await prisma.academicSession.findFirst({
         where: { schoolId: auth.schoolId, status: 'ACTIVE' },

@@ -255,6 +255,7 @@ export interface StudentFilterState {
   academicSession: string;
   className: string;
   section: string;
+  stream: string;
   status: string;
   gender: string;
   attendanceRange: string;

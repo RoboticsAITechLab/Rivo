@@ -168,6 +168,7 @@ export function RollRebalanceDialog({
               onChange={(e) => handleClassChange(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-lg border border-input bg-background"
             >
+              <option value="ALL">All Classes &amp; Streams (School-Wide)</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
