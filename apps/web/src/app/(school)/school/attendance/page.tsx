@@ -137,6 +137,9 @@ export default function AttendancePage() {
         <div className="hidden md:block">
           <AttendanceRegister
             items={items}
+            isLoading={isLoadingStudents}
+            hasSections={Boolean(currentClass && currentClass.sections.length > 0)}
+            errorMessage={errorMessage}
             onUpdateStatus={updateStatus}
             onOpenReason={(item) => setActiveReasonStudent(item)}
             onOpenHistory={(item) =>

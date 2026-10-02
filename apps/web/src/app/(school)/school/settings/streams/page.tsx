@@ -1,34 +1,52 @@
 'use client';
 
 import * as React from 'react';
-import { GitBranch, Plus, Search, CheckCircle2 } from 'lucide-react';
+import { GitBranch, Plus, Search, Loader2, AlertCircle } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { FormField } from '@/components/ui/form-field';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { Stream, StreamStatus } from '@/shared/types';
 import { EntityStatusBadge } from '@/features/settings/components/entity-status-badge';
 
+interface ApiStream {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  applicableClasses: string[];
+}
+
 export default function StreamsSettingsPage() {
-  const store = useSchoolStore();
+  const [streams, setStreams] = React.useState<ApiStream[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
-  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-  const [editingStream, setEditingStream] = React.useState<Stream | null>(null);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  const streams = store.streams || [];
-  const classes = store.classes || [];
+  const loadStreams = React.useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch('/api/streams');
+      if (res.ok) {
+        const data = await res.json();
+        setStreams(data.streams || []);
+      } else {
+        const err = await res.json().catch(() => ({ message: 'Failed to load streams' }));
+        setErrorMessage(err.message || 'Failed to load streams');
+      }
+    } catch (err: any) {
+      console.error('Failed to load streams:', err);
+      setErrorMessage('Network error loading academic streams');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const [formData, setFormData] = React.useState({
-    name: '',
-    code: '',
-    description: '',
-    applicableClasses: [] as string[],
-    status: 'ACTIVE' as StreamStatus,
-  });
+  React.useEffect(() => {
+    loadStreams();
+  }, [loadStreams]);
 
   const filteredStreams = streams.filter(
     (s) =>
@@ -36,69 +54,20 @@ export default function StreamsSettingsPage() {
       s.code.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleOpenCreate = () => {
-    setEditingStream(null);
-    setFormData({
-      name: '',
-      code: '',
-      description: '',
-      applicableClasses: [],
-      status: 'ACTIVE',
-    });
-    setIsDrawerOpen(true);
-  };
-
-  const handleOpenEdit = (stream: Stream) => {
-    setEditingStream(stream);
-    setFormData({
-      name: stream.name,
-      code: stream.code,
-      description: stream.description || '',
-      applicableClasses: stream.applicableClasses || [],
-      status: stream.status,
-    });
-    setIsDrawerOpen(true);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !formData.code.trim()) return;
-
-    if (editingStream) {
-      schoolStore.updateStream({
-        ...editingStream,
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        description: formData.description.trim() || undefined,
-        applicableClasses: formData.applicableClasses,
-        status: formData.status,
-      });
-    } else {
-      schoolStore.createStream({
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        description: formData.description.trim() || undefined,
-        applicableClasses: formData.applicableClasses,
-        status: formData.status,
-      });
-    }
-
-    setIsDrawerOpen(false);
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Senior Secondary Streams"
-        description="Configure Class 11 &amp; 12 academic specializations (e.g. Science, Commerce, Humanities)."
+        description="Institutional Class 11 & 12 academic tracks (Science, Commerce, Humanities, Vocational)."
         icon={GitBranch}
-        actions={
-          <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs h-8">
-            <Plus className="h-3.5 w-3.5" />
-            Add Stream
-          </Button>
-        }
       />
+
+      {errorMessage && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -106,7 +75,7 @@ export default function StreamsSettingsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search streams by name or code..."
+            placeholder="Search streams by track name or code..."
             className="h-8 pl-8 text-xs bg-card"
           />
         </div>
@@ -114,7 +83,12 @@ export default function StreamsSettingsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {streams.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span>Loading streams from database...</span>
+            </div>
+          ) : streams.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <GitBranch className="h-6 w-6" />
@@ -122,13 +96,9 @@ export default function StreamsSettingsPage() {
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-foreground">No streams configured</h3>
                 <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                  Senior secondary streams allow tracking subject elective clusters and stream-based exam roll prefixes for high school cohorts.
+                  Senior secondary streams allow tracking subject elective clusters and stream-based exam roll prefixes.
                 </p>
               </div>
-              <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs">
-                <Plus className="h-3.5 w-3.5" />
-                Add Stream
-              </Button>
             </div>
           ) : filteredStreams.length === 0 ? (
             <div className="p-8 text-center text-xs text-muted-foreground">
@@ -140,10 +110,10 @@ export default function StreamsSettingsPage() {
                 <thead className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <tr>
                     <th className="py-2.5 px-4">Stream Track</th>
-                    <th className="py-2.5 px-4">Code</th>
+                    <th className="py-2.5 px-4">Prefix Code</th>
                     <th className="py-2.5 px-4">Description</th>
+                    <th className="py-2.5 px-4">Applicable Standards</th>
                     <th className="py-2.5 px-4">Status</th>
-                    <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -159,17 +129,16 @@ export default function StreamsSettingsPage() {
                         {s.description || '—'}
                       </td>
                       <td className="py-3 px-4">
-                        <EntityStatusBadge status={s.status} />
+                        <div className="flex flex-wrap gap-1">
+                          {s.applicableClasses.map((cls) => (
+                            <Badge key={cls} variant="secondary" className="text-[10px]">
+                              {cls}
+                            </Badge>
+                          ))}
+                        </div>
                       </td>
-                      <td className="py-3 px-4 text-right space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenEdit(s)}
-                          className="h-7 px-2.5 text-[11px]"
-                        >
-                          Edit
-                        </Button>
+                      <td className="py-3 px-4">
+                        <EntityStatusBadge status={s.status} />
                       </td>
                     </tr>
                   ))}
@@ -179,81 +148,6 @@ export default function StreamsSettingsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Drawer */}
-      <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md p-6 overflow-y-auto">
-          <SheetHeader className="pb-4 border-b">
-            <SheetTitle className="text-base font-bold">
-              {editingStream ? 'Edit Academic Stream' : 'Add Academic Stream'}
-            </SheetTitle>
-            <SheetDescription className="text-xs">
-              Configure curriculum track name, prefix code and status.
-            </SheetDescription>
-          </SheetHeader>
-
-          <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-            <FormField id="name" label="Stream Track Name" required>
-              <Input
-                id="name"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Science, Commerce, Vocational"
-                className="text-xs"
-              />
-            </FormField>
-
-            <FormField id="code" label="Stream Prefix / Code" required>
-              <Input
-                id="code"
-                required
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="e.g. SCI, COMM, HUM"
-                className="text-xs font-mono uppercase"
-              />
-            </FormField>
-
-            <FormField id="description" label="Track Description">
-              <Input
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Course outline or group focus"
-                className="text-xs"
-              />
-            </FormField>
-
-            <FormField id="status" label="Status">
-              <select
-                id="status"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                className="w-full h-8 rounded-md border bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-            </FormField>
-
-            <SheetFooter className="pt-4 border-t gap-2 sm:gap-0">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsDrawerOpen(false)}
-                className="text-xs"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" className="text-xs">
-                {editingStream ? 'Update Stream' : 'Create Stream'}
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

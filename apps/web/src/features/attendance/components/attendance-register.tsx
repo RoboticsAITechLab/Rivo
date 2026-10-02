@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils';
 
 interface AttendanceRegisterProps {
   items: AttendanceRegisterItem[];
+  isLoading?: boolean;
+  hasSections?: boolean;
+  errorMessage?: string | null;
   onUpdateStatus: (studentId: string, status: AttendanceStatus) => void;
   onOpenReason: (item: AttendanceRegisterItem) => void;
   onOpenHistory: (item: AttendanceRegisterItem) => void;
@@ -18,6 +21,9 @@ interface AttendanceRegisterProps {
 
 export function AttendanceRegister({
   items,
+  isLoading,
+  hasSections = true,
+  errorMessage,
   onUpdateStatus,
   onOpenReason,
   onOpenHistory,
@@ -57,7 +63,8 @@ export function AttendanceRegister({
             variant="outline"
             size="sm"
             onClick={() => onMarkAll('PRESENT')}
-            className="h-8 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-500/30 font-medium"
+            disabled={items.length === 0 || isLoading}
+            className="h-8 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-500/30 font-medium cursor-pointer disabled:opacity-50"
           >
             <Check className="h-3.5 w-3.5 mr-1" />
             All Present
@@ -66,7 +73,8 @@ export function AttendanceRegister({
             variant="outline"
             size="sm"
             onClick={() => onMarkAll('ABSENT')}
-            className="h-8 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-500/30 font-medium"
+            disabled={items.length === 0 || isLoading}
+            className="h-8 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-500/30 font-medium cursor-pointer disabled:opacity-50"
           >
             <X className="h-3.5 w-3.5 mr-1" />
             All Absent
@@ -89,7 +97,40 @@ export function AttendanceRegister({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {filteredItems.length === 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <span>Loading attendance roster from database...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : errorMessage ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-destructive">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive/60" />
+                  <p className="font-semibold">Unable to load attendance roster.</p>
+                  <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>
+                </td>
+              </tr>
+            ) : !hasSections ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                  <p className="font-semibold text-foreground">No sections configured for this class.</p>
+                  <p className="text-xs text-muted-foreground">Please configure sections in School Settings &gt; Sections.</p>
+                </td>
+              </tr>
+            ) : items.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
+                  <p className="font-semibold text-foreground">No students are enrolled in this section.</p>
+                  <p className="text-xs text-muted-foreground">Enroll students into this class and section to take attendance.</p>
+                </td>
+              </tr>
+            ) : filteredItems.length === 0 ? (
               <tr>
                 <td colSpan={7} className="py-12 text-center text-muted-foreground">
                   <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />

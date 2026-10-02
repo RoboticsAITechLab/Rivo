@@ -1,46 +1,70 @@
 'use client';
 
 import * as React from 'react';
-import { BookOpen, Plus, Search, CheckCircle2 } from 'lucide-react';
+import { BookOpen, Plus, Search, Loader2, AlertCircle, Trash2, CheckCircle2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { FormField } from '@/components/ui/form-field';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { Subject, SubjectType, SubjectStatus } from '@/shared/types';
 import { EntityStatusBadge } from '@/features/settings/components/entity-status-badge';
 
-export default function SubjectsSettingsPage() {
-  const store = useSchoolStore();
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState<string>('ALL');
-  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-  const [editingSubject, setEditingSubject] = React.useState<Subject | null>(null);
+interface ApiSubject {
+  id: string;
+  name: string;
+  code: string;
+  assignedTeacherCount: number;
+  timetableSlotCount: number;
+  examPaperCount: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+}
 
-  const subjects = store.subjects || [];
-  const classes = store.classes || [];
+export default function SubjectsSettingsPage() {
+  const [subjects, setSubjects] = React.useState<ApiSubject[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [search, setSearch] = React.useState('');
+  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+  const [editingSubject, setEditingSubject] = React.useState<ApiSubject | null>(null);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
   const [formData, setFormData] = React.useState({
     name: '',
     code: '',
-    department: '',
-    type: 'CORE' as SubjectType,
-    weeklyPeriods: 5,
-    description: '',
-    applicableClassIds: [] as string[],
-    status: 'ACTIVE' as SubjectStatus,
   });
 
+  const loadSubjects = React.useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await fetch('/api/subjects');
+      if (res.ok) {
+        const data = await res.json();
+        setSubjects(data.subjects || []);
+      } else {
+        const err = await res.json().catch(() => ({ message: 'Failed to load subjects' }));
+        setErrorMessage(err.message || 'Failed to load subjects');
+      }
+    } catch (err: any) {
+      console.error('Failed to load subjects:', err);
+      setErrorMessage('Network error loading subjects');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadSubjects();
+  }, [loadSubjects]);
+
   const filteredSubjects = subjects.filter((s) => {
-    const matchSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.code.toLowerCase().includes(search.toLowerCase()) ||
-      s.department.toLowerCase().includes(search.toLowerCase());
-    const matchType = typeFilter === 'ALL' || s.type === typeFilter;
-    return matchSearch && matchType;
+    const q = search.toLowerCase();
+    return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
   });
 
   const handleOpenCreate = () => {
@@ -48,76 +72,124 @@ export default function SubjectsSettingsPage() {
     setFormData({
       name: '',
       code: '',
-      department: '',
-      type: 'CORE',
-      weeklyPeriods: 5,
-      description: '',
-      applicableClassIds: [],
-      status: 'ACTIVE',
     });
+    setErrorMessage(null);
     setIsDrawerOpen(true);
   };
 
-  const handleOpenEdit = (subject: Subject) => {
+  const handleOpenEdit = (subject: ApiSubject) => {
     setEditingSubject(subject);
     setFormData({
       name: subject.name,
       code: subject.code,
-      department: subject.department,
-      type: subject.type,
-      weeklyPeriods: subject.weeklyPeriods || 5,
-      description: subject.description || '',
-      applicableClassIds: subject.applicableClassIds || [],
-      status: subject.status,
     });
+    setErrorMessage(null);
     setIsDrawerOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.code.trim()) return;
+    if (!formData.name.trim()) return;
 
-    if (editingSubject) {
-      schoolStore.updateSubject({
-        ...editingSubject,
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        department: formData.department.trim() || 'General',
-        type: formData.type,
-        weeklyPeriods: Number(formData.weeklyPeriods) || 5,
-        description: formData.description.trim() || undefined,
-        applicableClassIds: formData.applicableClassIds,
-        status: formData.status,
-      });
-    } else {
-      schoolStore.createSubject({
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        department: formData.department.trim() || 'General',
-        type: formData.type,
-        weeklyPeriods: Number(formData.weeklyPeriods) || 5,
-        description: formData.description.trim() || undefined,
-        applicableClassIds: formData.applicableClassIds,
-        status: formData.status,
-      });
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      if (editingSubject) {
+        const res = await fetch(`/api/subjects/${editingSubject.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            code: formData.code.trim().toUpperCase() || null,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ message: 'Failed to update subject' }));
+          throw new Error(err.message || 'Failed to update subject');
+        }
+
+        setSuccessMessage(`Subject "${formData.name.trim()}" updated successfully.`);
+      } else {
+        const res = await fetch('/api/subjects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            code: formData.code.trim().toUpperCase() || null,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ message: 'Failed to create subject' }));
+          throw new Error(err.message || 'Failed to create subject');
+        }
+
+        setSuccessMessage(`Subject "${formData.name.trim()}" added successfully.`);
+      }
+
+      setIsDrawerOpen(false);
+      await loadSubjects();
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to save subject');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (subject: ApiSubject) => {
+    if (!confirm(`Are you sure you want to delete "${subject.name}"?`)) {
+      return;
     }
 
-    setIsDrawerOpen(false);
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/subjects/${subject.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Failed to delete subject' }));
+        throw new Error(err.message || 'Failed to delete subject');
+      }
+
+      setSuccessMessage(`Subject "${subject.name}" deleted successfully.`);
+      await loadSubjects();
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to delete subject');
+    }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Subjects &amp; Curriculum"
+        title="Subjects & Curriculum"
         description="Configure academic subjects, syllabus codes, departmental divisions and weekly teaching quotas."
         icon={BookOpen}
         actions={
-          <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs h-8">
+          <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs h-8 cursor-pointer">
             <Plus className="h-3.5 w-3.5" />
             Add Subject
           </Button>
         }
       />
+
+      {successMessage && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -126,32 +198,20 @@ export default function SubjectsSettingsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search subjects by name, code or department..."
+            placeholder="Search subjects by name or syllabus code..."
             className="h-8 pl-8 text-xs bg-card"
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Type:</span>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-8 rounded-md border bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="ALL">All Types</option>
-            <option value="CORE">Core</option>
-            <option value="ELECTIVE">Elective</option>
-            <option value="OPTIONAL">Optional</option>
-            <option value="LANGUAGE">Language</option>
-            <option value="PRACTICAL">Practical</option>
-            <option value="ACTIVITY">Activity</option>
-          </select>
         </div>
       </div>
 
       <Card>
         <CardContent className="p-0">
-          {subjects.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span>Loading subjects from database...</span>
+            </div>
+          ) : subjects.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <BookOpen className="h-6 w-6" />
@@ -159,17 +219,17 @@ export default function SubjectsSettingsPage() {
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-foreground">No subjects configured</h3>
                 <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                  Subjects establish curriculum topics for timetable entries, teacher assignments, homework and examination papers.
+                  Subjects establish curriculum topics for timetable entries, teacher assignments, and examination papers.
                 </p>
               </div>
-              <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs">
+              <Button size="sm" onClick={handleOpenCreate} className="gap-1.5 text-xs cursor-pointer">
                 <Plus className="h-3.5 w-3.5" />
                 Add Subject
               </Button>
             </div>
           ) : filteredSubjects.length === 0 ? (
             <div className="p-8 text-center text-xs text-muted-foreground">
-              No subjects match the selected filter or search criteria.
+              No subjects match the search query.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -177,10 +237,9 @@ export default function SubjectsSettingsPage() {
                 <thead className="bg-muted/50 border-b text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <tr>
                     <th className="py-2.5 px-4">Subject Name</th>
-                    <th className="py-2.5 px-4">Code</th>
-                    <th className="py-2.5 px-4">Department</th>
-                    <th className="py-2.5 px-4">Type</th>
-                    <th className="py-2.5 px-4">Periods/Wk</th>
+                    <th className="py-2.5 px-4">Subject Code</th>
+                    <th className="py-2.5 px-4">Timetable Slots</th>
+                    <th className="py-2.5 px-4">Exam Papers</th>
                     <th className="py-2.5 px-4">Status</th>
                     <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
@@ -192,18 +251,13 @@ export default function SubjectsSettingsPage() {
                         {s.name}
                       </td>
                       <td className="py-3 px-4 font-mono font-bold text-foreground">
-                        {s.code}
-                      </td>
-                      <td className="py-3 px-4 text-muted-foreground">
-                        {s.department || '—'}
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant="outline" className="text-[10px] font-mono uppercase">
-                          {s.type}
-                        </Badge>
+                        {s.code || '—'}
                       </td>
                       <td className="py-3 px-4 font-mono text-muted-foreground">
-                        {s.weeklyPeriods}
+                        {s.timetableSlotCount} slot(s)
+                      </td>
+                      <td className="py-3 px-4 font-mono text-muted-foreground">
+                        {s.examPaperCount} paper(s)
                       </td>
                       <td className="py-3 px-4">
                         <EntityStatusBadge status={s.status} />
@@ -213,9 +267,17 @@ export default function SubjectsSettingsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenEdit(s)}
-                          className="h-7 px-2.5 text-[11px]"
+                          className="h-7 px-2.5 text-[11px] cursor-pointer"
                         >
                           Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(s)}
+                          className="h-7 px-2 text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </td>
                     </tr>
@@ -235,7 +297,7 @@ export default function SubjectsSettingsPage() {
               {editingSubject ? 'Edit Subject' : 'Add New Subject'}
             </SheetTitle>
             <SheetDescription className="text-xs">
-              Configure curriculum course name, departmental category and classification.
+              Configure curriculum course name and syllabus code.
             </SheetDescription>
           </SheetHeader>
 
@@ -251,77 +313,14 @@ export default function SubjectsSettingsPage() {
               />
             </FormField>
 
-            <FormField id="code" label="Subject Code" required>
+            <FormField id="code" label="Subject Code">
               <Input
                 id="code"
-                required
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="e.g. MAT-10"
+                placeholder="e.g. MAT-10, PHY-12"
                 className="text-xs font-mono uppercase"
               />
-            </FormField>
-
-            <FormField id="department" label="Academic Department">
-              <Input
-                id="department"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                placeholder="e.g. Science, Humanities, Languages"
-                className="text-xs"
-              />
-            </FormField>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FormField id="type" label="Subject Type">
-                <select
-                  id="type"
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                  className="w-full h-8 rounded-md border bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="CORE">Core</option>
-                  <option value="ELECTIVE">Elective</option>
-                  <option value="OPTIONAL">Optional</option>
-                  <option value="LANGUAGE">Language</option>
-                  <option value="PRACTICAL">Practical</option>
-                  <option value="ACTIVITY">Activity</option>
-                </select>
-              </FormField>
-
-              <FormField id="weeklyPeriods" label="Weekly Period Quota">
-                <Input
-                  id="weeklyPeriods"
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={formData.weeklyPeriods}
-                  onChange={(e) => setFormData({ ...formData, weeklyPeriods: Number(e.target.value) })}
-                  className="text-xs font-mono"
-                />
-              </FormField>
-            </div>
-
-            <FormField id="description" label="Description">
-              <Input
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Syllabus notes or curriculum code"
-                className="text-xs"
-              />
-            </FormField>
-
-            <FormField id="status" label="Status">
-              <select
-                id="status"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                className="w-full h-8 rounded-md border bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
             </FormField>
 
             <SheetFooter className="pt-4 border-t gap-2 sm:gap-0">
@@ -330,11 +329,12 @@ export default function SubjectsSettingsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsDrawerOpen(false)}
-                className="text-xs"
+                className="text-xs cursor-pointer"
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="text-xs">
+              <Button type="submit" size="sm" disabled={isSaving} className="text-xs cursor-pointer">
+                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
                 {editingSubject ? 'Update Subject' : 'Create Subject'}
               </Button>
             </SheetFooter>

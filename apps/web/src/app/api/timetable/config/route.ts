@@ -113,6 +113,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Active academic session required' }, { status: 400 });
     }
 
+    // Validate periods if provided
+    if (Array.isArray(periods) && periods.length > 0) {
+      const timeToMinutes = (t: string): number => {
+        const match = /^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/.exec(t.trim());
+        if (!match) return -1;
+        const [_, h, m] = match;
+        return parseInt(h, 10) * 60 + parseInt(m, 10);
+      };
+
+      const parsedPeriods: Array<{ name: string; start: number; end: number; original: any }> = [];
+
+      for (let i = 0; i < periods.length; i++) {
+        const p = periods[i];
+        const pName = p.name?.trim() || `Period ${i + 1}`;
+        const startMin = timeToMinutes(p.startTime || '');
+        const endMin = timeToMinutes(p.endTime || '');
+
+        if (startMin === -1 || endMin === -1) {
+          return NextResponse.json(
+            { message: `Invalid time format for "${pName}". Times must be in HH:MM format (24-hour).` },
+            { status: 400 }
+          );
+        }
+
+        if (startMin >= endMin) {
+          return NextResponse.json(
+            { message: `Period "${pName}" has start time (${p.startTime}) after or equal to end time (${p.endTime}).` },
+            { status: 400 }
+          );
+        }
+
+        parsedPeriods.push({ name: pName, start: startMin, end: endMin, original: p });
+      }
+
+      // Check for overlapping periods
+      for (let i = 0; i < parsedPeriods.length; i++) {
+        for (let j = i + 1; j < parsedPeriods.length; j++) {
+          const a = parsedPeriods[i];
+          const b = parsedPeriods[j];
+          // Overlap condition: max(startA, startB) < min(endA, endB)
+          if (Math.max(a.start, b.start) < Math.min(a.end, b.end)) {
+            return NextResponse.json(
+              {
+                message: `Period "${b.name}" (${b.original.startTime}–${b.original.endTime}) overlaps with "${a.name}" (${a.original.startTime}–${a.original.endTime}).`,
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     const updatedConfig = await prisma.$transaction(async (tx) => {
       let currentConfig;
       if (configId) {
@@ -150,15 +202,20 @@ export async function POST(req: NextRequest) {
         });
 
         await tx.periodDefinition.createMany({
-          data: periods.map((p: any, idx: number) => ({
-            configId: currentConfig.id,
-            periodNumber: p.periodNumber || idx + 1,
-            name: p.name || `Period ${idx + 1}`,
-            type: p.type || 'TEACHING',
-            startTime: p.startTime || '08:00',
-            endTime: p.endTime || '08:45',
-            durationMinutes: p.durationMinutes || null,
-          })),
+          data: periods.map((p: any, idx: number) => {
+            const sMin = p.startTime ? parseInt(p.startTime.split(':')[0], 10) * 60 + parseInt(p.startTime.split(':')[1], 10) : 0;
+            const eMin = p.endTime ? parseInt(p.endTime.split(':')[0], 10) * 60 + parseInt(p.endTime.split(':')[1], 10) : 45;
+            const duration = eMin > sMin ? eMin - sMin : 45;
+            return {
+              configId: currentConfig.id,
+              periodNumber: p.periodNumber || idx + 1,
+              name: p.name || `Period ${idx + 1}`,
+              type: p.type || 'TEACHING',
+              startTime: p.startTime || '08:00',
+              endTime: p.endTime || '08:45',
+              durationMinutes: p.durationMinutes || duration,
+            };
+          }),
         });
       }
 
