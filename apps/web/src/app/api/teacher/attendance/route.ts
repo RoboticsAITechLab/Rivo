@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
+import { getAttendanceSettings } from '@/lib/settings/settings-service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,12 +23,23 @@ export async function GET(req: NextRequest) {
       return auth.response;
     }
 
-    // 1. Fetch active enrolled students for class + section
+    // Resolve target academic session (from query parameter or current active session)
+    const academicSessionIdParam = searchParams.get('academicSessionId');
+    let targetSessionId = academicSessionIdParam;
+    if (!targetSessionId) {
+      const activeSession = await prisma.academicSession.findFirst({
+        where: { schoolId: auth.schoolId, status: 'ACTIVE' },
+      });
+      targetSessionId = activeSession?.id || null;
+    }
+
+    // 1. Fetch active enrolled students strictly for class, section, and academic session
     const enrollments = await prisma.studentEnrollment.findMany({
       where: {
         schoolId: auth.schoolId,
         classId: classId,
         sectionId: sectionId,
+        ...(targetSessionId ? { academicSessionId: targetSessionId } : {}),
         status: 'ACTIVE',
       },
       include: {
@@ -49,6 +61,7 @@ export async function GET(req: NextRequest) {
       register = await prisma.attendanceRegister.findFirst({
         where: {
           schoolId: auth.schoolId,
+          ...(targetSessionId ? { academicSessionId: targetSessionId } : {}),
           classId: classId,
           sectionId: sectionId,
           date: targetDate,
@@ -104,6 +117,39 @@ export async function POST(req: NextRequest) {
       return auth.response;
     }
 
+    // Enforce Institutional Attendance Settings
+    const attendanceSettings = await getAttendanceSettings(auth.schoolId);
+
+    if (!attendanceSettings.attendanceEnabled) {
+      return NextResponse.json(
+        { message: 'Attendance tracking is disabled in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    if (auth.role === 'TEACHER' && !attendanceSettings.teacherCanMark) {
+      return NextResponse.json(
+        { message: 'Faculty attendance marking is disabled in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    const attendanceDate = new Date(date);
+    attendanceDate.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (attendanceSettings.lockPreviousRecords && attendanceDate.getTime() < today.getTime()) {
+      const isAdmin = ['ADMIN', 'PRINCIPAL', 'DIRECTOR', 'OWNER'].includes(auth.role);
+      if (!isAdmin || !attendanceSettings.adminCanCorrect) {
+        return NextResponse.json(
+          { message: 'Attendance records for past dates are locked per institutional policy.' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Active session lookup
     const activeSession = await prisma.academicSession.findFirst({
       where: { schoolId: auth.schoolId, status: 'ACTIVE' },
@@ -112,9 +158,6 @@ export async function POST(req: NextRequest) {
     if (!activeSession) {
       return NextResponse.json({ message: 'No active academic session found' }, { status: 400 });
     }
-
-    const attendanceDate = new Date(date);
-    attendanceDate.setHours(0, 0, 0, 0);
 
     // Find or create AttendanceRegister
     let register = await prisma.attendanceRegister.findFirst({

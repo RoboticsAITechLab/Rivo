@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { HomeworkFilterState } from '../types';
-import { mockRepository } from '@/features/shared/mock-repository';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, RotateCcw } from 'lucide-react';
@@ -14,8 +13,28 @@ interface HomeworkFiltersProps {
 }
 
 export function HomeworkFilters({ filters, onFilterChange, onReset }: HomeworkFiltersProps) {
-  const classes = React.useMemo(() => mockRepository.getClasses(), []);
-  const subjects = React.useMemo(() => mockRepository.getSubjects(), []);
+  const [classes, setClasses] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [subjects, setSubjects] = React.useState<Array<{ id: string; name: string }>>([]);
+
+  React.useEffect(() => {
+    fetch('/api/classes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.classes && Array.isArray(d.classes)) {
+          setClasses(d.classes);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/subjects')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.subjects && Array.isArray(d.subjects)) {
+          setSubjects(d.subjects);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const hasActiveFilters =
     filters.searchQuery !== '' ||
@@ -47,7 +66,7 @@ export function HomeworkFilters({ filters, onFilterChange, onReset }: HomeworkFi
           <option value="">All Classes</option>
           {classes.map((cls) => (
             <option key={cls.id} value={cls.id}>
-              {cls.className}
+              {cls.name}
             </option>
           ))}
         </select>
@@ -72,21 +91,22 @@ export function HomeworkFilters({ filters, onFilterChange, onReset }: HomeworkFi
           onChange={(e) => onFilterChange({ status: e.target.value })}
           className="h-8 rounded-md border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
-          <option value="ALL">All Statuses</option>
+          <option value="ALL">All Status</option>
           <option value="PUBLISHED">Published</option>
           <option value="DRAFT">Draft</option>
           <option value="CLOSED">Closed</option>
         </select>
 
+        {/* Reset Filter Button */}
         {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             onClick={onReset}
-            className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1 px-2"
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
           >
-            <RotateCcw className="h-3 w-3" />
-            <span>Reset</span>
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
           </Button>
         )}
       </div>

@@ -30,7 +30,7 @@ Rivo bridges institutional management and daily academic execution. Unlike legac
 | **Parent / Guardian (Mobile App)** | Mobile-first access (via Flutter app) to circular notices, student attendance alerts, fee receipts, and term report cards. | `OWN` (Linked wards only) |
 
 > [!NOTE]
-> **MVP Frontend vs Backend Integration Boundary**: The current Web Application codebase in `apps/web` provides a fully reactive client architecture powered by `SchoolCentralStore` with Prisma schema alignment. Backend authentication sessions, SMS gateway dispatch, and production database persistence connect via dedicated API routes and environment configurations.
+> **Production Full-Stack Architecture**: All core institutional workflows (Admissions, Fees, Timetable, Exams, Attendance, Homework, Users, and Settings) operate with real server-side API routes (`/api/*`), strict tenant isolation (`schoolId`), and PostgreSQL persistence via Prisma ORM on Neon. Edge route protection is enforced server-side via Next.js `middleware.ts`.
 
 ---
 

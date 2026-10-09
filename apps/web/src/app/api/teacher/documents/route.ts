@@ -8,6 +8,7 @@ import {
   calculateDocumentChecklist,
   maskDocumentNumber,
 } from '@/lib/teachers/document-catalog';
+import { encryptSensitiveField, decryptSensitiveField } from '@/lib/security/encryption';
 
 // GET /api/teacher/documents - Logged-in teacher accessing their own legal, KYC, educational & employment documents
 export async function GET(req: NextRequest) {
@@ -109,7 +110,8 @@ export async function GET(req: NextRequest) {
         }
 
         const expiryInfo = calculateExpiryStatus(doc.expiryDate);
-        const maskedNum = maskDocumentNumber(doc.documentType, doc.documentNumber);
+        const rawDocumentNumber = decryptSensitiveField(doc.documentNumber);
+        const maskedNum = maskDocumentNumber(doc.documentType, rawDocumentNumber);
 
         return {
           id: doc.id,
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
         category,
         documentType,
         title,
-        documentNumber,
+        documentNumber: encryptSensitiveField(documentNumber),
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
         fileName: file.name,
@@ -248,7 +250,7 @@ export async function POST(req: NextRequest) {
         category: document.category,
         documentType: document.documentType,
         title: document.title,
-        documentNumberMasked: maskDocumentNumber(document.documentType, document.documentNumber),
+        documentNumberMasked: maskDocumentNumber(document.documentType, documentNumber),
         accessUrl: signedUrl,
         fileUrl: signedUrl,
         fileName: document.fileName,

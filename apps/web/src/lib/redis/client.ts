@@ -4,14 +4,17 @@ let redisInstance: Redis | null = null;
 let isConnected = false;
 
 export function isProductionMode(): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return true;
+  }
   if (process.env.AUTH_INFRA_MODE) {
     return process.env.AUTH_INFRA_MODE === 'production';
   }
-  return process.env.NODE_ENV === 'production';
+  return false;
 }
 
 export function getRedisClient(): Redis | null {
-  let redisUrl = process.env.REDIS_URL;
+  let redisUrl = process.env.REDIS_URL || process.env.UPSTASH_REDIS_URL;
 
   // In local mode without REDIS_URL, return null for graceful in-memory fallback
   if (!redisUrl || redisUrl.trim() === '' || redisUrl === 'redis://localhost:6379/placeholder') {
@@ -20,6 +23,8 @@ export function getRedisClient(): Redis | null {
     }
     return null;
   }
+
+  redisUrl = redisUrl.trim();
 
   // Ensure rediss:// TLS protocol for Upstash endpoints
   if (redisUrl.includes('upstash.io') && redisUrl.startsWith('redis://')) {
@@ -37,7 +42,8 @@ export function getRedisClient(): Redis | null {
           }
           return Math.min(times * 100, 1000);
         },
-        enableOfflineQueue: true,
+        // In serverless Next.js, fail fast instead of holding requests in memory
+        enableOfflineQueue: false,
         lazyConnect: false,
       });
 
@@ -51,8 +57,11 @@ export function getRedisClient(): Redis | null {
 
       redisInstance.on('error', (err) => {
         isConnected = false;
-        // Never log Redis credentials or connection strings
-        console.error('[REDIS_ERROR] Redis client connection error:', err.message || 'Connection failed');
+        // Never log Redis credentials, tokens, or raw connection strings
+        const safeErrMsg = (err.message || 'Connection failed')
+          .replace(/rediss?:\/\/[^@\s]+@/gi, 'redis://[REDACTED]@')
+          .replace(/(password|token)=[^&\s]+/gi, '$1=[REDACTED]');
+        console.error('[REDIS_ERROR] Redis client connection error:', safeErrMsg);
       });
 
       redisInstance.on('close', () => {

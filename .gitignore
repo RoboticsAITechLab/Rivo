@@ -22,6 +22,10 @@ src/generated/
 generated_temp/
 **/generated_temp/
 *.node
+*.dll.node
+*query_engine*
+prisma/*query_engine*
+apps/web/prisma/*query_engine*
 
 # Logs
 logs/

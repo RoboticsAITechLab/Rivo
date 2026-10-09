@@ -21,9 +21,13 @@
   <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
   [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
+> **ARCHITECTURAL NOTICE:**
+> This NestJS directory is a standalone starter template / scaffold and is not part of the active production deployment pipeline.
+> All authoritative Rivo production APIs, authentication, Prisma ORM queries, and domain handlers are actively served by `apps/web/src/app/api` (Next.js 16 full-stack monolith).
+
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+NestJS prototype starter scaffold.
 
 ## Project setup
 

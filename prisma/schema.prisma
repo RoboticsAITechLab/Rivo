@@ -198,6 +198,7 @@ model School {
   feeAuditLogs            FeeAuditLog[]
   settings                SchoolSetting[]
   teacherDocuments        TeacherDocument[]
+  homework                Homework[]
 
   @@index([status])
   @@map("schools")
@@ -395,6 +396,7 @@ model Teacher {
   assignments              TeacherAssignment[]
   timetableSlots           TimetableSlot[]
   documents                TeacherDocument[]
+  homework                 Homework[]
 
   @@unique([schoolId, userId])
   @@index([schoolId])
@@ -462,6 +464,7 @@ model AcademicSession {
   feeObligations      FeeObligation[]
   feePayments         FeePayment[]
   feeReceipts         FeeReceipt[]
+  homework            Homework[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -486,6 +489,7 @@ model Class {
   examResults         ExamResult[]
   notices             Notice[]
   feePlans            FeePlan[]
+  homework            Homework[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -509,6 +513,7 @@ model Section {
   examResults         ExamResult[]
   notices             Notice[]
   feePlans            FeePlan[]
+  homework            Homework[]
 
   @@unique([classId, name])
   @@index([schoolId])
@@ -529,6 +534,7 @@ model Subject {
   timetableSlots      TimetableSlot[]
   examPapers          ExamPaper[]
   resultSubjects      ExamResultSubject[]
+  homework            Homework[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -1723,3 +1729,145 @@ model SchoolSetting {
   @@index([schoolId, category])
   @@map("school_settings")
 }
+
+model Homework {
+  id                String          @id @default(uuid())
+  schoolId          String          @map("school_id")
+  academicSessionId String          @map("academic_session_id")
+  classId           String          @map("class_id")
+  sectionId         String?         @map("section_id")
+  subjectId         String          @map("subject_id")
+  teacherId         String?         @map("teacher_id")
+  title             String
+  description       String
+  assignedDate      DateTime        @map("assigned_date")
+  dueDate           DateTime        @map("due_date")
+  attachments       Json?           @default("[]")
+  status            String          @default("PUBLISHED")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicSession AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  class           Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section         Section?        @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  subject         Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher         Teacher?        @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([schoolId, classId, subjectId])
+  @@index([schoolId, dueDate])
+  @@map("homework")
+}
+
+model TestRun {
+  id           String            @id @default(uuid())
+  suite        String
+  targetUrl    String            @map("target_url")
+  environment  String            @default("production")
+  initiatedBy  String            @map("initiated_by")
+  status       String            // RUNNING, PASSED, FAILED, CANCELLED
+  startedAt    DateTime          @default(now()) @map("started_at")
+  completedAt  DateTime?         @map("completed_at")
+  durationMs   Int?              @map("duration_ms")
+  totalTests   Int               @default(0) @map("total_tests")
+  passedTests  Int               @default(0) @map("passed_tests")
+  failedTests  Int               @default(0) @map("failed_tests")
+  skippedTests Int               @default(0) @map("skipped_tests")
+  passRate     Float?            @map("pass_rate")
+  metadata     Json?
+  errorSummary String?           @map("error_summary")
+  results      TestCaseResult[]
+  metrics      TestMetric[]
+  artifacts    TestArtifact[]
+  cleanupTasks TestCleanupTask[]
+
+  @@index([startedAt])
+  @@index([status])
+  @@index([suite])
+  @@map("test_runs")
+}
+
+model TestCaseResult {
+  id           String    @id @default(uuid())
+  testRunId    String    @map("test_run_id")
+  name         String
+  category     String
+  status       String    // PASSED, FAILED, SKIPPED, BLOCKED
+  durationMs   Int       @map("duration_ms")
+  httpStatus   Int?      @map("http_status")
+  endpoint     String?
+  method       String?
+  errorMessage String?   @map("error_message")
+  evidence     Json?
+  startedAt    DateTime  @default(now()) @map("started_at")
+
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+
+  @@index([testRunId])
+  @@index([status])
+  @@index([endpoint])
+  @@map("test_case_results")
+}
+
+model TestMetric {
+  id          String   @id @default(uuid())
+  testRunId   String   @map("test_run_id")
+  name        String
+  value       Float
+  unit        String
+  sampleCount Int      @default(1) @map("sample_count")
+  metadata    Json?
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+
+  @@index([testRunId])
+  @@index([name])
+  @@map("test_metrics")
+}
+
+model ServiceHealthCheck {
+  id         String   @id @default(uuid())
+  service    String   // POSTGRES, REDIS, AZURE_BLOB, API_GATEWAY, AUTH, RESEND
+  status     String   // HEALTHY, DEGRADED, FAILED, UNKNOWN
+  latencyMs  Int?     @map("latency_ms")
+  targetHost String?  @map("target_host")
+  details    Json?
+  checkedAt  DateTime @default(now()) @map("checked_at")
+
+  @@index([service, checkedAt])
+  @@map("service_health_checks")
+}
+
+model TestArtifact {
+  id           String   @id @default(uuid())
+  testRunId    String   @map("test_run_id")
+  name         String
+  artifactType String   @map("artifact_type") // LOG, SCREENSHOT, REPORT, HAR
+  urlOrPath    String   @map("url_or_path")
+  sizeBytes    Int?     @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+
+  @@index([testRunId])
+  @@map("test_artifacts")
+}
+
+model TestCleanupTask {
+  id           String    @id @default(uuid())
+  testRunId    String    @map("test_run_id")
+  resourceType String    @map("resource_type") // STORAGE_BLOB, DATABASE_ENTITY
+  resourceKey  String    @map("resource_key")
+  status       String    @default("PENDING") // PENDING, CLEANED, FAILED
+  createdAt    DateTime  @default(now()) @map("created_at")
+  cleanedAt    DateTime? @map("cleaned_at")
+
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+
+  @@index([testRunId])
+  @@index([status])
+  @@map("test_cleanup_tasks")
+}
+

@@ -8,6 +8,7 @@ import {
   calculateDocumentChecklist,
   maskDocumentNumber,
 } from '@/lib/teachers/document-catalog';
+import { encryptSensitiveField, decryptSensitiveField } from '@/lib/security/encryption';
 
 // GET /api/teachers/[id]/documents - List teacher legal, KYC, educational & employment documents with signed SAS URLs
 export async function GET(
@@ -77,7 +78,8 @@ export async function GET(
         }
 
         const expiryInfo = calculateExpiryStatus(doc.expiryDate);
-        const maskedNum = maskDocumentNumber(doc.documentType, doc.documentNumber);
+        const rawDocumentNumber = decryptSensitiveField(doc.documentNumber);
+        const maskedNum = maskDocumentNumber(doc.documentType, rawDocumentNumber);
 
         return {
           id: doc.id,
@@ -194,7 +196,7 @@ export async function POST(
         category,
         documentType,
         title,
-        documentNumber,
+        documentNumber: encryptSensitiveField(documentNumber),
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
         fileName: file.name,
@@ -224,7 +226,7 @@ export async function POST(
         category: document.category,
         documentType: document.documentType,
         title: document.title,
-        documentNumberMasked: maskDocumentNumber(document.documentType, document.documentNumber),
+        documentNumberMasked: maskDocumentNumber(document.documentType, documentNumber),
         accessUrl: signedUrl,
         fileUrl: signedUrl,
         fileName: document.fileName,

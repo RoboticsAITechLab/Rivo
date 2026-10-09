@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword, hashToken, validatePasswordPolicy } from '@/lib/auth/crypto';
 import { createSession, setSessionCookie } from '@/lib/auth/session';
 import { logSecurityAudit } from '@/lib/auth/audit';
+import { getSecuritySettings } from '@/lib/settings/settings-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Password policy check
+    // Default password policy check
     const passwordValidation = validatePasswordPolicy(password);
     if (!passwordValidation.isValid) {
       return NextResponse.json(
@@ -50,6 +51,21 @@ export async function POST(req: NextRequest) {
         { message: 'This invitation link is invalid, expired, or has already been accepted.' },
         { status: 400 }
       );
+    }
+
+    // Enforce Institutional Password Policy
+    const securitySettings = await getSecuritySettings(invitation.schoolId);
+    if (securitySettings?.passwordPolicy) {
+      const institutionalValidation = validatePasswordPolicy(password, securitySettings.passwordPolicy);
+      if (!institutionalValidation.isValid) {
+        return NextResponse.json(
+          {
+            message: institutionalValidation.errors[0] || 'Password does not meet institutional security requirements.',
+            errors: institutionalValidation.errors,
+          },
+          { status: 422 }
+        );
+      }
     }
 
     // Parse name

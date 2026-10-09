@@ -42,6 +42,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.CI_DATABASE_URL || secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.CI_DIRECT_URL || secrets.DIRECT_URL }}
+          JWT_SECRET: "ci-test-secure-jwt-secret-token-key-2026"
+          KYC_ENCRYPTION_KEY: "ci-test-secure-kyc-encryption-key-2026"
           AUTH_INFRA_MODE: local
           NEXT_TELEMETRY_DISABLED: '1'
 

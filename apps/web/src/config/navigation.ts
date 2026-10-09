@@ -234,6 +234,15 @@ export const APP_NAVIGATION: AppNavItem[] = [
     roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
     keywords: ['invite', 'faculty', 'onboarding', 'staff'],
   },
+  {
+    title: 'Testing & Observability',
+    href: '/admin/testing',
+    iconName: 'Activity',
+    group: 'SYSTEM',
+    description: 'Production testing, live health, benchmarks & observability center',
+    roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
+    keywords: ['testing', 'health', 'observability', 'load test', 'benchmark', 'diagnostics'],
+  },
 ];
 
 export const APP_NAV_GROUPS: AppNavGroup[] = [

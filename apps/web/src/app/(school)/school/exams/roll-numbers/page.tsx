@@ -440,9 +440,40 @@ function BulkAllocationWizardDialog({
   const [selectedCampus, setSelectedCampus] = React.useState<string>('ALL');
   const [selectedClass, setSelectedClass] = React.useState<string>('ALL');
   const [step, setStep] = React.useState<'config' | 'preview' | 'audit'>('config');
-  const [previewData, setPreviewData] = React.useState<ReturnType<typeof previewBulkExamRollAllocation> | null>(null);
+  const [previewData, setPreviewData] = React.useState<any>(null);
 
-  const handleGeneratePreview = () => {
+  const handleGeneratePreview = async () => {
+    try {
+      const q = selectedClass !== 'ALL' ? `?classId=${encodeURIComponent(selectedClass)}` : '';
+      const res = await fetch(`/api/students/rolls/preview${q}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.preview && Array.isArray(data.preview.items)) {
+          const allocations = data.preview.items.map((item: any) => ({
+            studentId: item.studentId,
+            studentName: item.studentName,
+            campusName: 'Main Campus',
+            className: 'Class ' + (store.classes.find((c) => c.id === selectedClass)?.className || 'Cohort'),
+            streamName: '',
+            proposedRollNumber: item.projectedRollNumber,
+            status: item.isModified ? 'READY' : 'UNCHANGED',
+            isNewAllocation: item.isModified,
+            conflictMessage: '',
+          }));
+          setPreviewData({
+            allocations,
+            newAllocationsCount: data.preview.updatedCount,
+            unchangedCount: data.preview.totalStudents - data.preview.updatedCount,
+            conflictsCount: 0,
+          });
+          setStep('preview');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Backend preview failed, falling back to local calculation:', e);
+    }
+
     const res = previewBulkExamRollAllocation(store, {
       campusIds: selectedCampus === 'ALL' ? undefined : [selectedCampus],
       classIds: selectedClass === 'ALL' ? undefined : [selectedClass],
@@ -454,12 +485,28 @@ function BulkAllocationWizardDialog({
 
   const handleCommitAllocation = async () => {
     if (!previewData) return;
-    const readyAllocations = previewData.allocations
-      .filter((a) => a.isNewAllocation && a.status === 'READY');
+    try {
+      const res = await fetch('/api/students/rolls/rebalance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: selectedClass === 'ALL' ? undefined : selectedClass,
+        }),
+      });
 
+      if (res.ok) {
+        const data = await res.json();
+        onSuccess(data.message || 'Roll numbers allocated and persisted successfully!');
+        return;
+      }
+    } catch (e) {
+      console.warn('Rebalance endpoint error, applying direct patch fallback:', e);
+    }
+
+    const readyAllocations = previewData.allocations.filter((a: any) => a.isNewAllocation && a.status === 'READY');
     try {
       await Promise.all(
-        readyAllocations.map((a) =>
+        readyAllocations.map((a: any) =>
           fetch(`/api/students/${a.studentId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -586,7 +633,7 @@ function BulkAllocationWizardDialog({
                       </td>
                     </tr>
                   ) : (
-                    previewData.allocations.map((a) => (
+                    previewData.allocations.map((a: any) => (
                       <tr key={a.studentId} className="hover:bg-muted/20">
                         <td className="py-1.5 px-2.5 font-medium">{a.studentName}</td>
                         <td className="py-1.5 px-2.5 text-muted-foreground">{a.campusName}</td>

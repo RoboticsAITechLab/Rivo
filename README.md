@@ -18,7 +18,8 @@ DATABASE_URL="postgresql://<user>:<password>@<neon-host>/neondb?sslmode=require"
 PORT=4000
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:3000
-JWT_SECRET=rivo-institutional-auth-secret-production-2026
+JWT_SECRET="replace-with-a-secure-random-32-byte-hex-secret"
+KYC_ENCRYPTION_KEY="replace-with-a-secure-random-32-byte-encryption-key"
 ```
 
 ### 3. Initialize Database & Seed Real Login Accounts

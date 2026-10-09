@@ -43,7 +43,8 @@ import { toast } from 'sonner';
 
 export default function UsersManagementPage() {
   const store = useSchoolStore();
-  const users = store.users || [];
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const roles = store.roles || [];
   const campuses = store.campuses || [];
 
@@ -57,29 +58,82 @@ export default function UsersManagementPage() {
   const [inviteRole, setInviteRole] = useState(roles[0]?.name || 'Teacher');
   const [inviteCampus, setInviteCampus] = useState(campuses[0]?.id || '');
 
-  const handleSendInvite = (e: React.FormEvent) => {
+  const loadUsers = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.users && Array.isArray(data.users)) {
+          setUsers(data.users);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch users from API, falling back to local list:', err);
+    } finally {
+      setIsLoading(false);
+    }
+    setUsers(store.users || []);
+  }, [store.users]);
+
+  React.useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
       toast.error('Please enter a valid email address');
       return;
     }
 
-    schoolStore.inviteUser({
-      email: inviteEmail.trim().toLowerCase(),
-      role: inviteRole,
-      campusId: inviteCampus || undefined,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+    try {
+      const res = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole.toUpperCase().replace(/\s+/g, '_'),
+        }),
+      });
 
-    toast.success(`Access invitation queued for ${inviteEmail}`);
-    setIsInviteOpen(false);
-    setInviteEmail('');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to dispatch invitation');
+      }
+
+      toast.success(`Access invitation queued and sent to ${inviteEmail}`);
+      setIsInviteOpen(false);
+      setInviteEmail('');
+      await loadUsers();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to dispatch invitation');
+    }
   };
 
-  const handleToggleSuspend = (user: UserAccount) => {
+  const handleToggleSuspend = async (user: UserAccount) => {
     const nextStatus = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    schoolStore.updateUser({ ...user, status: nextStatus });
-    toast.success(`User ${user.name} is now ${nextStatus.toLowerCase()}`);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          status: nextStatus,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to update user status');
+      }
+
+      toast.success(`User ${user.name} is now ${nextStatus.toLowerCase()}`);
+      await loadUsers();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update user status');
+    }
   };
 
   const filteredUsers = users

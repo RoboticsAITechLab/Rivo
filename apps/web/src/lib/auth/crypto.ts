@@ -64,24 +64,41 @@ export function hashToken(token: string): string {
  * - At least one digit
  * - At least one special symbol
  */
-export function validatePasswordPolicy(password: string): {
+export interface PasswordPolicyConfig {
+  minLength?: number;
+  requireUppercase?: boolean;
+  requireLowercase?: boolean;
+  requireNumbers?: boolean;
+  requireSpecialChars?: boolean;
+}
+
+export function validatePasswordPolicy(
+  password: string,
+  policy?: PasswordPolicyConfig
+): {
   isValid: boolean;
   errors: string[];
 } {
+  const minLength = policy?.minLength ?? 8;
+  const requireUpper = policy?.requireUppercase ?? true;
+  const requireLower = policy?.requireLowercase ?? true;
+  const requireNumbers = policy?.requireNumbers ?? true;
+  const requireSpecial = policy?.requireSpecialChars ?? false;
+
   const errors: string[] = [];
-  if (!password || password.length < 8) {
-    errors.push('Password must be at least 8 characters long.');
+  if (!password || password.length < minLength) {
+    errors.push(`Password must be at least ${minLength} characters long.`);
   }
-  if (!/[A-Z]/.test(password)) {
+  if (requireUpper && !/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter.');
   }
-  if (!/[a-z]/.test(password)) {
+  if (requireLower && !/[a-z]/.test(password)) {
     errors.push('Password must contain at least one lowercase letter.');
   }
-  if (!/[0-9]/.test(password)) {
+  if (requireNumbers && !/[0-9]/.test(password)) {
     errors.push('Password must contain at least one number.');
   }
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
+  if (requireSpecial && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     errors.push('Password must contain at least one special character.');
   }
   return {
@@ -91,9 +108,45 @@ export function validatePasswordPolicy(password: string): {
 }
 
 /**
- * Generates an HMAC-SHA256 signed session token for secure cookie authentication.
+ * Resolves the authoritative JWT / session HMAC signing secret.
+ * In production mode, fails closed if JWT_SECRET is unset, matches known compromised placeholders,
+ * or fails minimum entropy requirements.
  */
-const DEFAULT_SECRET = process.env.JWT_SECRET || 'rivo-institutional-auth-secret-production-2026';
+const REJECTED_JWT_PLACEHOLDERS = new Set([
+  'rivo-institutional-auth-secret-production-2026',
+  'super-secret-jwt-token-change-in-production',
+  'replace-with-a-secure-random-32-byte-hex-secret',
+  'dev_secret',
+  'secret',
+  'changeme',
+  'default',
+  'jwt_secret',
+]);
+
+export function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  const isProd = process.env.NODE_ENV === 'production' || process.env.AUTH_INFRA_MODE === 'production';
+
+  if (!secret) {
+    if (isProd) {
+      throw new Error('[SECURITY FATAL] A secure, unique JWT_SECRET must be configured in production.');
+    }
+    return 'rivo-dev-temporary-secret-not-for-production-signing';
+  }
+
+  if (REJECTED_JWT_PLACEHOLDERS.has(secret.toLowerCase())) {
+    if (isProd) {
+      throw new Error('[SECURITY FATAL] Insecure/compromised JWT_SECRET placeholder detected in production.');
+    }
+    return 'rivo-dev-temporary-secret-not-for-production-signing';
+  }
+
+  if (isProd && secret.length < 32) {
+    throw new Error('[SECURITY FATAL] Production JWT_SECRET must be at least 32 characters long.');
+  }
+
+  return secret;
+}
 
 export interface TokenPayload {
   userId: string;
@@ -110,7 +163,7 @@ export function signToken(payload: Omit<TokenPayload, 'exp'>, expiresInSeconds =
     exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
   };
   const body = Buffer.from(JSON.stringify(fullPayload)).toString('base64url');
-  const hmac = crypto.createHmac('sha256', DEFAULT_SECRET);
+  const hmac = crypto.createHmac('sha256', getJwtSecret());
   hmac.update(body);
   const signature = hmac.digest('base64url');
   return `${body}.${signature}`;
@@ -122,7 +175,7 @@ export function verifyToken(token: string): TokenPayload | null {
     const [body, signature] = token.split('.');
     if (!body || !signature) return null;
 
-    const hmac = crypto.createHmac('sha256', DEFAULT_SECRET);
+    const hmac = crypto.createHmac('sha256', getJwtSecret());
     hmac.update(body);
     const expectedSig = hmac.digest('base64url');
 

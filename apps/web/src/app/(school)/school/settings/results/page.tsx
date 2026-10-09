@@ -29,7 +29,6 @@ import { toast } from 'sonner';
 
 export default function ResultsSettingsPage() {
   const store = useSchoolStore();
-  const currentSettings = store.resultSettings;
   const gradingSchemes = store.gradingSchemes || [];
 
   const [formData, setFormData] = useState<ResultSettings>({
@@ -38,24 +37,49 @@ export default function ResultsSettingsPage() {
     resultVisibility: 'ADMIN_ONLY',
     lockPublishedResults: true,
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData(currentSettings);
-    }
-  }, [currentSettings]);
+    fetch('/api/school/settings?category=results')
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data) {
+          setFormData((prev) => ({ ...prev, ...res.data }));
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load results settings from API:', err);
+      });
+  }, []);
 
   const handleChange = <K extends keyof ResultSettings>(key: K, value: ResultSettings[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
 
-  const handleSave = () => {
-    schoolStore.updateResultSettings(formData);
-    setIsDirty(false);
-    toast.success('Result publication and grading preferences saved successfully');
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: 'results', value: formData }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to save settings');
+      }
+
+      setIsDirty(false);
+      toast.success('Result publication and grading preferences saved successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to persist result settings');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

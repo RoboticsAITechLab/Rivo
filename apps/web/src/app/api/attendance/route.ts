@@ -99,12 +99,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Fetch active enrollments for this class and section
+    // Resolve target academic session (from query parameter or current active session)
+    let academicSessionId = searchParams.get('academicSessionId');
+    if (!academicSessionId) {
+      const activeSession = await prisma.academicSession.findFirst({
+        where: { schoolId, status: 'ACTIVE' },
+      });
+      if (activeSession) {
+        academicSessionId = activeSession.id;
+      }
+    }
+
+    // Fetch active enrollments strictly for this class, section, and academic session
     const enrollments = await prisma.studentEnrollment.findMany({
       where: {
         schoolId,
         classId: classId!,
         ...(sectionId && sectionId !== 'ALL' ? { sectionId } : {}),
+        ...(academicSessionId ? { academicSessionId } : {}),
         status: 'ACTIVE',
       },
       select: {
@@ -131,6 +143,7 @@ export async function GET(req: NextRequest) {
         schoolId,
         classId: classId!,
         ...(sectionId && sectionId !== 'ALL' ? { sectionId } : {}),
+        ...(academicSessionId ? { academicSessionId } : {}),
         date: targetDate,
       },
       include: {

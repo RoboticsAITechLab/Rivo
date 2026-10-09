@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma, Prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 import { generateSecureToken, hashPassword, validatePasswordPolicy } from '@/lib/auth/crypto';
-
+import { getSecuritySettings } from '@/lib/settings/settings-service';
 import { getMediaStorageService } from '@/lib/storage';
 
 // GET /api/teachers - List all teachers with assignments and subjects
@@ -189,7 +189,8 @@ export async function POST(req: NextRequest) {
     let isInvited = false;
 
     if (rawPassword) {
-      const passwordValidation = validatePasswordPolicy(rawPassword);
+      const securitySettings = await getSecuritySettings(auth.schoolId);
+      const passwordValidation = validatePasswordPolicy(rawPassword, securitySettings?.passwordPolicy);
       if (!passwordValidation.isValid) {
         return NextResponse.json(
           {

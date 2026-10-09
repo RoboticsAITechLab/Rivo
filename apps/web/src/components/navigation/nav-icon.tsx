@@ -15,6 +15,7 @@ import {
   Settings,
   Users,
   CreditCard,
+  Activity,
 } from 'lucide-react';
 
 const icons: Record<string, React.ComponentType<LucideProps>> = {
@@ -32,6 +33,7 @@ const icons: Record<string, React.ComponentType<LucideProps>> = {
   Inbox,
   Settings,
   CreditCard,
+  Activity,
 };
 
 export function NavIcon({

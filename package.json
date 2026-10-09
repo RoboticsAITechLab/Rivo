@@ -24,7 +24,9 @@
     "test:academic": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/teacher-timetable-exam.test.ts",
     "test:fee": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/fee-management-foundation.test.ts",
     "test:media": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/media-storage-azure.test.ts",
-    "test": "npm run test:auth && npm run test:id && npm run test:phase && npm run test:parent && npm run test:academic && npm run test:fee && npm run test:media"
+    "test:remediation": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/remediation-forensic-hardening.test.ts",
+    "test:observability": "tsx --tsconfig apps/web/tsconfig.json apps/web/src/__tests__/testing-observability-center.test.ts",
+    "test": "npm run test:auth && npm run test:id && npm run test:phase && npm run test:parent && npm run test:academic && npm run test:fee && npm run test:media && npm run test:remediation && npm run test:observability"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
