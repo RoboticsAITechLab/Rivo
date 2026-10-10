@@ -29,24 +29,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Password policy check
-    const passwordValidation = validatePasswordPolicy(newPassword);
-    if (!passwordValidation.isValid) {
-      return NextResponse.json(
-        {
-          message: passwordValidation.errors[0] || 'Password does not meet complexity requirements.',
-          errors: passwordValidation.errors,
-        },
-        { status: 422 }
-      );
-    }
-
     const tokenHash = hashToken(token);
 
     // Find valid, unused, non-expired token
     const resetRecord = await prisma.passwordResetToken.findUnique({
       where: { tokenHash },
-      include: { user: true },
+      include: {
+        user: {
+          include: {
+            memberships: {
+              where: { status: 'ACTIVE' },
+            },
+          },
+        },
+      },
     });
 
     if (!resetRecord || resetRecord.usedAt !== null || resetRecord.expiresAt < new Date()) {
@@ -61,6 +57,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { message: 'Account is inactive or disabled. Contact administrator.' },
         { status: 403 }
+      );
+    }
+
+    // Resolve tenant-configured password policy if user belongs to a school
+    const primaryMembership = user.memberships[0];
+    let customPolicy;
+    if (primaryMembership) {
+      const { getSchoolSetting } = await import('@/lib/settings/settings-service');
+      const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
+      customPolicy = schoolSetting.passwordPolicy;
+    }
+
+    // Password policy check against school policy
+    const passwordValidation = validatePasswordPolicy(newPassword, customPolicy);
+    if (!passwordValidation.isValid) {
+      return NextResponse.json(
+        {
+          message: passwordValidation.errors[0] || 'Password does not meet complexity requirements.',
+          errors: passwordValidation.errors,
+        },
+        { status: 422 }
       );
     }
 

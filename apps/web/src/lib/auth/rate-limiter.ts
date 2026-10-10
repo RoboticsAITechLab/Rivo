@@ -23,11 +23,17 @@ return {current, ttl}
 export class RateLimiter {
   private readonly windowMs: number;
   private readonly maxRequests: number;
+  private readonly prefix: string;
   private static readonly inMemoryStorage = new Map<string, InMemoryRecord>();
 
-  constructor(options: { windowMs: number; maxRequests: number }) {
+  constructor(options: { windowMs: number; maxRequests: number; prefix?: string }) {
     this.windowMs = options.windowMs;
     this.maxRequests = options.maxRequests;
+    this.prefix = options.prefix || 'default';
+  }
+
+  private getNamespacedKey(key: string): string {
+    return `${this.prefix}:${key}`;
   }
 
   /**
@@ -38,10 +44,11 @@ export class RateLimiter {
    */
   public async consume(key: string): Promise<RateLimitResult> {
     const redis = getRedisClient();
+    const namespacedKey = this.getNamespacedKey(key);
 
     if (redis) {
       try {
-        const formattedKey = key.startsWith('rivo:rl:') ? key : `rivo:rl:${key}`;
+        const formattedKey = namespacedKey.startsWith('rivo:rl:') ? namespacedKey : `rivo:rl:${namespacedKey}`;
         const result = (await redis.eval(
           LUA_RATE_LIMIT,
           1,
@@ -98,15 +105,16 @@ export class RateLimiter {
    * Synchronous in-memory consumption for testing and local environments
    */
   public consumeInMemory(key: string): RateLimitResult {
+    const namespacedKey = this.getNamespacedKey(key);
     const now = Date.now();
-    let record = RateLimiter.inMemoryStorage.get(key);
+    let record = RateLimiter.inMemoryStorage.get(namespacedKey);
 
     if (!record || record.resetAt <= now) {
       record = {
         count: 1,
         resetAt: now + this.windowMs,
       };
-      RateLimiter.inMemoryStorage.set(key, record);
+      RateLimiter.inMemoryStorage.set(namespacedKey, record);
       return {
         allowed: true,
         remaining: this.maxRequests - 1,
@@ -131,11 +139,12 @@ export class RateLimiter {
   }
 
   public async reset(key: string): Promise<void> {
-    RateLimiter.inMemoryStorage.delete(key);
+    const namespacedKey = this.getNamespacedKey(key);
+    RateLimiter.inMemoryStorage.delete(namespacedKey);
     const redis = getRedisClient();
     if (redis) {
       try {
-        const formattedKey = key.startsWith('rivo:rl:') ? key : `rivo:rl:${key}`;
+        const formattedKey = namespacedKey.startsWith('rivo:rl:') ? namespacedKey : `rivo:rl:${namespacedKey}`;
         await redis.del(formattedKey);
       } catch {
         // Ignore redis delete error during reset
@@ -157,30 +166,35 @@ export class RateLimiter {
 export const loginRateLimiter = new RateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 5,
+  prefix: 'login',
 });
 
 // 3 attempts per hour for password recovery requests
 export const forgotPasswordRateLimiter = new RateLimiter({
   windowMs: 60 * 60 * 1000,
   maxRequests: 3,
+  prefix: 'forgot-pw',
 });
 
 // 5 attempts per 15 minutes for password resets
 export const resetPasswordRateLimiter = new RateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 5,
+  prefix: 'reset-pw',
 });
 
 // 20 invitations per hour per user/school
 export const invitationRateLimiter = new RateLimiter({
   windowMs: 60 * 60 * 1000,
   maxRequests: 20,
+  prefix: 'invitation',
 });
 
 // 5 MFA attempts per 15 minutes
 export const mfaRateLimiter = new RateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 5,
+  prefix: 'mfa',
 });
 
 /**

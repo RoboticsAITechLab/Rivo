@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AccountRecoverySettings } from '@/features/settings/types';
 import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
@@ -11,8 +10,10 @@ import {
   Clock, 
   ShieldAlert, 
   Mail, 
-  CheckCircle2,
-  Lock
+  CheckCircle2, 
+  Lock,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,34 +28,79 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+const defaultRecoverySettings: AccountRecoverySettings = {
+  allowSelfServiceReset: true,
+  requireAdminApproval: false,
+  notifyAdminOnRecovery: true,
+  resetLinkExpiryHours: 24,
+};
+
 export default function AccountRecoverySettingsPage() {
-  const store = useSchoolStore();
-  const currentSettings = store.recoverySettings;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const [formData, setFormData] = useState<AccountRecoverySettings>({
-    allowSelfServiceReset: true,
-    requireAdminApproval: false,
-    notifyAdminOnRecovery: true,
-    resetLinkExpiryHours: 24,
-  });
+  const {
+    currentValues: formData,
+    setCurrentValues: setFormData,
+    isDirty,
+    markSaved,
+    resetForm,
+    showUnsavedDialog,
+    setShowUnsavedDialog,
+  } = useUnsavedChanges<AccountRecoverySettings>(defaultRecoverySettings);
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=security');
+      const json = await res.json();
+      if (res.ok && json.data?.recovery) {
+        setFormData(json.data.recovery);
+        markSaved(json.data.recovery);
+      }
+    } catch (err) {
+      console.error('Failed to load recovery settings:', err);
+      toast.error('Failed to load institutional recovery settings');
+    } finally {
+      setLoading(false);
+    }
+  }, [markSaved, setFormData]);
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData(currentSettings);
-    }
-  }, [currentSettings]);
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleToggle = <K extends keyof AccountRecoverySettings>(key: K, value: AccountRecoverySettings[K]) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-    setIsDirty(true);
+    setFormData({ ...formData, [key]: value });
   };
 
-  const handleSave = () => {
-    schoolStore.updateRecoverySettings(formData);
-    setIsDirty(false);
-    toast.success('Account recovery preferences updated successfully');
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'security',
+          value: {
+            recovery: formData,
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save account recovery preferences');
+      }
+
+      markSaved(formData);
+      toast.success('Account recovery preferences saved and enforced server-side.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update recovery settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -69,10 +115,28 @@ export default function AccountRecoverySettingsPage() {
             Configure automated self-service password retrieval, administrative oversight, and reset token lifespans.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Preferences
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={resetForm}
+              className="text-xs h-8"
+            >
+              Reset
+            </Button>
+          )}
+          <Button
+            onClick={() => handleSave()}
+            disabled={!isDirty || saving}
+            className="gap-2 shrink-0 h-8 text-xs"
+          >
+            {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Saving...' : 'Save Preferences'}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -167,9 +231,12 @@ export default function AccountRecoverySettingsPage() {
       </div>
 
       <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
+        open={showUnsavedDialog} 
+        onDiscard={() => resetForm()} 
+        onContinueEditing={() => setShowUnsavedDialog(false)} 
+        onSave={async () => {
+          await handleSave();
+        }} 
       />
     </div>
   );

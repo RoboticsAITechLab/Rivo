@@ -4,6 +4,7 @@ import { generateSecureToken, hashToken } from '@/lib/auth/crypto';
 import { forgotPasswordRateLimiter } from '@/lib/auth/rate-limiter';
 import { logSecurityAudit } from '@/lib/auth/audit';
 import { sendPasswordResetEmail } from '@/lib/email/email-service';
+import { getSchoolSetting } from '@/lib/settings/settings-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,16 +30,50 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Lookup user
+    // Lookup user with active institutional memberships
     const user = await prisma.user.findUnique({
       where: { email: trimmedEmail },
+      include: {
+        memberships: {
+          where: { status: 'ACTIVE' },
+        },
+      },
     });
 
     // If user exists and is active, issue single-use secure reset token
     if (user && user.isActive && user.status === 'ACTIVE') {
+      const primaryMembership = user.memberships[0];
+      let expiryHours = 24;
+
+      if (primaryMembership) {
+        const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
+        const recoveryPolicy = schoolSetting.recovery;
+
+        // Policy check: Enforce institutional self-service password reset toggle
+        if (recoveryPolicy && recoveryPolicy.allowSelfServiceReset === false) {
+          await logSecurityAudit({
+            event: 'PASSWORD_RESET_REQUEST',
+            userId: user.id,
+            schoolId: primaryMembership.schoolId,
+            ipAddress: ip,
+            userAgent,
+            details: { email: trimmedEmail, status: 'REJECTED', reason: 'SELF_SERVICE_RESET_DISABLED' },
+          });
+
+          return NextResponse.json(
+            { message: 'Self-service password reset is disabled by institutional policy. Please contact your administrator.' },
+            { status: 403 }
+          );
+        }
+
+        if (recoveryPolicy?.resetLinkExpiryHours && recoveryPolicy.resetLinkExpiryHours > 0) {
+          expiryHours = recoveryPolicy.resetLinkExpiryHours;
+        }
+      }
+
       const rawToken = generateSecureToken(32);
       const tokenHash = hashToken(rawToken);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
       // Invalidate any prior unused reset tokens for this user
       await prisma.passwordResetToken.deleteMany({

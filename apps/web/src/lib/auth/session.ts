@@ -295,6 +295,116 @@ export async function revokeAllUserSessions(userId: string): Promise<number> {
 }
 
 /**
+ * Parses user agent into human-readable device and browser descriptions.
+ */
+export function parseDeviceAndBrowser(userAgent: string | null | undefined): { device: string; browser: string } {
+  if (!userAgent) {
+    return { device: 'Unknown Device', browser: 'Web Browser' };
+  }
+  const ua = userAgent.toLowerCase();
+  let device = 'Computer / Desktop';
+  if (ua.includes('iphone')) device = 'Apple iPhone';
+  else if (ua.includes('ipad')) device = 'Apple iPad';
+  else if (ua.includes('android')) device = ua.includes('mobile') ? 'Android Mobile' : 'Android Tablet';
+  else if (ua.includes('macintosh') || ua.includes('mac os')) device = 'Apple Mac';
+  else if (ua.includes('windows')) device = 'Windows PC';
+  else if (ua.includes('linux')) device = 'Linux Workstation';
+
+  let browser = 'Web Browser';
+  if (ua.includes('edg/')) browser = 'Microsoft Edge';
+  else if (ua.includes('chrome/')) browser = 'Google Chrome';
+  else if (ua.includes('firefox/')) browser = 'Mozilla Firefox';
+  else if (ua.includes('safari/') && !ua.includes('chrome/')) browser = 'Apple Safari';
+  else if (ua.includes('opr/') || ua.includes('opera/')) browser = 'Opera';
+
+  return { device, browser };
+}
+
+/**
+ * Revokes a specific active session by its ID for a given user.
+ */
+export async function revokeSessionById(sessionId: string, userId: string): Promise<boolean> {
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, userId, revokedAt: null },
+      select: { id: true, tokenHash: true },
+    });
+    if (!session) return false;
+
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date() },
+    });
+    await invalidateSessionCache(session.tokenHash, userId);
+    return true;
+  } catch (error) {
+    console.error(`Error revoking session ${sessionId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Revokes all sessions for a user EXCEPT the current session.
+ */
+export async function revokeOtherUserSessions(userId: string, currentSessionId: string): Promise<number> {
+  try {
+    const otherSessions = await prisma.session.findMany({
+      where: {
+        userId,
+        id: { not: currentSessionId },
+        revokedAt: null,
+      },
+      select: { tokenHash: true },
+    });
+
+    const result = await prisma.session.updateMany({
+      where: {
+        userId,
+        id: { not: currentSessionId },
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
+    for (const s of otherSessions) {
+      await invalidateSessionCache(s.tokenHash, userId);
+    }
+    return result.count;
+  } catch (error) {
+    console.error(`Error revoking other sessions for user ${userId}:`, error);
+    return 0;
+  }
+}
+
+/**
+ * Lists active sessions for a user from PostgreSQL with device metadata and isCurrent indicator.
+ */
+export async function listUserActiveSessions(userId: string, currentSessionId?: string) {
+  const sessions = await prisma.session.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return sessions.map((s) => {
+    const { device, browser } = parseDeviceAndBrowser(s.userAgent);
+    return {
+      id: s.id,
+      device,
+      browser,
+      ipAddress: s.ipAddress || '127.0.0.1',
+      location: 'Authorized Network',
+      lastActive: s.lastSeenAt ? new Date(s.lastSeenAt).toLocaleString() : 'Active now',
+      createdAt: s.createdAt.toISOString(),
+      isCurrent: currentSessionId ? s.id === currentSessionId : false,
+    };
+  });
+}
+
+/**
  * Sets the secure session cookie on a NextResponse.
  */
 export function setSessionCookie(

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthSettings } from '@/features/settings/types';
 import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
@@ -14,7 +13,9 @@ import {
   Clock, 
   Users,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,50 +25,95 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
+const defaultAuthSettings: AuthSettings = {
+  passwordLoginEnabled: true,
+  emailVerificationEnabled: false,
+  roleAccess: {
+    schoolAdmin: true,
+    teacher: true,
+    student: true,
+    parent: true,
+  },
+  sessionTimeoutMinutes: 1440,
+};
+
 export default function AuthenticationSettingsPage() {
-  const store = useSchoolStore();
-  const currentSettings = store.authSettings;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const [formData, setFormData] = useState<AuthSettings>({
-    passwordLoginEnabled: true,
-    emailVerificationEnabled: true,
-    roleAccess: {
-      schoolAdmin: true,
-      teacher: true,
-      student: false,
-      parent: false,
-    },
-    sessionTimeoutMinutes: 60,
-  });
+  const {
+    currentValues: formData,
+    setCurrentValues: setFormData,
+    isDirty,
+    markSaved,
+    resetForm,
+    showUnsavedDialog,
+    setShowUnsavedDialog,
+  } = useUnsavedChanges<AuthSettings>(defaultAuthSettings);
 
-  const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const fetchSettings = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/school/settings?category=security');
+      const json = await res.json();
+      if (res.ok && json.data?.authentication) {
+        setFormData(json.data.authentication);
+        markSaved(json.data.authentication);
+      }
+    } catch (err) {
+      console.error('Failed to load authentication settings:', err);
+      toast.error('Failed to load institutional authentication settings');
+    } finally {
+      setLoading(false);
+    }
+  }, [markSaved, setFormData]);
 
   useEffect(() => {
-    if (currentSettings) {
-      setFormData(currentSettings);
-    }
-  }, [currentSettings]);
+    fetchSettings();
+  }, [fetchSettings]);
 
   const handleToggle = <K extends keyof AuthSettings>(key: K, value: AuthSettings[K]) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-    setIsDirty(true);
+    setFormData({ ...formData, [key]: value });
   };
 
   const handleRoleToggle = (role: keyof AuthSettings['roleAccess'], val: boolean) => {
-    setFormData(prev => ({
-      ...prev,
+    setFormData({
+      ...formData,
       roleAccess: {
-        ...prev.roleAccess,
+        ...formData.roleAccess,
         [role]: val,
-      }
-    }));
-    setIsDirty(true);
+      },
+    });
   };
 
-  const handleSave = () => {
-    schoolStore.updateAuthSettings(formData);
-    setIsDirty(false);
-    toast.success('Authentication parameters saved successfully');
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    try {
+      setSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'security',
+          value: {
+            authentication: formData,
+            sessionTimeoutMinutes: formData.sessionTimeoutMinutes,
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.message || 'Failed to save authentication parameters');
+      }
+
+      markSaved(formData);
+      toast.success('Authentication controls saved and enforced server-side.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update authentication settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -82,20 +128,37 @@ export default function AuthenticationSettingsPage() {
             Govern institutional login methods, role portal access permissions, and session timeout thresholds.
           </p>
         </div>
-        <Button onClick={handleSave} disabled={!isDirty} className="gap-2 shrink-0">
-          <Save className="h-4 w-4" />
-          Save Configuration
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={resetForm}
+              className="text-xs h-8"
+            >
+              Reset
+            </Button>
+          )}
+          <Button
+            onClick={() => handleSave()}
+            disabled={!isDirty || saving}
+            className="gap-2 shrink-0 h-8 text-xs"
+          >
+            {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Saving...' : 'Save Configuration'}
+          </Button>
+        </div>
       </div>
 
-      {/* Honest Backend Connectivity Indicator */}
-      <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
-        <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <div className="font-semibold text-sm">Auth Provider Status: Standalone Frontend Interface</div>
+      {/* Verified Backend Connectivity Indicator */}
+      <div className="p-3.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 text-xs flex items-start gap-2.5">
+        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <div className="font-semibold">Authoritative Security Enforcement Active</div>
           <p className="leading-relaxed opacity-90">
-            Authentication service endpoints and Identity Providers (e.g. Supabase, Firebase, or LDAP) are currently not connected. 
-            All policy switches below are fully configured on the client store and will automatically enforce security boundaries once your authentication API is linked.
+            Policies configured below are persisted to PostgreSQL and enforced in real time at the API and middleware gateway.
           </p>
         </div>
       </div>
@@ -225,9 +288,12 @@ export default function AuthenticationSettingsPage() {
       </div>
 
       <UnsavedChangesDialog 
-        open={showDialog} 
-        onConfirm={confirmLeave} 
-        onCancel={cancelLeave} 
+        open={showUnsavedDialog} 
+        onDiscard={() => resetForm()} 
+        onContinueEditing={() => setShowUnsavedDialog(false)} 
+        onSave={async () => {
+          await handleSave();
+        }} 
       />
     </div>
   );

@@ -123,6 +123,23 @@ export interface SchoolSettingMap {
       maxFailedAttempts: number;
       lockoutMinutes: number;
     };
+    authentication: {
+      passwordLoginEnabled: boolean;
+      emailVerificationEnabled: boolean;
+      roleAccess: {
+        schoolAdmin: boolean;
+        teacher: boolean;
+        student: boolean;
+        parent: boolean;
+      };
+      sessionTimeoutMinutes: number;
+    };
+    recovery: {
+      allowSelfServiceReset: boolean;
+      requireAdminApproval: boolean;
+      notifyAdminOnRecovery: boolean;
+      resetLinkExpiryHours: number;
+    };
   };
 }
 
@@ -245,6 +262,23 @@ export const DEFAULT_SETTINGS: SchoolSettingMap = {
       maxFailedAttempts: 5,
       lockoutMinutes: 15,
     },
+    authentication: {
+      passwordLoginEnabled: true,
+      emailVerificationEnabled: false,
+      roleAccess: {
+        schoolAdmin: true,
+        teacher: true,
+        student: true,
+        parent: true,
+      },
+      sessionTimeoutMinutes: 1440,
+    },
+    recovery: {
+      allowSelfServiceReset: true,
+      requireAdminApproval: false,
+      notifyAdminOnRecovery: true,
+      resetLinkExpiryHours: 24,
+    },
   },
 };
 
@@ -291,9 +325,22 @@ export async function getSchoolSetting<K extends SettingCategory>(
   });
 
   const defaultVal = DEFAULT_SETTINGS[category];
-  const merged = record && typeof record.value === 'object' && record.value !== null
-    ? { ...defaultVal, ...(record.value as object) }
-    : defaultVal;
+  let merged: any;
+  if (category === 'security' && record && typeof record.value === 'object' && record.value !== null) {
+    const recSec = record.value as any;
+    const defSec = defaultVal as any;
+    merged = {
+      ...defSec,
+      ...recSec,
+      passwordPolicy: { ...defSec.passwordPolicy, ...(recSec.passwordPolicy || {}) },
+      authentication: { ...defSec.authentication, ...(recSec.authentication || {}) },
+      recovery: { ...defSec.recovery, ...(recSec.recovery || {}) },
+    };
+  } else {
+    merged = record && typeof record.value === 'object' && record.value !== null
+      ? { ...defaultVal, ...(record.value as object) }
+      : defaultVal;
+  }
 
   settingsMemoryCache.set(cacheKey, { value: merged, timestamp: Date.now() });
   return merged as SchoolSettingMap[K];
@@ -315,9 +362,21 @@ export async function getAllSchoolSettings(schoolId: string): Promise<SchoolSett
   const result: Partial<SchoolSettingMap> = {};
   for (const key of Object.keys(DEFAULT_SETTINGS) as SettingCategory[]) {
     const custom = recordMap.get(key);
-    result[key] = custom && typeof custom === 'object'
-      ? { ...DEFAULT_SETTINGS[key], ...custom }
-      : DEFAULT_SETTINGS[key];
+    if (key === 'security') {
+      const defSec = DEFAULT_SETTINGS.security as any;
+      const recSec = (custom && typeof custom === 'object') ? custom : {};
+      result.security = {
+        ...defSec,
+        ...recSec,
+        passwordPolicy: { ...defSec.passwordPolicy, ...(recSec.passwordPolicy || {}) },
+        authentication: { ...defSec.authentication, ...(recSec.authentication || {}) },
+        recovery: { ...defSec.recovery, ...(recSec.recovery || {}) },
+      };
+    } else {
+      result[key] = custom && typeof custom === 'object'
+        ? { ...DEFAULT_SETTINGS[key], ...custom }
+        : DEFAULT_SETTINGS[key];
+    }
   }
 
   return result as SchoolSettingMap;
@@ -334,7 +393,20 @@ export async function updateSchoolSetting<K extends SettingCategory>(
   expectedVersion?: number
 ): Promise<SchoolSettingMap[K]> {
   const current = await getSchoolSetting(schoolId, category);
-  const updatedValue = { ...current, ...value };
+  let updatedValue: any;
+  if (category === 'security' && typeof current === 'object' && typeof value === 'object') {
+    const curSec = current as any;
+    const valSec = value as any;
+    updatedValue = {
+      ...curSec,
+      ...valSec,
+      passwordPolicy: valSec.passwordPolicy ? { ...curSec.passwordPolicy, ...valSec.passwordPolicy } : curSec.passwordPolicy,
+      authentication: valSec.authentication ? { ...curSec.authentication, ...valSec.authentication } : curSec.authentication,
+      recovery: valSec.recovery ? { ...curSec.recovery, ...valSec.recovery } : curSec.recovery,
+    };
+  } else {
+    updatedValue = { ...current, ...value };
+  }
 
   if (expectedVersion !== undefined) {
     const existing = await prisma.schoolSetting.findUnique({

@@ -5,6 +5,7 @@ import { createSession, setSessionCookie } from '@/lib/auth/session';
 import { loginRateLimiter } from '@/lib/auth/rate-limiter';
 import { logSecurityAudit } from '@/lib/auth/audit';
 import { createMfaChallenge } from '@/lib/auth/mfa';
+import { getSchoolSetting } from '@/lib/settings/settings-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -116,6 +117,79 @@ export async function POST(req: NextRequest) {
         { message: 'No active institutional membership or platform role found for this account.' },
         { status: 403 }
       );
+    }
+
+    // 4. Institutional Policy Enforcement (Phase 1 P0 Security Remediation)
+    if (primaryMembership) {
+      const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
+      const authPolicy = schoolSetting.authentication;
+
+      // Policy A: Disallow standard password login if disabled by institution
+      if (authPolicy && authPolicy.passwordLoginEnabled === false) {
+        await logSecurityAudit({
+          event: 'LOGIN_FAILURE',
+          userId: user.id,
+          schoolId: primaryMembership.schoolId,
+          ipAddress: ip,
+          userAgent,
+          details: { email: trimmedEmail, reason: 'PASSWORD_LOGIN_DISABLED_BY_SCHOOL' },
+        });
+
+        return NextResponse.json(
+          { message: 'Standard password login is disabled by your institutional administration.' },
+          { status: 403 }
+        );
+      }
+
+      // Policy B: Mandatory email verification enforcement
+      if (authPolicy && authPolicy.emailVerificationEnabled && !user.emailVerifiedAt) {
+        await logSecurityAudit({
+          event: 'LOGIN_FAILURE',
+          userId: user.id,
+          schoolId: primaryMembership.schoolId,
+          ipAddress: ip,
+          userAgent,
+          details: { email: trimmedEmail, reason: 'EMAIL_VERIFICATION_REQUIRED' },
+        });
+
+        return NextResponse.json(
+          { message: 'Mandatory email verification is required by your institution before signing in. Please verify your email.' },
+          { status: 403 }
+        );
+      }
+
+      // Policy C: Role-based portal access restriction
+      if (authPolicy && authPolicy.roleAccess) {
+        const userRole = primaryMembership.role;
+        let isRoleAllowed = true;
+
+        if (userRole === 'TEACHER') {
+          isRoleAllowed = authPolicy.roleAccess.teacher !== false;
+        } else if (userRole === 'STUDENT') {
+          isRoleAllowed = authPolicy.roleAccess.student !== false;
+        } else if (userRole === 'PARENT') {
+          isRoleAllowed = authPolicy.roleAccess.parent !== false;
+        } else if (userRole === 'ADMIN' || userRole === 'SCHOOL_ADMIN' || userRole === 'PRINCIPAL') {
+          isRoleAllowed = authPolicy.roleAccess.schoolAdmin !== false;
+        }
+
+        // Exempt Director, Owner, and Platform Roles from lockout
+        if (!isRoleAllowed && userRole !== 'DIRECTOR' && userRole !== 'OWNER' && !platformRole) {
+          await logSecurityAudit({
+            event: 'LOGIN_FAILURE',
+            userId: user.id,
+            schoolId: primaryMembership.schoolId,
+            ipAddress: ip,
+            userAgent,
+            details: { email: trimmedEmail, role: userRole, reason: 'ROLE_PORTAL_ACCESS_RESTRICTED' },
+          });
+
+          return NextResponse.json(
+            { message: `Portal access for the ${userRole} role is currently restricted by institutional administration.` },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Check if MFA is enabled on the account
