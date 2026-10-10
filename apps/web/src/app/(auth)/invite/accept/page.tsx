@@ -14,6 +14,9 @@ interface VerifiedInvitation {
   id: string;
   email: string;
   role: string;
+  customRoleId?: string | null;
+  customRoleName?: string | null;
+  displayRole?: string;
   department?: string | null;
   designation?: string | null;
   schoolName: string;
@@ -169,7 +172,7 @@ function InviteAcceptContent() {
             <CardTitle className="text-xl font-bold">Accept Invitation</CardTitle>
             <CardDescription className="text-xs">
               Joining <strong className="text-foreground">{invitation.schoolName}</strong> as a{' '}
-              <strong className="text-foreground">{invitation.role}</strong> ({invitation.email}).
+              <strong className="text-foreground">{invitation.displayRole || invitation.customRoleName || invitation.role}</strong> ({invitation.email}).
             </CardDescription>
           </CardHeader>
 

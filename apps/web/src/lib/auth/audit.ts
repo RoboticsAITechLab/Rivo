@@ -38,7 +38,12 @@ export type SecurityAuditEvent =
   | 'ROLL_CHANGED'
   | 'ROLL_REBALANCED'
   | 'ROLL_MANUAL_OVERRIDE'
-  | 'ROLL_AUTO_REGENERATED';
+  | 'ROLL_AUTO_REGENERATED'
+  | 'INVITATION_REVOKED'
+  | 'INVITATION_RESENT'
+  | 'ROLE_CREATED'
+  | 'ROLE_UPDATED'
+  | 'ROLE_DELETED';
 
 export interface AuditLogParams {
   event: SecurityAuditEvent;

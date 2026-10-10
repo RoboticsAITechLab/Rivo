@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
         school: {
           select: { name: true, slug: true },
         },
+        customRole: {
+          select: { id: true, name: true, code: true, baseRole: true, description: true },
+        },
       },
     });
 
@@ -38,12 +41,19 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const displayRole = invitation.customRole
+      ? `${invitation.customRole.name} (${invitation.role})`
+      : invitation.role;
+
     return NextResponse.json({
       valid: true,
       invitation: {
         id: invitation.id,
         email: invitation.email,
         role: invitation.role,
+        customRoleId: invitation.customRoleId,
+        customRoleName: invitation.customRole?.name || null,
+        displayRole,
         department: invitation.department,
         designation: invitation.designation,
         schoolName: invitation.school.name,

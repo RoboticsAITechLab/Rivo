@@ -45,6 +45,7 @@ export default function UsersManagementPage() {
   const store = useSchoolStore();
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [assignableRoles, setAssignableRoles] = useState<Array<{ id: string; name: string; code: string; isCustom: boolean }>>([]);
   const roles = store.roles || [];
   const campuses = store.campuses || [];
 
@@ -55,8 +56,28 @@ export default function UsersManagementPage() {
   // Invite modal state
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState(roles[0]?.name || 'Teacher');
+  const [selectedRoleId, setSelectedRoleId] = useState('');
   const [inviteCampus, setInviteCampus] = useState(campuses[0]?.id || '');
+
+  React.useEffect(() => {
+    async function fetchRoles() {
+      try {
+        const res = await fetch('/api/school/roles');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.assignableRoles) {
+            setAssignableRoles(data.assignableRoles);
+            if (data.assignableRoles.length > 0) {
+              setSelectedRoleId(data.assignableRoles[0].id);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch authoritative roles:', err);
+      }
+    }
+    fetchRoles();
+  }, []);
 
   const loadUsers = React.useCallback(async () => {
     try {
@@ -89,13 +110,24 @@ export default function UsersManagementPage() {
     }
 
     try {
+      const targetRoleObj = assignableRoles.find((r) => r.id === selectedRoleId);
+      const payload: any = {
+        email: inviteEmail.trim().toLowerCase(),
+        campusId: inviteCampus || undefined,
+      };
+
+      if (targetRoleObj?.isCustom) {
+        payload.customRoleId = targetRoleObj.id;
+      } else if (targetRoleObj) {
+        payload.role = targetRoleObj.code;
+      } else {
+        payload.role = 'TEACHER';
+      }
+
       const res = await fetch('/api/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: inviteEmail.trim().toLowerCase(),
-          role: inviteRole.toUpperCase().replace(/\s+/g, '_'),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -355,13 +387,15 @@ export default function UsersManagementPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="inviteRole">Assigned Role *</Label>
-                <Select value={inviteRole} onValueChange={setInviteRole}>
+                <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
                   <SelectTrigger id="inviteRole">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {roles.map(r => (
-                      <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                    {assignableRoles.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name} {r.isCustom ? '★ Custom' : '(System)'}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

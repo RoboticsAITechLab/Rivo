@@ -4,6 +4,7 @@ import { hashPassword, hashToken, validatePasswordPolicy } from '@/lib/auth/cryp
 import { createSession, setSessionCookie } from '@/lib/auth/session';
 import { logSecurityAudit } from '@/lib/auth/audit';
 import { getSecuritySettings } from '@/lib/settings/settings-service';
+import { isRoleActive } from '@/lib/roles/role-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       where: { tokenHash },
       include: {
         school: true,
+        customRole: true,
       },
     });
 
@@ -53,7 +55,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Enforce Institutional Password Policy
+    // Revalidate custom role status if one was assigned
+    if (invitation.customRoleId) {
+      if (!invitation.customRole) {
+        return NextResponse.json(
+          {
+            message:
+              'The custom role assigned to this invitation has been deleted. Please request a new invitation from your administrator.',
+          },
+          { status: 400 }
+        );
+      }
+
+      if (!isRoleActive(invitation.customRole)) {
+        return NextResponse.json(
+          {
+            message:
+              'The custom role assigned to this invitation has been deactivated. Please contact your school administrator.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Enforce Institutional Password Policy if configured
     const securitySettings = await getSecuritySettings(invitation.schoolId);
     if (securitySettings?.passwordPolicy) {
       const institutionalValidation = validatePasswordPolicy(password, securitySettings.passwordPolicy);
@@ -68,14 +93,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Parse name
+    // Parse full name
     const parts = fullName.trim().split(/\s+/);
-    const firstName = parts[0] || 'Faculty';
+    const firstName = parts[0] || 'Staff';
     const lastName = parts.slice(1).join(' ') || 'Member';
 
     const hashedPassword = await hashPassword(password);
 
-    // Atomic transaction for account activation
+    // Atomic transaction for account activation and membership creation
     const result = await prisma.$transaction(async (tx) => {
       // 1. Mark invitation accepted
       await tx.staffInvitation.update({
@@ -83,7 +108,7 @@ export async function POST(req: NextRequest) {
         data: { acceptedAt: new Date() },
       });
 
-      // 2. Create or update User
+      // 2. Create or update User account
       let user = await tx.user.findUnique({
         where: { email: invitation.email },
       });
@@ -114,7 +139,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 3. Upsert SchoolMembership
+      // 3. Upsert SchoolMembership with validated role and customRoleId
       const membership = await tx.schoolMembership.upsert({
         where: {
           userId_schoolId: {
@@ -136,7 +161,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 4. If TEACHER, upsert Teacher record
+      // 4. If base role is TEACHER, upsert teacher profile
       let teacherProfile = null;
       if (invitation.role === 'TEACHER') {
         const existingTeacher = await tx.teacher.findFirst({
@@ -197,15 +222,24 @@ export async function POST(req: NextRequest) {
       schoolId: invitation.schoolId,
       ipAddress: ip,
       userAgent,
-      details: { role: invitation.role },
+      details: {
+        role: invitation.role,
+        customRoleId: invitation.customRoleId,
+        customRoleName: invitation.customRole?.name || null,
+      },
     });
+
+    const displayRole = invitation.customRole
+      ? `${invitation.customRole.name} (${invitation.role})`
+      : invitation.role === 'TEACHER' ? 'Teacher' : invitation.role;
 
     const authUser = {
       id: result.user.id,
       name: `${result.user.firstName} ${result.user.lastName}`.trim(),
       email: result.user.email,
-      role: invitation.role === 'TEACHER' ? 'Teacher' : invitation.role,
+      role: displayRole,
       roleType: invitation.role,
+      customRoleId: invitation.customRoleId,
       initials: `${result.user.firstName?.[0] || ''}${result.user.lastName?.[0] || ''}`.toUpperCase() || 'FC',
       schoolId: invitation.school.id,
       schoolName: invitation.school.name,
@@ -221,8 +255,11 @@ export async function POST(req: NextRequest) {
 
     setSessionCookie(response, rawToken, true);
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error accepting invitation:', error);
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { message: error.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
