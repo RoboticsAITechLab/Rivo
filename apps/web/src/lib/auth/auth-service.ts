@@ -296,6 +296,13 @@ export class AuthService implements IAuthService {
         }),
       });
 
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        // Response body might not be JSON
+      }
+
       if (!response.ok) {
         if (response.status === 404 || response.status === 502 || response.status === 503) {
           return {
@@ -305,14 +312,29 @@ export class AuthService implements IAuthService {
           };
         }
 
+        if (response.status === 429) {
+          return {
+            success: false,
+            error: data?.message || 'Too many password reset requests. Please try again in an hour.',
+            errorCode: 'RATE_LIMITED',
+          };
+        }
+
+        if (response.status === 403) {
+          return {
+            success: false,
+            error: data?.message || 'Self-service password reset is disabled by institutional policy.',
+            errorCode: 'FORBIDDEN',
+          };
+        }
+
         return {
           success: false,
-          error: 'Something went wrong. Please try again.',
+          error: data?.message || 'Something went wrong. Please try again.',
           errorCode: 'UNKNOWN_ERROR',
         };
       }
 
-      const data = await response.json();
       return {
         success: true,
         message:
@@ -342,12 +364,43 @@ export class AuthService implements IAuthService {
         }),
       });
 
+      let data: any = null;
+      try {
+        data = await response.json();
+      } catch {
+        // Response body might not be JSON
+      }
+
       if (!response.ok) {
-        if (response.status === 400 || response.status === 422) {
+        if (response.status === 422) {
           return {
             success: false,
-            error: 'Reset link is invalid or expired.',
+            error: data?.message || 'Password does not meet complexity requirements.',
+            errorCode: 'PASSWORD_TOO_WEAK',
+          };
+        }
+
+        if (response.status === 400) {
+          return {
+            success: false,
+            error: data?.message || 'Reset link is invalid or expired.',
             errorCode: 'INVALID_TOKEN',
+          };
+        }
+
+        if (response.status === 429) {
+          return {
+            success: false,
+            error: data?.message || 'Too many reset attempts. Please try again in 15 minutes.',
+            errorCode: 'RATE_LIMITED',
+          };
+        }
+
+        if (response.status === 403) {
+          return {
+            success: false,
+            error: data?.message || 'Account is inactive or disabled. Contact administrator.',
+            errorCode: 'FORBIDDEN',
           };
         }
 
@@ -361,15 +414,14 @@ export class AuthService implements IAuthService {
 
         return {
           success: false,
-          error: 'Something went wrong. Please try again.',
+          error: data?.message || 'Something went wrong. Please try again.',
           errorCode: 'UNKNOWN_ERROR',
         };
       }
 
-      const data = await response.json();
       return {
         success: true,
-        message: data?.message || 'Your password has been reset successfully.',
+        message: data?.message || 'Your password has been reset successfully. Please sign in with your new password.',
       };
     } catch {
       return {

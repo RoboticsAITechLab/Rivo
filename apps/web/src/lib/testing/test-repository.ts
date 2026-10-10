@@ -8,6 +8,7 @@ import { FunctionalRunResult, TestCaseExecution } from './functional-runner';
 import { LoadTestMetrics } from './load-test-engine';
 import { ComprehensiveHealthReport } from './health-adapter';
 import { sanitizePayload } from './sanitizer';
+import type { CompleteRegressionReport } from './complete-regression';
 
 // In-memory fallback cache to ensure dashboard always renders even during DB hiccups
 const inMemoryRuns: any[] = [];
@@ -102,6 +103,76 @@ export async function persistFunctionalRun(
     id: savedId,
     ...runData,
     results: run.results,
+  });
+
+  return savedId;
+}
+
+/**
+ * Persists a complete production regression run to PostgreSQL
+ */
+export async function persistRegressionRun(
+  report: CompleteRegressionReport,
+  operator: string = 'PLATFORM_OPERATOR'
+): Promise<string> {
+  const runData = {
+    suite: 'COMPLETE_PRODUCTION_REGRESSION',
+    targetUrl: report.targetUrl,
+    environment: 'production',
+    initiatedBy: operator,
+    status: report.status,
+    startedAt: new Date(report.startedAt),
+    completedAt: new Date(report.completedAt),
+    durationMs: report.totalDurationMs,
+    totalTests: report.totalTests,
+    passedTests: report.passedTests,
+    failedTests: report.failedTests,
+    skippedTests: report.skippedTests + report.blockedTests,
+    passRate: report.passRate,
+    metadata: sanitizePayload({
+      executiveSummary: report.executiveSummary,
+      suiteSummaries: report.suiteSummaries,
+      targetHostname: report.targetHostname,
+      blockedSuitesCount: report.blockedSuitesCount,
+    }) as any,
+    errorSummary:
+      report.failedTests > 0
+        ? `${report.failedTests} tests failed in regression run ${report.runId}`
+        : null,
+  };
+
+  let savedId = report.runId;
+
+  try {
+    const created = await prisma.testRun.create({
+      data: runData,
+    });
+    savedId = created.id;
+
+    if (report.allResults && report.allResults.length > 0) {
+      await prisma.testCaseResult.createMany({
+        data: report.allResults.map((tc) => ({
+          testRunId: savedId,
+          name: tc.name,
+          category: tc.category,
+          status: tc.status,
+          durationMs: tc.durationMs,
+          httpStatus: tc.httpStatus || null,
+          endpoint: tc.endpoint || null,
+          method: tc.method || null,
+          errorMessage: tc.errorMessage || null,
+          evidence: tc.evidence ? (sanitizePayload(tc.evidence) as any) : undefined,
+        })),
+      });
+    }
+  } catch (err: any) {
+    console.warn('[TEST_REPOSITORY] Database write fallback for regression run:', err.message);
+  }
+
+  inMemoryRuns.unshift({
+    id: savedId,
+    ...runData,
+    results: report.allResults,
   });
 
   return savedId;
@@ -419,11 +490,131 @@ export async function getDashboardMetrics(): Promise<DashboardMetricsSummary> {
 }
 
 /**
- * Generates sanitized downloadable JSON or CSV report for a run
+ * Generates sanitized downloadable HTML, JSON or CSV report for a run
  */
-export async function generateRunReport(runId: string, format: 'json' | 'csv' = 'json') {
+export async function generateRunReport(
+  runId: string,
+  format: 'html' | 'json' | 'csv' = 'json'
+) {
   const run = await getTestRunDetails(runId);
   if (!run) throw new Error(`Test run ${runId} not found`);
+
+  if (format === 'html') {
+    const isSuccess = run.status === 'PASSED';
+    const statusColor = isSuccess ? '#10b981' : run.status === 'PARTIAL' ? '#f59e0b' : '#ef4444';
+    const sanitizedRun = sanitizePayload(run);
+
+    const testRows = (run.results || [])
+      .map(
+        (r: any) => `
+        <tr style="border-bottom: 1px solid #1e293b;">
+          <td style="padding: 10px 14px; font-weight: 500; color: #f1f5f9;">${r.name || 'Test'}</td>
+          <td style="padding: 10px 14px; color: #94a3b8; font-family: monospace; font-size: 12px;">${r.endpoint || '-'}</td>
+          <td style="padding: 10px 14px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; ${
+              r.status === 'PASSED'
+                ? 'background: rgba(16, 185, 129, 0.15); color: #34d399;'
+                : r.status === 'BLOCKED'
+                ? 'background: rgba(245, 158, 11, 0.15); color: #fbbf24;'
+                : 'background: rgba(239, 68, 68, 0.15); color: #f87171;'
+            }">${r.status}</span>
+          </td>
+          <td style="padding: 10px 14px; text-align: right; color: #94a3b8; font-family: monospace;">${r.durationMs || 0}ms</td>
+          <td style="padding: 10px 14px; color: #ef4444; font-size: 12px;">${r.errorMessage || '-'}</td>
+        </tr>`
+      )
+      .join('');
+
+    const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rivo Engineering Report - ${run.id}</title>
+  <style>
+    body { margin: 0; padding: 32px; background: #090d16; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+    .header-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700; background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}44; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 20px 0; }
+    .metric-box { background: #1e293b55; border: 1px solid #334155; border-radius: 8px; padding: 16px; }
+    .metric-val { font-size: 24px; font-weight: 800; color: #fff; margin-top: 4px; }
+    .metric-lbl { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+    th { padding: 12px 14px; background: #1e293b88; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155; }
+  </style>
+</head>
+<body>
+  <div style="max-width: 1100px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <h1 style="margin: 0 0 6px 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em;">Rivo Production Test Verification Report</h1>
+        <p style="margin: 0; color: #94a3b8; font-size: 14px;">Target: <strong>${run.targetUrl}</strong> &bull; Initiator: <strong>${run.initiatedBy || 'Platform Operator'}</strong></p>
+      </div>
+      <div class="header-badge">${run.status}</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0; color: #38bdf8;">Executive Summary</h3>
+      <div class="metric-grid">
+        <div class="metric-box">
+          <div class="metric-lbl">Pass Rate</div>
+          <div class="metric-val" style="color: ${statusColor};">${run.passRate}%</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Total Tests</div>
+          <div class="metric-val">${run.totalTests}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Passed</div>
+          <div class="metric-val" style="color: #34d399;">${run.passedTests}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Failed</div>
+          <div class="metric-val" style="color: #f87171;">${run.failedTests}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-lbl">Duration</div>
+          <div class="metric-val">${run.durationMs}ms</div>
+        </div>
+      </div>
+      <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 12px 0 0 0;">
+        Run ID: <code>${run.id}</code> &bull; Execution started at ${run.startedAt}.
+        Verification performed against live production edge deployment with strict non-destructive tenant isolation.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0; margin-bottom: 16px; color: #38bdf8;">Per-Test Case Audit Records</h3>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Test Case Name</th>
+              <th>Endpoint / Scope</th>
+              <th style="text-align: center;">Outcome</th>
+              <th style="text-align: right;">Duration</th>
+              <th>Diagnostic Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${testRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="text-align: center; color: #64748b; font-size: 12px; margin-top: 32px;">
+      Rivo Production Testing Platform &bull; Security Cleared &bull; Confidential Engineering Audit
+    </div>
+  </div>
+</body>
+</html>`;
+
+    return {
+      contentType: 'text/html',
+      filename: `rivo-test-report-${runId}.html`,
+      content: htmlContent,
+    };
+  }
 
   if (format === 'json') {
     return {

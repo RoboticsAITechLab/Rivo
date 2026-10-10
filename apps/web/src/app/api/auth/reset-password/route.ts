@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tokenHash = hashToken(token);
+    const cleanToken = String(token).trim();
+    const tokenHash = hashToken(cleanToken);
 
     // Find valid, unused, non-expired token
     const resetRecord = await prisma.passwordResetToken.findUnique({
@@ -64,9 +65,13 @@ export async function POST(req: NextRequest) {
     const primaryMembership = user.memberships[0];
     let customPolicy;
     if (primaryMembership) {
-      const { getSchoolSetting } = await import('@/lib/settings/settings-service');
-      const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
-      customPolicy = schoolSetting.passwordPolicy;
+      try {
+        const { getSchoolSetting } = await import('@/lib/settings/settings-service');
+        const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
+        customPolicy = schoolSetting?.passwordPolicy;
+      } catch (policyErr) {
+        console.warn('[RESET_PASSWORD] Failed to load school password policy, using defaults:', policyErr);
+      }
     }
 
     // Password policy check against school policy
@@ -108,6 +113,7 @@ export async function POST(req: NextRequest) {
     await logSecurityAudit({
       event: 'PASSWORD_RESET_SUCCESS',
       userId: user.id,
+      schoolId: primaryMembership?.schoolId || null,
       ipAddress: ip,
       userAgent,
       details: { email: user.email },

@@ -6,6 +6,23 @@ import { logSecurityAudit } from '@/lib/auth/audit';
 import { sendPasswordResetEmail } from '@/lib/email/email-service';
 import { getSchoolSetting } from '@/lib/settings/settings-service';
 
+function getBaseUrl(req: NextRequest): string {
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
+  if (host) {
+    const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+    return `${proto}://${host}`.replace(/\/+$/, '');
+  }
+  const origin = req.headers.get('origin');
+  if (origin) {
+    return origin.replace(/\/+$/, '');
+  }
+  if (req.nextUrl?.origin && !req.nextUrl.origin.includes('0.0.0.0')) {
+    return req.nextUrl.origin.replace(/\/+$/, '');
+  }
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  return appUrl.replace(/\/+$/, '');
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -46,28 +63,32 @@ export async function POST(req: NextRequest) {
       let expiryHours = 24;
 
       if (primaryMembership) {
-        const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
-        const recoveryPolicy = schoolSetting.recovery;
+        try {
+          const schoolSetting = await getSchoolSetting(primaryMembership.schoolId, 'security');
+          const recoveryPolicy = schoolSetting?.recovery;
 
-        // Policy check: Enforce institutional self-service password reset toggle
-        if (recoveryPolicy && recoveryPolicy.allowSelfServiceReset === false) {
-          await logSecurityAudit({
-            event: 'PASSWORD_RESET_REQUEST',
-            userId: user.id,
-            schoolId: primaryMembership.schoolId,
-            ipAddress: ip,
-            userAgent,
-            details: { email: trimmedEmail, status: 'REJECTED', reason: 'SELF_SERVICE_RESET_DISABLED' },
-          });
+          // Policy check: Enforce institutional self-service password reset toggle
+          if (recoveryPolicy && recoveryPolicy.allowSelfServiceReset === false) {
+            await logSecurityAudit({
+              event: 'PASSWORD_RESET_REQUEST',
+              userId: user.id,
+              schoolId: primaryMembership.schoolId,
+              ipAddress: ip,
+              userAgent,
+              details: { email: trimmedEmail, status: 'REJECTED', reason: 'SELF_SERVICE_RESET_DISABLED' },
+            });
 
-          return NextResponse.json(
-            { message: 'Self-service password reset is disabled by institutional policy. Please contact your administrator.' },
-            { status: 403 }
-          );
-        }
+            return NextResponse.json(
+              { message: 'Self-service password reset is disabled by institutional policy. Please contact your administrator.' },
+              { status: 403 }
+            );
+          }
 
-        if (recoveryPolicy?.resetLinkExpiryHours && recoveryPolicy.resetLinkExpiryHours > 0) {
-          expiryHours = recoveryPolicy.resetLinkExpiryHours;
+          if (recoveryPolicy?.resetLinkExpiryHours && recoveryPolicy.resetLinkExpiryHours > 0) {
+            expiryHours = recoveryPolicy.resetLinkExpiryHours;
+          }
+        } catch (settingsError) {
+          console.warn('[FORGOT_PASSWORD] Failed to resolve school security setting, using defaults:', settingsError);
         }
       }
 
@@ -92,21 +113,27 @@ export async function POST(req: NextRequest) {
       await logSecurityAudit({
         event: 'PASSWORD_RESET_REQUEST',
         userId: user.id,
+        schoolId: primaryMembership?.schoolId || null,
         ipAddress: ip,
         userAgent,
         details: { email: trimmedEmail },
       });
 
-      const appUrl = process.env.APP_URL || 'http://localhost:3000';
-      const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+      const baseUrl = getBaseUrl(req);
+      const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
 
-      await sendPasswordResetEmail({
-        to: trimmedEmail,
-        resetUrl,
-        userId: user.id,
-        ipAddress: ip,
-        userAgent,
-      });
+      try {
+        await sendPasswordResetEmail({
+          to: trimmedEmail,
+          resetUrl,
+          userId: user.id,
+          schoolId: primaryMembership?.schoolId,
+          ipAddress: ip,
+          userAgent,
+        });
+      } catch (emailError) {
+        console.error('[FORGOT_PASSWORD] Failed to send password reset email:', emailError);
+      }
     }
 
     // Generic response regardless of whether email exists (prevents account enumeration)

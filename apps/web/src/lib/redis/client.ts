@@ -18,13 +18,16 @@ export function getRedisClient(): Redis | null {
 
   // In local mode without REDIS_URL, return null for graceful in-memory fallback
   if (!redisUrl || redisUrl.trim() === '' || redisUrl === 'redis://localhost:6379/placeholder') {
-    if (isProductionMode()) {
-      console.warn('[REDIS_SECURITY] REDIS_URL is required in production mode!');
-    }
     return null;
   }
 
   redisUrl = redisUrl.trim();
+
+  // If in production mode but redisUrl points to localhost/127.0.0.1, serverless cannot reach it
+  if (isProductionMode() && (redisUrl.includes('localhost') || redisUrl.includes('127.0.0.1'))) {
+    console.warn('[REDIS_SECURITY] Localhost Redis URL ignored in production mode. Using fallback.');
+    return null;
+  }
 
   // Ensure rediss:// TLS protocol for Upstash endpoints
   if (redisUrl.includes('upstash.io') && redisUrl.startsWith('redis://')) {
@@ -34,13 +37,13 @@ export function getRedisClient(): Redis | null {
   if (!redisInstance) {
     try {
       redisInstance = new Redis(redisUrl, {
-        maxRetriesPerRequest: 2,
-        connectTimeout: 5000,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2500,
         retryStrategy: (times) => {
-          if (times > 3) {
-            return null; // Stop retrying after 3 attempts
+          if (times > 2) {
+            return null; // Stop retrying after 2 attempts
           }
-          return Math.min(times * 100, 1000);
+          return Math.min(times * 100, 500);
         },
         // In serverless Next.js, fail fast instead of holding requests in memory
         enableOfflineQueue: false,

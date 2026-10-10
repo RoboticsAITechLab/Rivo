@@ -95,7 +95,7 @@ export interface ForgotPasswordResult {
   success: boolean;
   message?: string;
   error?: string;
-  errorCode?: 'NETWORK_ERROR' | 'SERVICE_UNAVAILABLE' | 'UNKNOWN_ERROR';
+  errorCode?: 'NETWORK_ERROR' | 'SERVICE_UNAVAILABLE' | 'RATE_LIMITED' | 'FORBIDDEN' | 'UNKNOWN_ERROR';
 }
 
 export interface ResetPasswordPayload {
@@ -110,6 +110,8 @@ export interface ResetPasswordResult {
   errorCode?:
     | 'INVALID_TOKEN'
     | 'PASSWORD_TOO_WEAK'
+    | 'RATE_LIMITED'
+    | 'FORBIDDEN'
     | 'NETWORK_ERROR'
     | 'SERVICE_UNAVAILABLE'
     | 'UNKNOWN_ERROR';

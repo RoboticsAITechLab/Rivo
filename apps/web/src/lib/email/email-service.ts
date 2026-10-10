@@ -140,7 +140,7 @@ export async function sendPasswordResetEmail(
 
   if (!resend) {
     // Local / Dev simulated delivery
-    console.log(`[EMAIL SIMULATION] Password Reset dispatched to: ${to}`);
+    console.log(`[EMAIL SIMULATION] Password Reset link for ${to}: ${resetUrl}`);
     await logSecurityAudit({
       schoolId: schoolId || null,
       userId: userId || null,
@@ -156,6 +156,7 @@ export async function sendPasswordResetEmail(
   }
 
   try {
+    console.log(`[PASSWORD RESET] Dispatching reset email to ${to}...`);
     const response = await resend.emails.send({
       from: `${sender.name} <${sender.email}>`,
       to: [to],
@@ -166,6 +167,7 @@ export async function sendPasswordResetEmail(
 
     if (response.error) {
       console.error('[EMAIL ERROR] Failed to send password reset via Resend:', response.error.message);
+      console.log(`[PASSWORD RESET FALLBACK LINK] ${to}: ${resetUrl}`);
       await logSecurityAudit({
         schoolId: schoolId || null,
         userId: userId || null,

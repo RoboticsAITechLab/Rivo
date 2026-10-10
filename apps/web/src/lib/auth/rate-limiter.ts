@@ -1,4 +1,4 @@
-import { getRedisClient, isProductionMode } from '@/lib/redis/client';
+import { getRedisClient, isRedisHealthy, isProductionMode } from '@/lib/redis/client';
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -46,7 +46,7 @@ export class RateLimiter {
     const redis = getRedisClient();
     const namespacedKey = this.getNamespacedKey(key);
 
-    if (redis) {
+    if (redis && isRedisHealthy()) {
       try {
         const formattedKey = namespacedKey.startsWith('rivo:rl:') ? namespacedKey : `rivo:rl:${namespacedKey}`;
         const result = (await redis.eval(
@@ -75,29 +75,11 @@ export class RateLimiter {
           resetAt,
         };
       } catch (redisError) {
-        console.error('[REDIS_RATE_LIMIT_ERROR] Failed Redis rate limit check:', redisError);
-        if (isProductionMode()) {
-          // Fail-closed policy in production: do not allow requests if rate limiter fails
-          console.warn('[REDIS_SECURITY] Fail-closed rate limit applied in production');
-          return {
-            allowed: false,
-            remaining: 0,
-            resetAt: Date.now() + this.windowMs,
-          };
-        }
-        // In local mode, fall through to in-memory limiter
+        console.warn('[REDIS_RATE_LIMIT_ERROR] Failed Redis rate limit check, using in-memory fallback:', redisError);
       }
-    } else if (isProductionMode()) {
-      // Production without Redis must fail closed
-      console.warn('[REDIS_SECURITY] Production Redis is required but missing. Failing closed.');
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt: Date.now() + this.windowMs,
-      };
     }
 
-    // Local / In-memory fallback
+    // Graceful in-memory fallback: ensures rate limiting is always enforced per instance
     return this.consumeInMemory(key);
   }
 

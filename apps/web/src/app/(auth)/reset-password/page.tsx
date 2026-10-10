@@ -212,7 +212,7 @@ const css = `
 
 function ResetPasswordFormContent() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token') || '';
+  const token = (searchParams.get('token') || searchParams.get('t') || '').trim();
 
   const { resetPassword } = useAuth();
 
@@ -276,6 +276,7 @@ function ResetPasswordFormContent() {
         const msg =
           result.error ||
           (result.errorCode === 'INVALID_TOKEN'       ? 'Reset link is invalid or has expired.'
+          : result.errorCode === 'PASSWORD_TOO_WEAK'  ? (result.error || 'Password does not meet complexity requirements.')
           : result.errorCode === 'SERVICE_UNAVAILABLE' ? 'Password reset service is currently unavailable.'
           : result.errorCode === 'NETWORK_ERROR'       ? 'Unable to connect. Please try again.'
           : 'Something went wrong. Please try again.');
