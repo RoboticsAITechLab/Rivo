@@ -46,53 +46,47 @@ export default function DataExportPage() {
     );
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (selectedDatasets.length === 0) {
       toast.error('Please select at least one dataset to export');
       return;
     }
 
-    setIsExporting(true);
+    try {
+      setIsExporting(true);
+      const res = await fetch('/api/school/data/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datasets: selectedDatasets,
+          format,
+        }),
+      });
 
-    setTimeout(() => {
-      const exportPayload: Record<string, any> = {};
-
-      if (selectedDatasets.includes('STUDENTS')) exportPayload.students = store.students;
-      if (selectedDatasets.includes('CLASSES')) exportPayload.classes = store.classes;
-      if (selectedDatasets.includes('SUBJECTS')) exportPayload.subjects = store.subjects;
-      if (selectedDatasets.includes('TEACHERS')) exportPayload.teachers = store.teachers;
-      if (selectedDatasets.includes('SCHEDULES')) exportPayload.schedules = store.schedules;
-      if (selectedDatasets.includes('EXAMS')) exportPayload.exams = store.exams;
-
-      if (format === 'JSON') {
-        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-          JSON.stringify(exportPayload, null, 2)
-        )}`;
-        const downloadAnchor = document.createElement('a');
-        downloadAnchor.setAttribute('href', jsonString);
-        downloadAnchor.setAttribute('download', `rivo_school_export_${Date.now()}.json`);
-        document.body.appendChild(downloadAnchor);
-        downloadAnchor.click();
-        downloadAnchor.remove();
-      } else {
-        // Flatten into CSV lines
-        let csvContent = 'data:text/csv;charset=utf-8,';
-        csvContent += 'Dataset,TotalRecords,ExportDate\n';
-        Object.entries(exportPayload).forEach(([key, items]) => {
-          csvContent += `${key},${Array.isArray(items) ? items.length : 1},${new Date().toISOString()}\n`;
-        });
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement('a');
-        link.setAttribute('href', encodedUri);
-        link.setAttribute('download', `rivo_summary_export_${Date.now()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Export failed' }));
+        throw new Error(err.message || 'Export failed');
       }
 
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const ext = format === 'CSV' ? 'csv' : 'json';
+      const filename = `rivo_school_export_${new Date().toISOString().slice(0, 10)}.${ext}`;
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Institutional archive (${ext.toUpperCase()}) generated and downloaded`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to export data');
+    } finally {
       setIsExporting(false);
-      toast.success('Institutional archive generated and downloaded');
-    }, 800);
+    }
   };
 
   const datasetMetrics: { key: ExportDataset; label: string; count: number; desc: string }[] = [

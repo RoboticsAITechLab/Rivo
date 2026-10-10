@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
 import { PermissionAction } from '@/features/settings/types';
 import { 
   ShieldCheck, 
@@ -11,7 +10,8 @@ import {
   Check, 
   X,
   ExternalLink,
-  Layers
+  Layers,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,11 +30,38 @@ const modulesList = [
 ];
 
 export default function PermissionsMatrixPage() {
-  const store = useSchoolStore();
-  const roles = store.roles || [];
-  const permissionsStore = store.permissions || {};
+  const [roles, setRoles] = useState<any[]>([]);
+  const [permissionsStore, setPermissionsStore] = useState<Record<string, Record<string, Record<PermissionAction, boolean>>>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeRoleId, setActiveRoleId] = useState<string>('role-admin');
 
-  const [activeRoleId, setActiveRoleId] = useState<string>(roles[0]?.id || 'role-admin');
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=roles');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            const fetchedRoles = json.data.customRoles || [];
+            setRoles(fetchedRoles);
+            setPermissionsStore(json.data.permissions || {});
+            if (fetchedRoles.length > 0) {
+              setActiveRoleId(fetchedRoles[0].id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load permissions matrix:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
   const activeRole = roles.find(r => r.id === activeRoleId) || roles[0];
 
   const getPermission = (moduleKey: string, action: PermissionAction): boolean => {

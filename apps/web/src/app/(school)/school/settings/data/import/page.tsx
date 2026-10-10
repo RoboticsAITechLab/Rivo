@@ -75,18 +75,43 @@ export default function DataImportPage() {
     }
   };
 
-  const handleStartImport = () => {
+  const handleStartImport = async () => {
     if (!selectedFile) {
       toast.error('Please select a file to import');
       return;
     }
 
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      toast.success(`Parsed ${selectedFile.name} successfully. Records verified.`);
+    try {
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('entity', selectedEntity);
+
+      const res = await fetch('/api/school/data/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Data import failed');
+      }
+
+      if (data.errorCount > 0) {
+        toast.warning(
+          `Imported ${data.processedCount} of ${data.totalRows} records. ${data.errorCount} row(s) had schema errors.`
+        );
+      } else {
+        toast.success(
+          `Successfully imported and verified ${data.processedCount} ${selectedEntity.toLowerCase()} records in database.`
+        );
+      }
       setSelectedFile(null);
-    }, 1200);
+    } catch (err: any) {
+      toast.error(err.message || 'Data import encountered an error');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (

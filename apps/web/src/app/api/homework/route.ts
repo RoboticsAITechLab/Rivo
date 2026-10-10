@@ -22,6 +22,16 @@ export async function GET(req: NextRequest) {
       where: { schoolId: auth.schoolId, status: 'ACTIVE' },
     });
 
+    const homeworkSettings = await getHomeworkSettings(auth.schoolId);
+
+    // Enforce parent visibility policy
+    if (auth.role === 'PARENT' && !homeworkSettings.parentVisibility) {
+      return NextResponse.json(
+        { success: false, message: 'Parent homework visibility is disabled in institution settings.', homework: [] },
+        { status: 403 }
+      );
+    }
+
     const homeworkList = await prisma.homework.findMany({
       where: {
         schoolId: auth.schoolId,
@@ -138,12 +148,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Enforce attachment settings
-    if (attachments && attachments.length > 0 && !homeworkSettings.attachmentsEnabled) {
-      return NextResponse.json(
-        { message: 'Homework attachments are disabled in institution settings.' },
-        { status: 400 }
-      );
+    // Enforce attachment settings and size limits
+    if (attachments && attachments.length > 0) {
+      if (!homeworkSettings.attachmentsEnabled) {
+        return NextResponse.json(
+          { message: 'Homework attachments are disabled in institution settings.' },
+          { status: 400 }
+        );
+      }
+      const maxBytes = (homeworkSettings.maxAttachmentSizeMB || 10) * 1024 * 1024;
+      for (const att of attachments) {
+        const size = att.size || att.sizeBytes || (att.sizeMB ? att.sizeMB * 1024 * 1024 : 0);
+        if (size && size > maxBytes) {
+          return NextResponse.json(
+            { message: `Attachment file exceeds maximum permitted size of ${homeworkSettings.maxAttachmentSizeMB} MB.` },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // Resolve active academic session
@@ -231,7 +253,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const auth = await requireAuth(req, {
-      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF', 'OWNER'],
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF', 'OWNER', 'STUDENT'],
     });
     if (!auth.authorized) {
       return auth.response;
@@ -250,6 +272,45 @@ export async function PATCH(req: NextRequest) {
 
     if (!existing) {
       return NextResponse.json({ message: 'Homework not found.' }, { status: 404 });
+    }
+
+    const homeworkSettings = await getHomeworkSettings(auth.schoolId);
+
+    // Enforce teacher permissions
+    if (auth.role === 'TEACHER' && !homeworkSettings.teacherCanCreate && !homeworkSettings.teacherCanGrade) {
+      return NextResponse.json(
+        { message: 'Teacher is not permitted to modify homework in institution settings.' },
+        { status: 403 }
+      );
+    }
+
+    // Enforce late submission policy
+    const isPastDue = new Date(existing.dueDate).getTime() < Date.now();
+    if (isPastDue && !homeworkSettings.allowLateSubmissions && (status === 'SUBMITTED' || auth.role === 'STUDENT')) {
+      return NextResponse.json(
+        { message: 'Late homework submissions are disabled in institution settings.' },
+        { status: 400 }
+      );
+    }
+
+    // Enforce attachment size limit on updates
+    if (attachments && attachments.length > 0) {
+      if (!homeworkSettings.attachmentsEnabled) {
+        return NextResponse.json(
+          { message: 'Homework attachments are disabled in institution settings.' },
+          { status: 400 }
+        );
+      }
+      const maxBytes = (homeworkSettings.maxAttachmentSizeMB || 10) * 1024 * 1024;
+      for (const att of attachments) {
+        const size = att.size || att.sizeBytes || (att.sizeMB ? att.sizeMB * 1024 * 1024 : 0);
+        if (size && size > maxBytes) {
+          return NextResponse.json(
+            { message: `Attachment file exceeds maximum permitted size of ${homeworkSettings.maxAttachmentSizeMB} MB.` },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     const updated = await prisma.homework.update({

@@ -5,7 +5,7 @@ import {
   ResultPublicationStatus,
   SubjectResultStatus,
 } from '@prisma/client';
-import { getResultSettings } from '@/lib/settings/settings-service';
+import { getResultSettings, getExamSettings } from '@/lib/settings/settings-service';
 
 
 export interface GradingBand {
@@ -28,8 +28,23 @@ export const DEFAULT_GRADING_BANDS: GradingBand[] = [
   { minPercentage: 0, maxPercentage: 32.99, grade: 'E', points: 0, description: 'Needs Improvement' },
 ];
 
-export function calculateGrade(percentage: number): string {
+export interface CustomGradeRule {
+  grade: string;
+  minPercentage: number;
+  maxPercentage: number;
+  gradePoints?: number;
+  isPass?: boolean;
+}
+
+export function calculateGrade(percentage: number, customRules?: CustomGradeRule[]): string {
   const rounded = Math.round(percentage * 100) / 100;
+  if (customRules && customRules.length > 0) {
+    for (const rule of customRules) {
+      if (rounded >= rule.minPercentage && rounded <= rule.maxPercentage) {
+        return rule.grade;
+      }
+    }
+  }
   for (const band of DEFAULT_GRADING_BANDS) {
     if (rounded >= band.minPercentage && rounded <= band.maxPercentage) {
       return band.grade;
@@ -342,6 +357,11 @@ export class ResultsService {
       marksByStudent.set(mark.studentId, list);
     }
 
+    // Load tenant grading scheme configuration
+    const examSettings = await getExamSettings(schoolId);
+    const activeScheme = examSettings.gradingSchemes?.find((s: any) => s.isDefault) || examSettings.gradingSchemes?.[0];
+    const customRules = activeScheme?.rules as CustomGradeRule[] | undefined;
+
     const calculatedResults = await prisma.$transaction(async (tx) => {
       const results = [];
 
@@ -406,7 +426,7 @@ export class ResultsService {
               marksObtained: obtained,
               maxMarks: paper.maxMarks,
               passingMarks: paper.passingMarks,
-              grade: calculateGrade(subjectPercentage),
+              grade: calculateGrade(subjectPercentage, customRules),
               status: isPass ? 'PASS' : 'FAIL',
               remarks: mark.remarks || null,
             });
@@ -414,7 +434,7 @@ export class ResultsService {
         }
 
         const percentage = maxTotal > 0 ? Math.round((totalObtained / maxTotal) * 10000) / 100 : 0;
-        const overallGrade = calculateGrade(percentage);
+        const overallGrade = calculateGrade(percentage, customRules);
 
         let overallStatus: ExamResultOverallStatus = 'PASS';
         if (failedSubjectsCount > 1) {

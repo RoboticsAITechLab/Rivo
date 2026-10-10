@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
 import { ExamTimeSlot } from '@/features/settings/types';
 import { 
@@ -36,8 +36,8 @@ import {
 import { toast } from 'sonner';
 
 export default function ExamTimeSlotsSettingsPage() {
-  const store = useSchoolStore();
-  const timeSlots = store.examTimeSlots || [];
+  const [timeSlots, setTimeSlots] = useState<ExamTimeSlot[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -47,6 +47,47 @@ export default function ExamTimeSlotsSettingsPage() {
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('12:00');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setTimeSlots(json.data.timeSlots || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load exam time slots:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const persistSlots = async (updated: ExamTimeSlot[]) => {
+    try {
+      setTimeSlots(updated);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'examinations',
+          value: { timeSlots: updated },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to persist exam time slots to server');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Persistence failed');
+    }
+  };
 
   const calculateDuration = (start: string, end: string) => {
     try {
@@ -81,7 +122,7 @@ export default function ExamTimeSlotsSettingsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       toast.error('Please enter a slot name');
@@ -93,31 +134,41 @@ export default function ExamTimeSlotsSettingsPage() {
       return;
     }
 
+    let updatedSlots: ExamTimeSlot[];
     if (editingSlot) {
-      schoolStore.updateExamTimeSlot({
-        ...editingSlot,
-        name: name.trim(),
-        startTime,
-        endTime,
-        status,
+      updatedSlots = timeSlots.map((s) => {
+        if (s.id === editingSlot.id) {
+          return {
+            ...s,
+            name: name.trim(),
+            startTime,
+            endTime,
+            status,
+          };
+        }
+        return s;
       });
       toast.success(`Exam slot "${name}" updated successfully`);
     } else {
-      schoolStore.createExamTimeSlot({
+      const newSlot: ExamTimeSlot = {
+        id: `slot-${Date.now()}`,
         name: name.trim(),
         startTime,
         endTime,
         status,
-      });
+      };
+      updatedSlots = [...timeSlots, newSlot];
       toast.success(`Exam slot "${name}" created successfully`);
     }
 
+    await persistSlots(updatedSlots);
     setIsDialogOpen(false);
   };
 
-  const handleDelete = (slot: ExamTimeSlot) => {
+  const handleDelete = async (slot: ExamTimeSlot) => {
     if (confirm(`Are you sure you want to delete time slot "${slot.name}"?`)) {
-      schoolStore.deleteExamTimeSlot(slot.id);
+      const updated = timeSlots.filter(s => s.id !== slot.id);
+      await persistSlots(updated);
       toast.success(`Exam time slot "${slot.name}" deleted`);
     }
   };

@@ -9,17 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { FormField } from '@/components/ui/form-field';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
 import { House } from '@/shared/types';
 import { EntityStatusBadge } from '@/features/settings/components/entity-status-badge';
 
+import { toast } from 'sonner';
+
 export default function HousesSettingsPage() {
-  const store = useSchoolStore();
+  const [houses, setHouses] = React.useState<House[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
   const [editingHouse, setEditingHouse] = React.useState<House | null>(null);
-
-  const houses = store.houses || [];
 
   const [formData, setFormData] = React.useState({
     name: '',
@@ -28,6 +28,27 @@ export default function HousesSettingsPage() {
     motto: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+
+  const loadHouses = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch('/api/houses');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.houses) {
+          setHouses(data.houses);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load houses:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadHouses();
+  }, [loadHouses]);
 
   const filteredHouses = houses.filter(
     (h) =>
@@ -59,30 +80,52 @@ export default function HousesSettingsPage() {
     setIsDrawerOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.code.trim()) return;
 
-    if (editingHouse) {
-      schoolStore.updateHouse({
-        ...editingHouse,
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        color: formData.color,
-        motto: formData.motto.trim() || undefined,
-        status: formData.status,
-      });
-    } else {
-      schoolStore.createHouse({
-        name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        color: formData.color,
-        motto: formData.motto.trim() || undefined,
-        status: formData.status,
-      });
+    try {
+      if (editingHouse) {
+        const updated = houses.map((h) =>
+          h.id === editingHouse.id
+            ? {
+                ...h,
+                name: formData.name.trim(),
+                code: formData.code.trim().toUpperCase(),
+                color: formData.color,
+                motto: formData.motto.trim() || undefined,
+                status: formData.status,
+              }
+            : h
+        );
+        const res = await fetch('/api/houses', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ houses: updated }),
+        });
+        if (!res.ok) throw new Error('Failed to update house');
+        setHouses(updated);
+        toast.success(`House ${formData.name} updated successfully`);
+      } else {
+        const res = await fetch('/api/houses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            code: formData.code.trim().toUpperCase(),
+            color: formData.color,
+            motto: formData.motto.trim() || undefined,
+            status: formData.status,
+          }),
+        });
+        if (!res.ok) throw new Error('Failed to create house');
+        toast.success(`House ${formData.name} created successfully`);
+        await loadHouses();
+      }
+      setIsDrawerOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Operation failed');
     }
-
-    setIsDrawerOpen(false);
   };
 
   return (

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
 import { UserAccount } from '@/features/settings/types';
 import { 
   Users, 
@@ -33,17 +32,17 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+import { Loader2 } from 'lucide-react';
+
 export default function UserDetailPage() {
   const params = useParams();
   const router = useRouter();
   const userId = params?.id as string;
 
-  const store = useSchoolStore();
-  const users = store.users || [];
-  const roles = store.roles || [];
-  const campuses = store.campuses || [];
-
-  const user = users.find(u => u.id === userId);
+  const [user, setUser] = useState<UserAccount | null>(null);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -52,18 +51,56 @@ export default function UserDetailPage() {
   const [campusId, setCampusId] = useState('');
   const [status, setStatus] = useState<'ACTIVE' | 'SUSPENDED' | 'INVITED'>('ACTIVE');
   const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [campuses, setCampuses] = useState<any[]>([]);
 
   useEffect(() => {
-    if (user) {
-      setName(user.name);
-      setEmail(user.email);
-      setPhone(user.phone || '');
-      setRole(user.role);
-      setCampusId(user.campusId || '');
-      setStatus(user.status);
-      setMfaEnabled(user.mfaEnabled);
+    let isMounted = true;
+    async function loadData() {
+      try {
+        setIsLoading(true);
+        const [usersRes, rolesRes] = await Promise.all([
+          fetch('/api/users'),
+          fetch('/api/school/settings?category=roles'),
+        ]);
+
+        if (usersRes.ok) {
+          const json = await usersRes.json();
+          if (json.users && isMounted) {
+            const found = json.users.find((u: any) => u.id === userId);
+            if (found) {
+              setUser(found);
+              setName(found.name || '');
+              setEmail(found.email || '');
+              setPhone(found.phone || '');
+              setRole(found.role || '');
+              setStatus(found.status || 'ACTIVE');
+            }
+          }
+        }
+
+        if (rolesRes.ok) {
+          const rJson = await rolesRes.json();
+          if (rJson.success && rJson.data?.customRoles && isMounted) {
+            setRoles(rJson.data.customRoles);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user profile:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
     }
-  }, [user]);
+    loadData();
+    return () => { isMounted = false; };
+  }, [userId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -79,7 +116,7 @@ export default function UserDetailPage() {
             <Users className="h-10 w-10 text-muted-foreground/40 mb-3" />
             <h3 className="font-semibold text-lg text-foreground">User Not Found</h3>
             <p className="text-xs text-muted-foreground max-w-sm mt-1 mb-4">
-              The user account with identifier "{userId}" does not exist in the active store.
+              The user account with identifier "{userId}" does not exist in the active school directory.
             </p>
             <Link href="/school/settings/users">
               <Button size="sm">Return to Directory</Button>
@@ -90,28 +127,49 @@ export default function UserDetailPage() {
     );
   }
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       toast.error('Name cannot be empty');
       return;
     }
 
-    schoolStore.updateUser({
-      ...user,
-      name: name.trim(),
-      phone: phone.trim() || undefined,
-      role,
-      campusId: campusId || undefined,
-      status,
-      mfaEnabled,
-    });
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          name: name.trim(),
+          phone: phone.trim(),
+          role,
+          status,
+        }),
+      });
 
-    toast.success(`User profile updated successfully`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to update user profile');
+      }
+
+      toast.success('User profile updated successfully in database');
+      setUser({
+        ...user,
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        role,
+        status,
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update user profile');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSendPasswordReset = () => {
-    toast.success(`Password reset email dispatched to ${user.email}`);
+    toast.success(`Password reset instructions dispatched to ${user.email}`);
   };
 
   return (

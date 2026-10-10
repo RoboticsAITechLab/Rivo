@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
 import { ExamTypeConfig } from '@/features/settings/types';
 import { 
@@ -36,8 +36,8 @@ import {
 import { toast } from 'sonner';
 
 export default function ExamTypesSettingsPage() {
-  const store = useSchoolStore();
-  const examTypes = store.examTypes || [];
+  const [examTypes, setExamTypes] = useState<ExamTypeConfig[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -48,6 +48,47 @@ export default function ExamTypesSettingsPage() {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [sortOrder, setSortOrder] = useState<number>(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setExamTypes(json.data.examTypes || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load exam types:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const persistTypes = async (updated: ExamTypeConfig[]) => {
+    try {
+      setExamTypes(updated);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'examinations',
+          value: { examTypes: updated },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to persist exam types to server');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Persistence failed');
+    }
+  };
 
   const openCreateDialog = () => {
     setEditingType(null);
@@ -69,40 +110,50 @@ export default function ExamTypesSettingsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !code.trim()) {
       toast.error('Please enter an exam type name and unique code');
       return;
     }
 
+    let updatedTypes: ExamTypeConfig[];
     if (editingType) {
-      schoolStore.updateExamType({
-        ...editingType,
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        description: description.trim(),
-        status,
-        sortOrder: Number(sortOrder) || 1,
+      updatedTypes = examTypes.map((t) => {
+        if (t.id === editingType.id) {
+          return {
+            ...t,
+            name: name.trim(),
+            code: code.trim().toUpperCase(),
+            description: description.trim(),
+            status,
+            sortOrder: Number(sortOrder) || 1,
+          };
+        }
+        return t;
       });
       toast.success(`Exam type "${name}" updated successfully`);
     } else {
-      schoolStore.createExamType({
+      const newType: ExamTypeConfig = {
+        id: `type-${Date.now()}`,
         name: name.trim(),
         code: code.trim().toUpperCase(),
         description: description.trim(),
         status,
         sortOrder: Number(sortOrder) || (examTypes.length + 1),
-      });
+      };
+      updatedTypes = [...examTypes, newType];
       toast.success(`Exam type "${name}" created successfully`);
     }
 
+    await persistTypes(updatedTypes);
     setIsDialogOpen(false);
   };
 
-  const handleDelete = (type: ExamTypeConfig) => {
+  const handleDelete = async (type: ExamTypeConfig) => {
     if (confirm(`Are you sure you want to delete exam type "${type.name}"?`)) {
-      schoolStore.deleteExamType(type.id);
+      const updated = examTypes.filter(t => t.id !== type.id);
+      await persistTypes(updated);
       toast.success(`Exam type "${type.name}" removed`);
     }
   };

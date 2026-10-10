@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
 import { RoleDefinition } from '@/features/settings/types';
 import { 
   Shield, 
@@ -12,7 +11,8 @@ import {
   Trash2, 
   Users, 
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,15 +30,55 @@ import {
 import { toast } from 'sonner';
 
 export default function RolesManagementPage() {
-  const store = useSchoolStore();
-  const roles = store.roles || [];
-  const users = store.users || [];
+  const [roles, setRoles] = useState<RoleDefinition[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [roleName, setRoleName] = useState('');
   const [description, setDescription] = useState('');
 
-  const handleCreateRole = (e: React.FormEvent) => {
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=roles');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setRoles(json.data.customRoles || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load roles:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const persistRoles = async (updated: RoleDefinition[]) => {
+    try {
+      setRoles(updated);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'roles',
+          value: { customRoles: updated },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to persist roles to database');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Persistence failed');
+    }
+  };
+
+  const handleCreateRole = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roleName.trim()) {
       toast.error('Role name is required');
@@ -50,10 +90,16 @@ export default function RolesManagementPage() {
       return;
     }
 
-    schoolStore.createRole({
+    const newRole: RoleDefinition = {
+      id: `role-${Date.now()}`,
       name: roleName.trim(),
+      isSystem: false,
       description: description.trim() || 'Custom institutional role',
-    });
+      userCount: 0,
+    };
+
+    const updated = [...roles, newRole];
+    await persistRoles(updated);
 
     toast.success(`Role "${roleName}" created successfully`);
     setIsDialogOpen(false);
@@ -89,8 +135,7 @@ export default function RolesManagementPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {roles.map((role) => {
-          // Calculate strictly real count of assigned users
-          const assignedUserCount = users.filter(u => u.role === role.name).length;
+          const assignedUserCount = role.userCount ?? 0;
 
           return (
             <Card key={role.id} className="flex flex-col justify-between hover:border-primary/40 transition-colors">

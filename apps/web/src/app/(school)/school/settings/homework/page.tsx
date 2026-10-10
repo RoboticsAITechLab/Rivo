@@ -1,43 +1,150 @@
 'use client';
 
 import * as React from 'react';
-import { FileText, Save, CheckCircle2 } from 'lucide-react';
+import { FileText, Save, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/ui/form-field';
-import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
-import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
-import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
+import { toast } from 'sonner';
+
+interface HomeworkSettingsState {
+  teacherCanCreate: boolean;
+  teacherCanGrade: boolean;
+  attachmentsEnabled: boolean;
+  parentVisibility: boolean;
+  studentStatusTracking: boolean;
+  maxAttachmentSizeMB: number;
+  allowLateSubmissions: boolean;
+  submissionDeadlineHours: number;
+}
+
+const DEFAULT_HOMEWORK_FORM: HomeworkSettingsState = {
+  teacherCanCreate: true,
+  teacherCanGrade: true,
+  attachmentsEnabled: true,
+  parentVisibility: true,
+  studentStatusTracking: true,
+  maxAttachmentSizeMB: 10,
+  allowLateSubmissions: false,
+  submissionDeadlineHours: 24,
+};
 
 export default function HomeworkSettingsPage() {
-  const store = useSchoolStore();
+  const [form, setForm] = React.useState<HomeworkSettingsState>(DEFAULT_HOMEWORK_FORM);
+  const [initialForm, setInitialForm] = React.useState<HomeworkSettingsState>(DEFAULT_HOMEWORK_FORM);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const {
-    currentValues: form,
-    setCurrentValues: setForm,
-    isDirty,
-    markSaved,
-    resetForm,
-    showUnsavedDialog,
-    setShowUnsavedDialog,
-  } = useUnsavedChanges(store.homeworkSettings);
+  const isDirty = React.useMemo(() => {
+    return JSON.stringify(form) !== JSON.stringify(initialForm);
+  }, [form, initialForm]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchSettings = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetch('/api/school/settings?category=homework');
+      if (!res.ok) {
+        throw new Error('Failed to load homework settings');
+      }
+      const json = await res.json();
+      if (json.success && json.data) {
+        const loaded: HomeworkSettingsState = {
+          teacherCanCreate: json.data.teacherCanCreate ?? true,
+          teacherCanGrade: json.data.teacherCanGrade ?? true,
+          attachmentsEnabled: json.data.attachmentsEnabled ?? true,
+          parentVisibility: json.data.parentVisibility ?? true,
+          studentStatusTracking: json.data.studentStatusTracking ?? true,
+          maxAttachmentSizeMB: json.data.maxAttachmentSizeMB ?? 10,
+          allowLateSubmissions: json.data.allowLateSubmissions ?? false,
+          submissionDeadlineHours: json.data.submissionDeadlineHours ?? 24,
+        };
+        setForm(loaded);
+        setInitialForm(loaded);
+      }
+    } catch (err: any) {
+      console.error('[HOMEWORK_SETTINGS_FETCH_ERROR]', err);
+      setError(err.message || 'Failed to load settings from server');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = schoolStore.updateHomeworkSettings(form);
-    markSaved(updated);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    try {
+      setIsSaving(true);
+      setError(null);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'homework',
+          value: form,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || 'Failed to save homework settings');
+      }
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        const updated: HomeworkSettingsState = {
+          teacherCanCreate: json.data.teacherCanCreate ?? true,
+          teacherCanGrade: json.data.teacherCanGrade ?? true,
+          attachmentsEnabled: json.data.attachmentsEnabled ?? true,
+          parentVisibility: json.data.parentVisibility ?? true,
+          studentStatusTracking: json.data.studentStatusTracking ?? true,
+          maxAttachmentSizeMB: json.data.maxAttachmentSizeMB ?? 10,
+          allowLateSubmissions: json.data.allowLateSubmissions ?? false,
+          submissionDeadlineHours: json.data.submissionDeadlineHours ?? 24,
+        };
+        setForm(updated);
+        setInitialForm(updated);
+      }
+
+      setSaveSuccess(true);
+      toast.success('Homework settings saved successfully to server');
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
+      console.error('[HOMEWORK_SETTINGS_SAVE_ERROR]', err);
+      setError(err.message || 'Failed to save settings');
+      toast.error(err.message || 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  const handleReset = () => {
+    setForm(initialForm);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[350px]">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground text-sm">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span>Loading authoritative homework settings...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <PageHeader
-        title="Homework &amp; Assignments Configuration"
-        description="Teacher publishing permissions, file attachment limits and parent visibility."
+        title="Homework & Assignments Configuration"
+        description="Teacher publishing permissions, file attachment limits, deadline policies, and parent visibility."
         icon={FileText}
         actions={
           <div className="flex items-center gap-2">
@@ -46,7 +153,8 @@ export default function HomeworkSettingsPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={resetForm}
+                onClick={handleReset}
+                disabled={isSaving}
                 className="text-xs h-8"
               >
                 Reset
@@ -55,10 +163,10 @@ export default function HomeworkSettingsPage() {
             <Button
               type="submit"
               size="sm"
-              disabled={!isDirty}
+              disabled={!isDirty || isSaving}
               className="gap-1.5 text-xs h-8"
             >
-              <Save className="h-3.5 w-3.5" />
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Save Policy
             </Button>
           </div>
@@ -68,16 +176,23 @@ export default function HomeworkSettingsPage() {
       {saveSuccess && (
         <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>Homework settings saved successfully.</span>
+          <span>Homework settings saved and synchronized with database successfully.</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs text-destructive flex items-center gap-2 animate-in fade-in">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       {/* Permissions & Visibility */}
       <Card>
         <CardHeader className="pb-3 border-b">
-          <CardTitle className="text-sm font-semibold">Publishing &amp; Student Visibility</CardTitle>
+          <CardTitle className="text-sm font-semibold">Publishing & Portal Visibility</CardTitle>
           <CardDescription className="text-xs">
-            Controls for assignment authoring and portal disclosure.
+            Controls for assignment authoring, teacher grading rights, and guardian portal visibility.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-5 space-y-4">
@@ -93,6 +208,21 @@ export default function HomeworkSettingsPage() {
                 type="checkbox"
                 checked={form.teacherCanCreate}
                 onChange={(e) => setForm({ ...form, teacherCanCreate: e.target.checked })}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div>
+                <span className="text-xs font-semibold block text-foreground">Teacher Grading & Evaluation</span>
+                <span className="text-[11px] text-muted-foreground">
+                  Allow teachers to mark submissions and record grades in the assignment gradebook.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.teacherCanGrade}
+                onChange={(e) => setForm({ ...form, teacherCanGrade: e.target.checked })}
                 className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
               />
             </div>
@@ -129,7 +259,22 @@ export default function HomeworkSettingsPage() {
 
             <div className="flex items-center justify-between py-3">
               <div>
-                <span className="text-xs font-semibold block text-foreground">Enable File &amp; PDF Attachments</span>
+                <span className="text-xs font-semibold block text-foreground">Allow Late Submissions</span>
+                <span className="text-[11px] text-muted-foreground">
+                  Permit students to turn in assignments past the designated due date timestamp.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.allowLateSubmissions}
+                onChange={(e) => setForm({ ...form, allowLateSubmissions: e.target.checked })}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-between py-3">
+              <div>
+                <span className="text-xs font-semibold block text-foreground">Enable File & PDF Attachments</span>
                 <span className="text-[11px] text-muted-foreground">
                   Permit teachers to upload worksheets, reading materials and project briefs.
                 </span>
@@ -145,40 +290,40 @@ export default function HomeworkSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Attachment limits */}
+      {/* Attachment & Deadline Limits */}
       <Card>
         <CardHeader className="pb-3 border-b">
-          <CardTitle className="text-sm font-semibold">Storage &amp; Attachment Limits</CardTitle>
+          <CardTitle className="text-sm font-semibold">Storage & Deadline Boundaries</CardTitle>
           <CardDescription className="text-xs">
-            Configure upload quotas for worksheet files.
+            Configure upload quotas and default submission grace hours.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-5">
-          <div className="max-w-xs">
-            <FormField id="maxAttachmentSize" label="Maximum Attachment File Size (MB)">
-              <Input
-                id="maxAttachmentSize"
-                type="number"
-                min={1}
-                max={50}
-                value={form.maxAttachmentSizeMB}
-                onChange={(e) => setForm({ ...form, maxAttachmentSizeMB: Number(e.target.value) || 10 })}
-                className="text-xs font-mono"
-              />
-            </FormField>
-          </div>
+        <CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField id="maxAttachmentSize" label="Maximum Attachment File Size (MB)">
+            <Input
+              id="maxAttachmentSize"
+              type="number"
+              min={1}
+              max={100}
+              value={form.maxAttachmentSizeMB}
+              onChange={(e) => setForm({ ...form, maxAttachmentSizeMB: Number(e.target.value) || 10 })}
+              className="text-xs font-mono"
+            />
+          </FormField>
+
+          <FormField id="submissionDeadlineHours" label="Default Submission Window (Hours)">
+            <Input
+              id="submissionDeadlineHours"
+              type="number"
+              min={1}
+              max={168}
+              value={form.submissionDeadlineHours}
+              onChange={(e) => setForm({ ...form, submissionDeadlineHours: Number(e.target.value) || 24 })}
+              className="text-xs font-mono"
+            />
+          </FormField>
         </CardContent>
       </Card>
-
-      <UnsavedChangesDialog
-        open={showUnsavedDialog}
-        onDiscard={() => resetForm()}
-        onContinueEditing={() => setShowUnsavedDialog(false)}
-        onSave={() => {
-          schoolStore.updateHomeworkSettings(form);
-          markSaved(form);
-        }}
-      />
     </form>
   );
 }

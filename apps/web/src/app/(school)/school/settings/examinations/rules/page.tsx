@@ -23,9 +23,6 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 export default function ExamRulesSettingsPage() {
-  const store = useSchoolStore();
-  const currentRules = store.examRules;
-
   const [formData, setFormData] = useState<ExamRulesConfig>({
     multiplePapersPerDay: false,
     multipleSessionsPerDay: true,
@@ -37,22 +34,64 @@ export default function ExamRulesSettingsPage() {
   });
 
   const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (currentRules) {
-      setFormData(currentRules);
+    let isMounted = true;
+    async function load() {
+      try {
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setFormData({
+              multiplePapersPerDay: json.data.multiplePapersPerDay ?? false,
+              multipleSessionsPerDay: json.data.multipleSessionsPerDay ?? true,
+              scheduleConflictDetection: json.data.scheduleConflictDetection ?? true,
+              roomConflictDetection: json.data.roomConflictDetection ?? true,
+              candidateValidationRequired: json.data.candidateValidationRequired ?? true,
+              attendanceRequirementPercentage: json.data.attendanceRequirementPercentage ?? 75,
+              publishResultsImmediately: json.data.publishResultsImmediately ?? false,
+            });
+            setIsDirty(false);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load exam rules:', err);
+      }
     }
-  }, [currentRules]);
+    load();
+    return () => { isMounted = false; };
+  }, [setIsDirty]);
 
   const handleChange = <K extends keyof ExamRulesConfig>(key: K, value: ExamRulesConfig[K]) => {
     setFormData(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
 
-  const handleSave = () => {
-    schoolStore.updateExamRules(formData);
-    setIsDirty(false);
-    toast.success('Examination rules & conflict policies updated successfully');
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'examinations',
+          value: formData,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to save exam rules to server');
+      }
+
+      setIsDirty(false);
+      toast.success('Examination rules & conflict policies saved successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save rules');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

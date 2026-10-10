@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
 import { Room } from '@/shared/types';
 import { DependencyAlert } from '@/features/settings/components/dependency-alert';
@@ -40,8 +40,10 @@ import { toast } from 'sonner';
 
 export default function ExamRoomsSettingsPage() {
   const store = useSchoolStore();
-  const rooms = store.rooms || [];
   const campuses = store.campuses || [];
+
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [selectedCampusId, setSelectedCampusId] = useState<string>('ALL');
@@ -54,6 +56,47 @@ export default function ExamRoomsSettingsPage() {
   const [rows, setRows] = useState(5);
   const [columns, setColumns] = useState(8);
   const [type, setType] = useState<'CLASSROOM' | 'LAB' | 'HALL' | 'AUDITORIUM'>('HALL');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setRooms(json.data.rooms || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load exam rooms:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const persistRooms = async (updated: Room[]) => {
+    try {
+      setRooms(updated);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'examinations',
+          value: { rooms: updated },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to persist exam rooms to server');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Persistence failed');
+    }
+  };
 
   const openCreateDialog = () => {
     setEditingRoom(null);
@@ -77,40 +120,49 @@ export default function ExamRoomsSettingsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       toast.error('Please enter room name or hall number');
       return;
     }
 
+    let updatedRooms: Room[];
     if (editingRoom) {
-      schoolStore.updateRoom({
-        ...editingRoom,
-        name: name.trim(),
-        campusId,
-        capacity: Number(capacity) || 0,
-        rows: Number(rows) || 0,
-        columns: Number(columns) || 0,
-        type,
+      updatedRooms = rooms.map((r) => {
+        if (r.id === editingRoom.id) {
+          return {
+            ...r,
+            name: name.trim(),
+            campusId: campusId || undefined,
+            capacity: Number(capacity) || 0,
+            rows: Number(rows) || 0,
+            columns: Number(columns) || 0,
+            type: type as any,
+          };
+        }
+        return r;
       });
       toast.success(`Exam venue "${name}" updated`);
     } else {
-      schoolStore.createRoom({
+      const newRoom: Room = {
+        id: `room-${Date.now()}` as any,
         name: name.trim(),
         code: name.trim().replace(/\s+/g, '-').toUpperCase(),
         building: 'Main Block',
         floor: 'Ground',
-        campusId,
+        campusId: campusId || undefined,
         capacity: Number(capacity) || 0,
         rows: Number(rows) || 0,
         columns: Number(columns) || 0,
-        type,
+        type: type as any,
         status: 'ACTIVE',
-      });
+      };
+      updatedRooms = [...rooms, newRoom];
       toast.success(`Exam venue "${name}" registered`);
     }
 
+    await persistRooms(updatedRooms);
     setIsDialogOpen(false);
   };
 

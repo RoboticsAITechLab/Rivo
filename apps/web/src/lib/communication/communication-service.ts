@@ -122,6 +122,8 @@ export class AudienceResolver {
   }
 }
 
+import { getNotificationSettings } from '@/lib/settings/settings-service';
+
 export class NotificationDispatcher {
   /**
    * Fans out notification across In-App, Push, and optional Email adapters
@@ -133,26 +135,39 @@ export class NotificationDispatcher {
       return { inAppCount: 0, pushCount: 0, emailCount: 0 };
     }
 
+    // Evaluate institutional notification policy
+    const notifSettings = await getNotificationSettings(schoolId);
+
+    // Enforce event trigger toggles
+    if (category === 'ATTENDANCE' && notifSettings.eventTriggers?.studentAbsence === false) {
+      return { inAppCount: 0, pushCount: 0, emailCount: 0 };
+    }
+    if (category === 'RESULT' && notifSettings.eventTriggers?.resultDeclared === false) {
+      return { inAppCount: 0, pushCount: 0, emailCount: 0 };
+    }
+
     // 1. IN-APP ADAPTER: Batch insert database notifications
     const chunkSize = 250;
     let inAppCount = 0;
 
-    for (let i = 0; i < userIds.length; i += chunkSize) {
-      const chunk = userIds.slice(i, i + chunkSize);
-      const records = chunk.map((userId) => ({
-        schoolId,
-        userId,
-        title,
-        body,
-        category,
-        linkUrl: linkUrl || null,
-        isRead: false,
-      }));
+    if (notifSettings.channels?.inApp !== false) {
+      for (let i = 0; i < userIds.length; i += chunkSize) {
+        const chunk = userIds.slice(i, i + chunkSize);
+        const records = chunk.map((userId) => ({
+          schoolId,
+          userId,
+          title,
+          body,
+          category,
+          linkUrl: linkUrl || null,
+          isRead: false,
+        }));
 
-      await prisma.notification.createMany({
-        data: records,
-      });
-      inAppCount += records.length;
+        await prisma.notification.createMany({
+          data: records,
+        });
+        inAppCount += records.length;
+      }
     }
 
     // 2. PUSH ADAPTER: Look up device tokens and dispatch push
@@ -175,7 +190,7 @@ export class NotificationDispatcher {
 
     // 3. EMAIL ADAPTER (Optional for HIGH / URGENT priority notices)
     let emailCount = 0;
-    if (priority === 'HIGH' || priority === 'URGENT') {
+    if ((priority === 'HIGH' || priority === 'URGENT') && notifSettings.channels?.email !== false) {
       try {
         const resend = getResendClient();
         if (resend) {

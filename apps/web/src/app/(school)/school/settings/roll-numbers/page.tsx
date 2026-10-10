@@ -12,9 +12,12 @@ import { useSchoolStore, schoolStore } from '@/shared/mock-store/school-store';
 import { useUnsavedChanges } from '@/features/settings/hooks/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/features/settings/components/unsaved-changes-dialog';
 
+import { toast } from 'sonner';
+
 export default function RollNumbersSettingsPage() {
   const store = useSchoolStore();
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
 
   const streams = store.streams || [];
   const config = store.rollAllocationConfig;
@@ -29,6 +32,40 @@ export default function RollNumbersSettingsPage() {
     setShowUnsavedDialog,
   } = useUnsavedChanges(config);
 
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/school/settings?category=rollNumbers');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setForm((prev) => ({
+              ...prev,
+              ...json.data,
+              class1_10Rule: {
+                ...prev.class1_10Rule,
+                ...(json.data.class1_10Rule || {}),
+              },
+              class11_12Rule: {
+                ...prev.class11_12Rule,
+                ...(json.data.class11_12Rule || {}),
+                streamRules: {
+                  ...prev.class11_12Rule?.streamRules,
+                  ...(json.data.class11_12Rule?.streamRules || {}),
+                },
+              },
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load roll numbers config:', err);
+      }
+    }
+    loadConfig();
+    return () => { isMounted = false; };
+  }, [setForm]);
+
   const handleStreamRuleChange = (streamId: string, startNumber: number, prefix: string) => {
     setForm({
       ...form,
@@ -42,12 +79,34 @@ export default function RollNumbersSettingsPage() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = schoolStore.updateRollAllocationConfig(form);
-    markSaved(updated);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    try {
+      setIsSaving(true);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'rollNumbers',
+          settings: form,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to persist roll number configuration');
+      }
+
+      const updated = schoolStore.updateRollAllocationConfig(form);
+      markSaved(updated);
+      setSaveSuccess(true);
+      toast.success('Roll allocation rules saved to database');
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save roll allocation rules');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

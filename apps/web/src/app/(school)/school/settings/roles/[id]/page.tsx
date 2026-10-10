@@ -15,7 +15,8 @@ import {
   Check, 
   X,
   Layers,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,14 +55,38 @@ export default function RolePermissionsPage() {
   const router = useRouter();
   const roleId = params?.id as string;
 
-  const store = useSchoolStore();
-  const roles = store.roles || [];
-  const permissionsStore = store.permissions || {};
+  const [roles, setRoles] = useState<any[]>([]);
+  const [permissionsStore, setPermissionsStore] = useState<Record<string, any>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const role = roles.find(r => r.id === roleId);
 
   const [modules, setModules] = useState<ModuleConfig[]>([]);
   const { isDirty, setIsDirty, showDialog, confirmLeave, cancelLeave } = useUnsavedChanges();
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=roles');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setRoles(json.data.customRoles || []);
+            setPermissionsStore(json.data.permissions || {});
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load role permissions:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!role) return;
@@ -91,6 +116,17 @@ export default function RolePermissionsPage() {
 
     setModules(initial);
   }, [role, permissionsStore]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[350px]">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground text-sm">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span>Loading role permissions configuration...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!role) {
     return (
@@ -140,15 +176,40 @@ export default function RolePermissionsPage() {
     setIsDirty(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const formatted: Record<string, Record<PermissionAction, boolean>> = {};
     modules.forEach(m => {
       formatted[m.key] = m.actions;
     });
 
-    schoolStore.updateRolePermissions(role.id, formatted);
-    setIsDirty(false);
-    toast.success(`Permissions for role "${role.name}" updated successfully`);
+    try {
+      setIsSaving(true);
+      const updatedPermissions = {
+        ...permissionsStore,
+        [role.id]: formatted,
+      };
+
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'roles',
+          value: { permissions: updatedPermissions },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to save role permissions to database');
+      }
+
+      setPermissionsStore(updatedPermissions);
+      setIsDirty(false);
+      toast.success(`Permissions for role "${role.name}" updated and saved successfully`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save role permissions');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

@@ -46,6 +46,9 @@ export interface SchoolSettingMap {
     parentVisibility: boolean;
     studentStatusTracking: boolean;
     maxAttachmentSizeMB: number;
+    allowLateSubmissions: boolean;
+    submissionDeadlineHours: number;
+    teacherCanGrade: boolean;
   };
   examinations: {
     multiplePapersPerDay: boolean;
@@ -56,6 +59,14 @@ export interface SchoolSettingMap {
     attendanceRequirementPercentage: number;
     publishResultsImmediately: boolean;
     examInstructions: string;
+    gradingSchemes?: any[];
+    rooms?: any[];
+    timeSlots?: any[];
+    examTypes?: any[];
+    passingMarksPercentage?: number;
+    hallTicketMandatory?: boolean;
+    graceMarksAllowance?: number;
+    reEvaluationWindowDays?: number;
   };
   results: {
     defaultGradingSchemeId?: string;
@@ -141,6 +152,24 @@ export interface SchoolSettingMap {
       resetLinkExpiryHours: number;
     };
   };
+  roles: {
+    customRoles: any[];
+    permissions: Record<string, any>;
+  };
+  houses: {
+    houses: any[];
+  };
+  rollNumbers: {
+    mode: 'CONTINUOUS' | 'PER_SECTION' | 'PER_STREAM';
+    prefix: string;
+    startIndex: number;
+    autoSortAlpha: boolean;
+    isLocked: boolean;
+    streamRules?: Record<string, { startNumber: number; prefix: string }>;
+  };
+  streams: {
+    customStreams: any[];
+  };
 }
 
 export type SettingCategory = keyof SchoolSettingMap;
@@ -191,6 +220,9 @@ export const DEFAULT_SETTINGS: SchoolSettingMap = {
     parentVisibility: true,
     studentStatusTracking: true,
     maxAttachmentSizeMB: 10,
+    allowLateSubmissions: false,
+    submissionDeadlineHours: 24,
+    teacherCanGrade: true,
   },
   examinations: {
     multiplePapersPerDay: true,
@@ -201,6 +233,43 @@ export const DEFAULT_SETTINGS: SchoolSettingMap = {
     attendanceRequirementPercentage: 75,
     publishResultsImmediately: false,
     examInstructions: 'Students must arrive 15 minutes prior to examination. Electronic devices and study materials are strictly prohibited.',
+    gradingSchemes: [
+      {
+        id: 'scheme-default-cbse',
+        name: 'CBSE 10-Point Scale',
+        code: 'CBSE-10',
+        isDefault: true,
+        rules: [
+          { grade: 'A1', minPercentage: 91, maxPercentage: 100, gradePoints: 10, isPass: true },
+          { grade: 'A2', minPercentage: 81, maxPercentage: 90.99, gradePoints: 9, isPass: true },
+          { grade: 'B1', minPercentage: 71, maxPercentage: 80.99, gradePoints: 8, isPass: true },
+          { grade: 'B2', minPercentage: 61, maxPercentage: 70.99, gradePoints: 7, isPass: true },
+          { grade: 'C1', minPercentage: 51, maxPercentage: 60.99, gradePoints: 6, isPass: true },
+          { grade: 'C2', minPercentage: 41, maxPercentage: 50.99, gradePoints: 5, isPass: true },
+          { grade: 'D', minPercentage: 33, maxPercentage: 40.99, gradePoints: 4, isPass: true },
+          { grade: 'E', minPercentage: 0, maxPercentage: 32.99, gradePoints: 0, isPass: false },
+        ],
+      },
+    ],
+    rooms: [
+      { id: 'room-101', name: 'Examination Hall A', code: 'HALL-A', type: 'EXAM_HALL', building: 'Main Block', floor: '1st', capacity: 60, status: 'ACTIVE' },
+      { id: 'room-102', name: 'Examination Hall B', code: 'HALL-B', type: 'EXAM_HALL', building: 'Main Block', floor: '2nd', capacity: 45, status: 'ACTIVE' },
+      { id: 'room-103', name: 'Science Auditorium', code: 'AUD-SCI', type: 'AUDITORIUM', building: 'Science Wing', floor: 'Ground', capacity: 120, status: 'ACTIVE' },
+    ],
+    timeSlots: [
+      { id: 'slot-morning', name: 'Morning Shift', startTime: '09:00', endTime: '12:00', status: 'ACTIVE' },
+      { id: 'slot-afternoon', name: 'Afternoon Shift', startTime: '13:30', endTime: '16:30', status: 'ACTIVE' },
+    ],
+    examTypes: [
+      { id: 'type-ut1', name: 'Unit Test 1', code: 'UT-1', description: 'Periodic First Unit Assessment', status: 'ACTIVE', sortOrder: 1 },
+      { id: 'type-hy', name: 'Half Yearly Examination', code: 'HY-EXAM', description: 'Mid-Session Term Examination', status: 'ACTIVE', sortOrder: 2 },
+      { id: 'type-ut2', name: 'Unit Test 2', code: 'UT-2', description: 'Periodic Second Unit Assessment', status: 'ACTIVE', sortOrder: 3 },
+      { id: 'type-annual', name: 'Annual Board Examination', code: 'ANNUAL', description: 'Final Cumulative Session Examination', status: 'ACTIVE', sortOrder: 4 },
+    ],
+    passingMarksPercentage: 33,
+    hallTicketMandatory: true,
+    graceMarksAllowance: 5,
+    reEvaluationWindowDays: 14,
   },
   results: {
     publicationBehavior: 'MANUAL',
@@ -280,6 +349,38 @@ export const DEFAULT_SETTINGS: SchoolSettingMap = {
       resetLinkExpiryHours: 24,
     },
   },
+  roles: {
+    customRoles: [
+      { id: 'role-admin', name: 'School Admin', isSystem: true, description: 'Full access to school administrative operations and configuration', userCount: 1 },
+      { id: 'role-teacher', name: 'Teacher', isSystem: true, description: 'Access to assigned classes, timetable, attendance and homework', userCount: 0 },
+      { id: 'role-student', name: 'Student', isSystem: true, description: 'Access to enrolled courses, timetables, results, and study resources', userCount: 0 },
+      { id: 'role-parent', name: 'Parent', isSystem: true, description: 'Access to child attendance, fee invoices, academic reports, and notices', userCount: 0 },
+    ],
+    permissions: {},
+  },
+  houses: {
+    houses: [
+      { id: 'house-red', name: 'Ruby House', code: 'RUBY', color: '#ef4444', motto: 'Valor and Honor', status: 'ACTIVE' },
+      { id: 'house-blue', name: 'Sapphire House', code: 'SAPPHIRE', color: '#3b82f6', motto: 'Wisdom and Truth', status: 'ACTIVE' },
+      { id: 'house-green', name: 'Emerald House', code: 'EMERALD', color: '#10b981', motto: 'Growth and Harmony', status: 'ACTIVE' },
+      { id: 'house-yellow', name: 'Topaz House', code: 'TOPAZ', color: '#f59e0b', motto: 'Radiance and Courage', status: 'ACTIVE' },
+    ],
+  },
+  rollNumbers: {
+    mode: 'CONTINUOUS',
+    prefix: '',
+    startIndex: 1,
+    autoSortAlpha: true,
+    isLocked: false,
+    streamRules: {},
+  },
+  streams: {
+    customStreams: [
+      { id: 'stream-sci', name: 'Science', code: 'SCI', description: 'Physics, Chemistry, Mathematics, Biology' },
+      { id: 'stream-comm', name: 'Commerce', code: 'COMM', description: 'Accountancy, Business Studies, Economics' },
+      { id: 'stream-arts', name: 'Humanities', code: 'HUM', description: 'History, Political Science, Psychology' },
+    ],
+  },
 };
 
 // In-memory cache for ultra-fast lookup with strict invalidation
@@ -300,6 +401,69 @@ export function invalidateSchoolSettingsCache(schoolId: string, category?: strin
       }
     }
   }
+}
+
+/**
+ * Helper to deep-merge a category's custom value with defaults
+ */
+function mergeCategoryWithDefault(category: SettingCategory, customVal: any, defaultVal: any): any {
+  if (!customVal || typeof customVal !== 'object') return defaultVal;
+
+  if (category === 'security') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      passwordPolicy: { ...defaultVal.passwordPolicy, ...(customVal.passwordPolicy || {}) },
+      authentication: { ...defaultVal.authentication, ...(customVal.authentication || {}) },
+      recovery: { ...defaultVal.recovery, ...(customVal.recovery || {}) },
+    };
+  }
+
+  if (category === 'examinations') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      gradingSchemes: Array.isArray(customVal.gradingSchemes) ? customVal.gradingSchemes : defaultVal.gradingSchemes,
+      rooms: Array.isArray(customVal.rooms) ? customVal.rooms : defaultVal.rooms,
+      timeSlots: Array.isArray(customVal.timeSlots) ? customVal.timeSlots : defaultVal.timeSlots,
+      examTypes: Array.isArray(customVal.examTypes) ? customVal.examTypes : defaultVal.examTypes,
+    };
+  }
+
+  if (category === 'roles') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      customRoles: Array.isArray(customVal.customRoles) ? customVal.customRoles : defaultVal.customRoles,
+      permissions: customVal.permissions && typeof customVal.permissions === 'object' ? customVal.permissions : defaultVal.permissions,
+    };
+  }
+
+  if (category === 'houses') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      houses: Array.isArray(customVal.houses) ? customVal.houses : defaultVal.houses,
+    };
+  }
+
+  if (category === 'rollNumbers') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      streamRules: customVal.streamRules && typeof customVal.streamRules === 'object' ? customVal.streamRules : defaultVal.streamRules,
+    };
+  }
+
+  if (category === 'streams') {
+    return {
+      ...defaultVal,
+      ...customVal,
+      customStreams: Array.isArray(customVal.customStreams) ? customVal.customStreams : defaultVal.customStreams,
+    };
+  }
+
+  return { ...defaultVal, ...customVal };
 }
 
 /**
@@ -325,22 +489,7 @@ export async function getSchoolSetting<K extends SettingCategory>(
   });
 
   const defaultVal = DEFAULT_SETTINGS[category];
-  let merged: any;
-  if (category === 'security' && record && typeof record.value === 'object' && record.value !== null) {
-    const recSec = record.value as any;
-    const defSec = defaultVal as any;
-    merged = {
-      ...defSec,
-      ...recSec,
-      passwordPolicy: { ...defSec.passwordPolicy, ...(recSec.passwordPolicy || {}) },
-      authentication: { ...defSec.authentication, ...(recSec.authentication || {}) },
-      recovery: { ...defSec.recovery, ...(recSec.recovery || {}) },
-    };
-  } else {
-    merged = record && typeof record.value === 'object' && record.value !== null
-      ? { ...defaultVal, ...(record.value as object) }
-      : defaultVal;
-  }
+  const merged = mergeCategoryWithDefault(category, record?.value, defaultVal);
 
   settingsMemoryCache.set(cacheKey, { value: merged, timestamp: Date.now() });
   return merged as SchoolSettingMap[K];
@@ -362,21 +511,7 @@ export async function getAllSchoolSettings(schoolId: string): Promise<SchoolSett
   const result: Partial<SchoolSettingMap> = {};
   for (const key of Object.keys(DEFAULT_SETTINGS) as SettingCategory[]) {
     const custom = recordMap.get(key);
-    if (key === 'security') {
-      const defSec = DEFAULT_SETTINGS.security as any;
-      const recSec = (custom && typeof custom === 'object') ? custom : {};
-      result.security = {
-        ...defSec,
-        ...recSec,
-        passwordPolicy: { ...defSec.passwordPolicy, ...(recSec.passwordPolicy || {}) },
-        authentication: { ...defSec.authentication, ...(recSec.authentication || {}) },
-        recovery: { ...defSec.recovery, ...(recSec.recovery || {}) },
-      };
-    } else {
-      result[key] = custom && typeof custom === 'object'
-        ? { ...DEFAULT_SETTINGS[key], ...custom }
-        : DEFAULT_SETTINGS[key];
-    }
+    result[key] = mergeCategoryWithDefault(key, custom, DEFAULT_SETTINGS[key]);
   }
 
   return result as SchoolSettingMap;
@@ -394,6 +529,7 @@ export async function updateSchoolSetting<K extends SettingCategory>(
 ): Promise<SchoolSettingMap[K]> {
   const current = await getSchoolSetting(schoolId, category);
   let updatedValue: any;
+
   if (category === 'security' && typeof current === 'object' && typeof value === 'object') {
     const curSec = current as any;
     const valSec = value as any;
@@ -403,6 +539,26 @@ export async function updateSchoolSetting<K extends SettingCategory>(
       passwordPolicy: valSec.passwordPolicy ? { ...curSec.passwordPolicy, ...valSec.passwordPolicy } : curSec.passwordPolicy,
       authentication: valSec.authentication ? { ...curSec.authentication, ...valSec.authentication } : curSec.authentication,
       recovery: valSec.recovery ? { ...curSec.recovery, ...valSec.recovery } : curSec.recovery,
+    };
+  } else if (category === 'examinations' && typeof current === 'object' && typeof value === 'object') {
+    const curEx = current as any;
+    const valEx = value as any;
+    updatedValue = {
+      ...curEx,
+      ...valEx,
+      gradingSchemes: valEx.gradingSchemes !== undefined ? valEx.gradingSchemes : curEx.gradingSchemes,
+      rooms: valEx.rooms !== undefined ? valEx.rooms : curEx.rooms,
+      timeSlots: valEx.timeSlots !== undefined ? valEx.timeSlots : curEx.timeSlots,
+      examTypes: valEx.examTypes !== undefined ? valEx.examTypes : curEx.examTypes,
+    };
+  } else if (category === 'roles' && typeof current === 'object' && typeof value === 'object') {
+    const curRoles = current as any;
+    const valRoles = value as any;
+    updatedValue = {
+      ...curRoles,
+      ...valRoles,
+      customRoles: valRoles.customRoles !== undefined ? valRoles.customRoles : curRoles.customRoles,
+      permissions: valRoles.permissions !== undefined ? { ...curRoles.permissions, ...valRoles.permissions } : curRoles.permissions,
     };
   } else {
     updatedValue = { ...current, ...value };
@@ -492,6 +648,22 @@ export async function getSecuritySettings(schoolId: string): Promise<SchoolSetti
 
 export async function getBrandingSettings(schoolId: string): Promise<SchoolSettingMap['branding']> {
   return getSchoolSetting(schoolId, 'branding');
+}
+
+export async function getRolesSettings(schoolId: string): Promise<SchoolSettingMap['roles']> {
+  return getSchoolSetting(schoolId, 'roles');
+}
+
+export async function getHouseSettings(schoolId: string): Promise<SchoolSettingMap['houses']> {
+  return getSchoolSetting(schoolId, 'houses');
+}
+
+export async function getRollNumberSettings(schoolId: string): Promise<SchoolSettingMap['rollNumbers']> {
+  return getSchoolSetting(schoolId, 'rollNumbers');
+}
+
+export async function getStreamSettings(schoolId: string): Promise<SchoolSettingMap['streams']> {
+  return getSchoolSetting(schoolId, 'streams');
 }
 
 

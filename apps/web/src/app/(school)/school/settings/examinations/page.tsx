@@ -1,8 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSchoolStore } from '@/shared/mock-store/school-store';
 import { 
   FileText, 
   Clock, 
@@ -10,21 +9,46 @@ import {
   Building2, 
   ShieldCheck, 
   ArrowRight,
-  Sliders
+  Sliders,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 export default function ExaminationsHubPage() {
-  const store = useSchoolStore();
-  const examTypes = store.examTypes || [];
-  const timeSlots = store.examTimeSlots || [];
-  const gradingSchemes = store.gradingSchemes || [];
-  const rooms = store.rooms || [];
-  const rules = store.examRules;
+  const [examSettings, setExamSettings] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const defaultGradingScheme = gradingSchemes.find(s => s.isDefault);
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSettings() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setExamSettings(json.data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load examination settings in hub:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadSettings();
+    return () => { isMounted = false; };
+  }, []);
+
+  const examTypes = examSettings?.examTypes || [];
+  const timeSlots = examSettings?.timeSlots || [];
+  const gradingSchemes = examSettings?.gradingSchemes || [];
+  const rooms = examSettings?.rooms || [];
+  const rules = examSettings;
+
+  const defaultGradingScheme = gradingSchemes.find((s: any) => s.isDefault) || gradingSchemes[0];
 
   const sections = [
     {
@@ -34,7 +58,7 @@ export default function ExaminationsHubPage() {
       icon: FileText,
       badge: examTypes.length > 0 ? `${examTypes.length} Configured` : 'Not Configured',
       badgeVariant: (examTypes.length > 0 ? 'default' : 'secondary') as 'default' | 'secondary',
-      metrics: `${examTypes.filter(t => t.status === 'ACTIVE').length} active exam types`,
+      metrics: `${examTypes.filter((t: any) => t.status === 'ACTIVE').length} active exam types`,
     },
     {
       title: 'Time Slots',
@@ -43,7 +67,7 @@ export default function ExaminationsHubPage() {
       icon: Clock,
       badge: timeSlots.length > 0 ? `${timeSlots.length} Slots` : 'Not Configured',
       badgeVariant: (timeSlots.length > 0 ? 'default' : 'secondary') as 'default' | 'secondary',
-      metrics: `${timeSlots.filter(s => s.status === 'ACTIVE').length} active shifts`,
+      metrics: `${timeSlots.filter((s: any) => s.status === 'ACTIVE').length} active shifts`,
     },
     {
       title: 'Grading Schemes',
@@ -61,7 +85,7 @@ export default function ExaminationsHubPage() {
       icon: Building2,
       badge: rooms.length > 0 ? `${rooms.length} Venues` : 'Not Configured',
       badgeVariant: (rooms.length > 0 ? 'default' : 'secondary') as 'default' | 'secondary',
-      metrics: `${rooms.reduce((acc, r) => acc + (r.capacity || 0), 0)} total seating capacity`,
+      metrics: `${rooms.reduce((acc: number, r: any) => acc + (r.capacity || 0), 0)} total seating capacity`,
     },
     {
       title: 'Rules & Conflict Detection',
@@ -73,6 +97,17 @@ export default function ExaminationsHubPage() {
       metrics: `Min Attendance: ${rules?.attendanceRequirementPercentage ?? 75}%`,
     },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[350px]">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground text-sm">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span>Loading examination hub configuration...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
-import { schoolStore, useSchoolStore } from '@/shared/mock-store/school-store';
+import React, { useState, useEffect } from 'react';
 import { GradingScheme, GradeRule } from '@/features/settings/types';
 import { 
   Award, 
@@ -12,7 +11,8 @@ import {
   Star,
   CheckCircle2,
   XCircle,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,8 +31,8 @@ import {
 import { toast } from 'sonner';
 
 export default function GradingSchemesSettingsPage() {
-  const store = useSchoolStore();
-  const gradingSchemes = store.gradingSchemes || [];
+  const [gradingSchemes, setGradingSchemes] = useState<GradingScheme[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingScheme, setEditingScheme] = useState<GradingScheme | null>(null);
@@ -41,6 +41,47 @@ export default function GradingSchemesSettingsPage() {
   const [code, setCode] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [rules, setRules] = useState<GradeRule[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/school/settings?category=examinations');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data && isMounted) {
+            setGradingSchemes(json.data.gradingSchemes || []);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load grading schemes:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    load();
+    return () => { isMounted = false; };
+  }, []);
+
+  const persistSchemes = async (updated: GradingScheme[]) => {
+    try {
+      setGradingSchemes(updated);
+      const res = await fetch('/api/school/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'examinations',
+          value: { gradingSchemes: updated },
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to persist grading schemes to server');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Persistence failed');
+    }
+  };
 
   const defaultStarterRules: GradeRule[] = [
     { grade: 'A+', minPercentage: 90, maxPercentage: 100, gradePoints: 10, isPass: true },
@@ -90,7 +131,7 @@ export default function GradingSchemesSettingsPage() {
     }));
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !code.trim()) {
       toast.error('Please enter scheme name and code');
@@ -102,51 +143,57 @@ export default function GradingSchemesSettingsPage() {
       return;
     }
 
-    // If marked default, remove default flag from others
-    if (isDefault) {
-      gradingSchemes.forEach(s => {
-        if (s.isDefault && (!editingScheme || s.id !== editingScheme.id)) {
-          schoolStore.updateGradingScheme({ ...s, isDefault: false });
-        }
-      });
-    }
-
+    let updatedSchemes: GradingScheme[];
     if (editingScheme) {
-      schoolStore.updateGradingScheme({
-        ...editingScheme,
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        isDefault,
-        rules,
+      updatedSchemes = gradingSchemes.map((s) => {
+        if (s.id === editingScheme.id) {
+          return {
+            ...s,
+            name: name.trim(),
+            code: code.trim().toUpperCase(),
+            isDefault,
+            rules,
+          };
+        }
+        return isDefault ? { ...s, isDefault: false } : s;
       });
       toast.success(`Grading scheme "${name}" updated`);
     } else {
-      schoolStore.createGradingScheme({
+      const newScheme: GradingScheme = {
+        id: `scheme-${Date.now()}`,
         name: name.trim(),
         code: code.trim().toUpperCase(),
         isDefault,
         rules,
-      });
+      };
+      updatedSchemes = [
+        ...gradingSchemes.map(s => isDefault ? { ...s, isDefault: false } : s),
+        newScheme,
+      ];
       toast.success(`Grading scheme "${name}" created`);
     }
 
+    await persistSchemes(updatedSchemes);
     setIsDialogOpen(false);
   };
 
-  const handleSetDefault = (scheme: GradingScheme) => {
-    gradingSchemes.forEach(s => {
-      schoolStore.updateGradingScheme({ ...s, isDefault: s.id === scheme.id });
-    });
+  const handleSetDefault = async (scheme: GradingScheme) => {
+    const updated = gradingSchemes.map(s => ({
+      ...s,
+      isDefault: s.id === scheme.id,
+    }));
+    await persistSchemes(updated);
     toast.success(`"${scheme.name}" is now the default grading scheme`);
   };
 
-  const handleDelete = (scheme: GradingScheme) => {
+  const handleDelete = async (scheme: GradingScheme) => {
     if (scheme.isDefault && gradingSchemes.length > 1) {
       toast.error('Cannot delete the default grading scheme. Please set another scheme as default first.');
       return;
     }
     if (confirm(`Are you sure you want to delete "${scheme.name}"?`)) {
-      schoolStore.deleteGradingScheme(scheme.id);
+      const updated = gradingSchemes.filter(s => s.id !== scheme.id);
+      await persistSchemes(updated);
       toast.success(`Grading scheme deleted`);
     }
   };

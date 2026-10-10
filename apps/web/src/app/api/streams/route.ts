@@ -47,6 +47,8 @@ const DEFAULT_STREAMS: StreamItem[] = [
   },
 ];
 
+import { getStreamSettings, updateSchoolSetting } from '@/lib/settings/settings-service';
+
 // GET /api/streams - Fetch active streams for institution
 export async function GET(req: NextRequest) {
   try {
@@ -55,10 +57,66 @@ export async function GET(req: NextRequest) {
       return auth.response;
     }
 
+    if (auth.schoolId) {
+      const streamConfig = await getStreamSettings(auth.schoolId);
+      if (streamConfig?.customStreams && streamConfig.customStreams.length > 0) {
+        const mapped = streamConfig.customStreams.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          code: s.code,
+          description: s.description || '',
+          status: s.status || 'ACTIVE',
+          applicableClasses: s.applicableClasses || ['Class 11', 'Class 12'],
+        }));
+        return NextResponse.json({ streams: mapped });
+      }
+    }
+
     // Return standard institutional streams
     return NextResponse.json({ streams: DEFAULT_STREAMS });
   } catch (error) {
     console.error('Error in GET /api/streams:', error);
+    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// POST /api/streams - Create or update an institutional stream
+export async function POST(req: NextRequest) {
+  try {
+    const auth = await requireAuth(req, { roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'] });
+    if (!auth.authorized) {
+      return auth.response;
+    }
+
+    if (!auth.schoolId) {
+      return NextResponse.json({ message: 'Institutional context required' }, { status: 400 });
+    }
+
+    const body = await req.json();
+    const { name, code, description, applicableClasses } = body;
+
+    if (!name || !code) {
+      return NextResponse.json({ message: 'Stream name and code are required' }, { status: 400 });
+    }
+
+    const current = await getStreamSettings(auth.schoolId);
+    const existing = current.customStreams || [...DEFAULT_STREAMS];
+
+    const newStream = {
+      id: `stream-${Date.now()}`,
+      name: name.trim(),
+      code: code.trim().toUpperCase(),
+      description: description?.trim() || '',
+      status: 'ACTIVE' as const,
+      applicableClasses: Array.isArray(applicableClasses) && applicableClasses.length > 0 ? applicableClasses : ['Class 11', 'Class 12'],
+    };
+
+    const updatedStreams = [...existing, newStream];
+    await updateSchoolSetting(auth.schoolId, 'streams', { customStreams: updatedStreams });
+
+    return NextResponse.json({ success: true, stream: newStream });
+  } catch (error) {
+    console.error('Error in POST /api/streams:', error);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }

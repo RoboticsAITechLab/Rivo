@@ -71,41 +71,65 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, status } = body;
+    const { userId, status, role, name, phone } = body;
 
-    if (!userId || !status) {
-      return NextResponse.json({ message: 'userId and status are required' }, { status: 400 });
+    if (!userId) {
+      return NextResponse.json({ message: 'userId is required' }, { status: 400 });
     }
 
-    if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
-      return NextResponse.json({ message: 'Invalid status. Must be ACTIVE or SUSPENDED.' }, { status: 400 });
+    const membershipUpdate: any = {};
+
+    if (status) {
+      if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+        return NextResponse.json({ message: 'Invalid status. Must be ACTIVE or SUSPENDED.' }, { status: 400 });
+      }
+      // Prevent suspending oneself
+      if (userId === auth.userId && status === 'SUSPENDED') {
+        return NextResponse.json({ message: 'You cannot suspend your own administrative account.' }, { status: 400 });
+      }
+      membershipUpdate.status = status;
     }
 
-    // Prevent suspending oneself
-    if (userId === auth.userId) {
-      return NextResponse.json({ message: 'You cannot suspend your own administrative account.' }, { status: 400 });
+    if (role) {
+      membershipUpdate.role = role.toUpperCase().replace(/\s+/g, '_');
     }
 
-    await prisma.schoolMembership.updateMany({
-      where: {
-        schoolId: auth.schoolId,
-        userId,
-      },
-      data: {
-        status: status as any,
-      },
-    });
+    if (Object.keys(membershipUpdate).length > 0) {
+      await prisma.schoolMembership.updateMany({
+        where: {
+          schoolId: auth.schoolId,
+          userId,
+        },
+        data: membershipUpdate,
+      });
+    }
+
+    if (name || phone !== undefined) {
+      const userUpdate: any = {};
+      if (name) {
+        const parts = name.trim().split(/\s+/);
+        userUpdate.firstName = parts[0] || '';
+        userUpdate.lastName = parts.slice(1).join(' ') || '';
+      }
+      if (phone !== undefined) {
+        userUpdate.phone = phone.trim() || null;
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: userUpdate,
+      });
+    }
 
     await logSecurityAudit({
-      event: status === 'SUSPENDED' ? 'ACCOUNT_SUSPENDED' : 'ACCOUNT_ENABLED',
+      event: status === 'SUSPENDED' ? 'ACCOUNT_SUSPENDED' : (role ? 'ROLE_CHANGED' : 'ACCOUNT_ENABLED'),
       schoolId: auth.schoolId,
       userId: auth.userId,
-      details: { targetUserId: userId, newStatus: status },
+      details: { targetUserId: userId, newStatus: status, newRole: role, name, phone },
     });
 
-    return NextResponse.json({ success: true, message: `User status updated to ${status}` });
+    return NextResponse.json({ success: true, message: 'User profile updated successfully' });
   } catch (error: any) {
-    console.error('[USERS_PATCH_ERROR] Failed to update user status:', error.message);
+    console.error('[USERS_PATCH_ERROR] Failed to update user:', error.message);
     return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
   }
 }
