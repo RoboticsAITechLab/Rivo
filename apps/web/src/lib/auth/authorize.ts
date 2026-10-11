@@ -182,7 +182,12 @@ export async function getEffectivePermission(params: {
     if (
       permissionCode.startsWith('fees.') ||
       permissionCode === 'students.view' ||
-      permissionCode === 'notices.view'
+      permissionCode === 'notices.view' ||
+      permissionCode === 'academic_sessions.view' ||
+      permissionCode === 'campuses.view' ||
+      permissionCode === 'classes.view' ||
+      permissionCode === 'sections.view' ||
+      permissionCode === 'reports.view'
     ) {
       return { granted: true, scope: 'SCHOOL' };
     }

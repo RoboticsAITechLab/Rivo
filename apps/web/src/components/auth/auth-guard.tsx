@@ -26,6 +26,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         user.roleType === 'ADMIN' ||
         user.roleType === 'SCHOOL_ADMIN' ||
         user.roleType === 'TEACHER' ||
+        user.roleType === 'FEE_MANAGER' ||
         user.roleType === 'STAFF';
 
       if (!isAllowed) {

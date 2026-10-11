@@ -221,6 +221,16 @@ export async function GET(req: NextRequest) {
       take: 5,
     });
 
+    const modeMap = new Map<string, { mode: string; count: number; totalAmount: number }>();
+    for (const p of payments) {
+      const mode = p.paymentMode || 'OTHER';
+      const existing = modeMap.get(mode) || { mode, count: 0, totalAmount: 0 };
+      existing.count += 1;
+      existing.totalAmount += Number(p.amount);
+      modeMap.set(mode, existing);
+    }
+    const collectionsByMode = Array.from(modeMap.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+
     return NextResponse.json({
       summary: {
         totalExpected,
@@ -234,6 +244,7 @@ export async function GET(req: NextRequest) {
       outstandingByClass: Array.from(classOutstandingMap.values()),
       outstandingByCampus: Array.from(campusOutstandingMap.values()),
       collectionTrend: trend,
+      collectionsByMode,
       recentPayments,
       recentReceipts,
       upcomingDues,

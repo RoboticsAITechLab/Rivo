@@ -19,6 +19,9 @@ import {
   Clock,
   Printer,
   FileSpreadsheet,
+  Wallet,
+  BadgePercent,
+  Users,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -47,6 +50,7 @@ interface StatsResponse {
   outstandingByClass: Array<{ className: string; amount: number }>;
   outstandingByCampus: Array<{ campusName: string; amount: number }>;
   collectionTrend: Array<{ date: string; amount: number }>;
+  collectionsByMode?: Array<{ mode: string; count: number; totalAmount: number }>;
   recentPayments: any[];
   recentReceipts: any[];
   upcomingDues: any[];
@@ -169,6 +173,52 @@ export default function FeeDashboardPage() {
       />
 
       <FeeNav />
+
+      {/* Fee Operations Quick Shortcuts */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-6">
+        <Link href="/school/fees/payments/new" className="block">
+          <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <CreditCard className="h-4 w-4 mx-auto text-primary group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Collect Fee</div>
+            <div className="text-[10px] text-muted-foreground">Record Payment</div>
+          </div>
+        </Link>
+        <Link href="/school/fees/students" className="block">
+          <div className="p-3 rounded-lg border border-border/80 bg-card/60 hover:bg-muted/50 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <Users className="h-4 w-4 mx-auto text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Student Ledgers</div>
+            <div className="text-[10px] text-muted-foreground">Dues &amp; Balances</div>
+          </div>
+        </Link>
+        <Link href="/school/fees/receipts" className="block">
+          <div className="p-3 rounded-lg border border-border/80 bg-card/60 hover:bg-muted/50 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <Receipt className="h-4 w-4 mx-auto text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Receipts</div>
+            <div className="text-[10px] text-muted-foreground">Print &amp; Invoices</div>
+          </div>
+        </Link>
+        <Link href="/school/fees/plans" className="block">
+          <div className="p-3 rounded-lg border border-border/80 bg-card/60 hover:bg-muted/50 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <FileSpreadsheet className="h-4 w-4 mx-auto text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Fee Plans</div>
+            <div className="text-[10px] text-muted-foreground">Installments</div>
+          </div>
+        </Link>
+        <Link href="/school/fees/heads" className="block">
+          <div className="p-3 rounded-lg border border-border/80 bg-card/60 hover:bg-muted/50 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <Layers className="h-4 w-4 mx-auto text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Fee Heads</div>
+            <div className="text-[10px] text-muted-foreground">Tuition &amp; Dues</div>
+          </div>
+        </Link>
+        <Link href="/school/fees/concessions" className="block">
+          <div className="p-3 rounded-lg border border-border/80 bg-card/60 hover:bg-muted/50 transition-colors text-center space-y-1 group cursor-pointer shadow-2xs">
+            <BadgePercent className="h-4 w-4 mx-auto text-muted-foreground group-hover:text-foreground group-hover:scale-110 transition-transform" />
+            <div className="font-semibold text-xs text-foreground">Concessions</div>
+            <div className="text-[10px] text-muted-foreground">Waivers &amp; Grants</div>
+          </div>
+        </Link>
+      </div>
 
       {/* Filter Strip */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3 rounded-lg border bg-card/60 shadow-2xs">
@@ -309,6 +359,64 @@ export default function FeeDashboardPage() {
               <p className="text-[11px] text-muted-foreground">Deducted from gross fee obligations</p>
             </div>
           </div>
+
+          {/* Day-Book & Payment Mode Reconciliation Breakdown */}
+          {data.collectionsByMode && data.collectionsByMode.length > 0 && (
+            <Card className="border-border/80 shadow-2xs bg-card/60">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Wallet className="h-4 w-4 text-primary" />
+                      Day-Book &amp; Payment Instrument Breakdown
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Reconciliation breakdown across payment modes (Cash, UPI, Bank Transfer, Cheque)
+                    </CardDescription>
+                  </div>
+                  <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 self-start sm:self-auto bg-muted/60 px-2.5 py-1 rounded-md">
+                    <span>Recovery Rate:</span>
+                    <strong className="text-foreground">
+                      {(((summary.totalCollected || 0) / (summary.totalExpected || 1)) * 100).toFixed(1)}%
+                    </strong>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {data.collectionsByMode.map((m) => {
+                    const modeLabel =
+                      m.mode === 'CASH'
+                        ? 'Cash Counter'
+                        : m.mode === 'UPI'
+                        ? 'UPI / QR Code'
+                        : m.mode === 'BANK_TRANSFER'
+                        ? 'Bank Transfer / NEFT'
+                        : m.mode === 'CHEQUE'
+                        ? 'Cheque / Draft'
+                        : m.mode === 'ONLINE'
+                        ? 'Online Payment Gateway'
+                        : m.mode;
+
+                    return (
+                      <div
+                        key={m.mode}
+                        className="p-3 rounded-lg border border-border/60 bg-background/80 space-y-1 hover:border-primary/40 transition-colors shadow-2xs"
+                      >
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span className="font-semibold text-foreground uppercase tracking-wider">{modeLabel}</span>
+                          <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono">{m.count} txns</span>
+                        </div>
+                        <div className="pt-0.5">
+                          <FinancialAmount amount={m.totalAmount} size="md" variant="default" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Outstanding by Class & Campus */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
