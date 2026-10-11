@@ -443,6 +443,15 @@ export async function generateNextReceiptNumber(
   const yearKey = currentYear;
   const padding = 4;
 
+  // Resolve institutional receipt prefix from school fee settings if configured
+  const feeSetting = await client.schoolSetting.findUnique({
+    where: { schoolId_category: { schoolId, category: 'fees' } },
+    select: { value: true },
+  }).catch(() => null);
+
+  const customPrefix = (feeSetting?.value as any)?.receiptPrefix?.trim();
+  const receiptTag = customPrefix || 'RCT';
+
   let attempts = 0;
   const maxAttempts = 100;
 
@@ -469,7 +478,7 @@ export async function generateNextReceiptNumber(
     });
 
     const paddedNumber = String(seq.lastNumber).padStart(padding, '0');
-    const generatedId = `${config.studentPrefix}-RCT-${currentYear}-${paddedNumber}`;
+    const generatedId = `${config.studentPrefix}-${receiptTag}-${currentYear}-${paddedNumber}`;
 
     // Collision check
     const existing = await client.feeReceipt.findFirst({
@@ -485,7 +494,7 @@ export async function generateNextReceiptNumber(
     }
   }
 
-  return `${config.studentPrefix}-RCT-${currentYear}-${Date.now().toString().slice(-4)}`;
+  return `${config.studentPrefix}-${receiptTag}-${currentYear}-${Date.now().toString().slice(-4)}`;
 }
 
 /**

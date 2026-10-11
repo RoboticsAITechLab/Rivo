@@ -24,6 +24,7 @@ export interface ReceiptPdfData {
   }>;
   totalPaid: number;
   issuedByName?: string | null;
+  footerNote?: string | null;
 }
 
 function cleanText(str: string | null | undefined): string {
@@ -363,7 +364,11 @@ export async function generateReceiptPdfBuffer(data: ReceiptPdfData): Promise<Ui
   });
 
   // Left Disclaimer
-  page.drawText('Note: This is an authoritative, digitally signed fee receipt.', {
+  const disclaimerNote = data.footerNote
+    ? cleanText(data.footerNote)
+    : 'Note: This is an authoritative, digitally signed fee receipt.';
+
+  page.drawText(disclaimerNote, {
     x: 40,
     y: footerY + 28,
     size: 7.5,

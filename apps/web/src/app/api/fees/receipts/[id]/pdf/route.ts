@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth/authorize';
 import { getReceiptPrintData } from '@/lib/fees/fee-payment-service';
 import { generateReceiptPdfBuffer } from '@/lib/fees/fee-pdf-service';
+import { getFeeSettings } from '@/lib/settings/settings-service';
 
 export async function GET(
   req: NextRequest,
@@ -12,7 +13,10 @@ export async function GET(
     if (!auth.authorized) return auth.response;
 
     const { id } = await context.params;
-    const receipt = await getReceiptPrintData(auth.schoolId, id);
+    const [receipt, feeSettings] = await Promise.all([
+      getReceiptPrintData(auth.schoolId, id),
+      getFeeSettings(auth.schoolId).catch(() => null),
+    ]);
 
     if (!receipt) {
       return NextResponse.json({ message: 'Receipt record not found.' }, { status: 404 });
@@ -53,6 +57,7 @@ export async function GET(
       issuedByName: receipt.issuedByUser
         ? `${(receipt as any).issuedByUser.firstName || ''} ${(receipt as any).issuedByUser.lastName || ''}`.trim()
         : undefined,
+      footerNote: feeSettings?.receiptFooterNote,
     });
 
     const sanitizedReceiptNumber = receipt.receiptNumber.replace(/[^a-zA-Z0-9_-]/g, '_');

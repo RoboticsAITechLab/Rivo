@@ -186,7 +186,7 @@ async function processInvitation(
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth(req, {
-      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER', 'PLATFORM_ADMIN'],
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
     });
     if (!auth.authorized) return auth.response;
 

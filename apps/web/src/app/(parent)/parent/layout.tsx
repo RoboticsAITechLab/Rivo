@@ -13,6 +13,7 @@ import {
   GraduationCap,
   FileText,
   School,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -124,6 +125,7 @@ export default function ParentLayout({
 
   const navItems = [
     { label: 'Home', href: '/parent', icon: Home },
+    { label: 'Fees', href: '/parent/fees', icon: CreditCard },
     { label: 'Notices', href: '/parent/notices', icon: FileText },
     { label: 'Results', href: '/parent/results', icon: Award },
     { label: 'Alerts', href: '/parent/notifications', icon: Bell },

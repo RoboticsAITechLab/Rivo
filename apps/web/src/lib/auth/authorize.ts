@@ -360,7 +360,9 @@ export async function requireAuth(
   }
 
   // 2. Scope check: default is 'SCHOOL' if not specified, unless endpoint explicitly requests 'PLATFORM'
-  const targetScope = options?.scope || (options?.roles?.some((r) => r === 'PLATFORM_ADMIN') ? 'PLATFORM' : 'SCHOOL');
+  // An endpoint is only PLATFORM-scoped if options.scope is explicitly 'PLATFORM', or options.roles contains exclusively PLATFORM_ADMIN
+  const isExclusivelyPlatform = options?.roles && options.roles.length > 0 && options.roles.every((r) => r === 'PLATFORM_ADMIN');
+  const targetScope = options?.scope || (isExclusivelyPlatform ? 'PLATFORM' : 'SCHOOL');
 
   if (targetScope === 'PLATFORM') {
     if (session.scope !== 'PLATFORM') {

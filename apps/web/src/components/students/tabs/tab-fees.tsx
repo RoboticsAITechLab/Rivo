@@ -24,6 +24,13 @@ interface TabFeesProps {
 export function TabFees({ student }: TabFeesProps) {
   const [obligations, setObligations] = React.useState<any[]>([]);
   const [payments, setPayments] = React.useState<any[]>([]);
+  const [summary, setSummary] = React.useState<{
+    totalOriginal: number;
+    totalConcessions: number;
+    totalNet: number;
+    totalPaid: number;
+    totalBalance: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -40,6 +47,9 @@ export function TabFees({ student }: TabFeesProps) {
       if (obRes.ok) {
         const obData = await obRes.json();
         setObligations(obData.obligations || []);
+        if (obData.summary) {
+          setSummary(obData.summary);
+        }
       }
       if (payRes.ok) {
         const payData = await payRes.json();
@@ -57,11 +67,24 @@ export function TabFees({ student }: TabFeesProps) {
     fetchFeeDetails();
   }, [fetchFeeDetails]);
 
-  const totalAssigned = obligations.reduce((acc, o) => acc + Number(o.amount || 0), 0);
-  const totalConcessions = obligations.reduce((acc, o) => acc + Number(o.concessionAmount || 0), 0);
-  const totalPaid = payments.filter((p) => p.status === 'SUCCESS').reduce((acc, p) => acc + Number(p.amount || 0), 0);
-  const netPayable = Math.max(0, totalAssigned - totalConcessions);
-  const outstandingBalance = Math.max(0, netPayable - totalPaid);
+  // Reconcile with authoritative ledger summary when available, or derive accurately
+  const totalAssigned = summary
+    ? summary.totalOriginal
+    : obligations.reduce((acc, o) => acc + Number(o.originalAmount ?? o.netAmount ?? o.amount ?? 0), 0);
+
+  const totalConcessions = summary
+    ? summary.totalConcessions
+    : obligations.reduce((acc, o) => acc + Number(o.concessionAmount || 0), 0);
+
+  const totalPaid = summary
+    ? summary.totalPaid
+    : payments
+        .filter((p) => p.status === 'COLLECTED')
+        .reduce((acc, p) => acc + Number(p.amount || 0), 0);
+
+  const outstandingBalance = summary
+    ? summary.totalBalance
+    : obligations.reduce((acc, o) => acc + Number(o.balanceAmount ?? Math.max(0, Number(o.netAmount || 0) - Number(o.paidAmount || 0))), 0);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -189,7 +212,7 @@ export function TabFees({ student }: TabFeesProps) {
                       {ob.dueDate ? new Date(ob.dueDate).toLocaleDateString() : '—'}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-medium">
-                      {formatCurrency(Number(ob.amount))}
+                      {formatCurrency(Number(ob.netAmount ?? ob.originalAmount ?? ob.amount ?? 0))}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
                       {formatCurrency(Number(ob.paidAmount || 0))}
@@ -200,12 +223,12 @@ export function TabFees({ student }: TabFeesProps) {
                         className={`text-[10px] py-0 px-2 ${
                           ob.status === 'PAID'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : ob.status === 'PARTIAL'
+                            : ob.status === 'PARTIALLY_PAID' || ob.status === 'PARTIAL'
                             ? 'bg-amber-50 text-amber-700 border-amber-200'
                             : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}
                       >
-                        {ob.status || 'PENDING'}
+                        {ob.status === 'PARTIALLY_PAID' ? 'PARTIAL' : ob.status || 'PENDING'}
                       </Badge>
                     </td>
                   </tr>
@@ -235,15 +258,20 @@ export function TabFees({ student }: TabFeesProps) {
                       {formatCurrency(Number(pay.amount))}
                     </span>
                     <Badge variant="outline" className="text-[10px] py-0">
-                      {pay.paymentMethod || 'ONLINE'}
+                      {pay.paymentMode || pay.paymentMethod || 'ONLINE'}
                     </Badge>
+                    {pay.status === 'REVERSED' && (
+                      <Badge variant="destructive" className="text-[10px] py-0 bg-rose-100 text-rose-700 border-rose-200">
+                        REVERSED
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-[10px] text-muted-foreground font-mono">
-                    Receipt #{pay.receiptNumber || pay.id.slice(0, 8)} •{' '}
+                    Receipt #{pay.receipt?.receiptNumber || pay.receiptNumber || pay.paymentNumber || pay.id.slice(0, 8)} •{' '}
                     {new Date(pay.paymentDate || pay.createdAt).toLocaleDateString()}
                   </p>
                 </div>
-                <Link href={`/school/fees/receipts/${pay.receiptId || pay.id}`}>
+                <Link href={`/school/fees/receipts/${pay.receipt?.id || pay.receiptId || pay.id}`}>
                   <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
                     <Receipt className="w-3 h-3" />
                     View Receipt
