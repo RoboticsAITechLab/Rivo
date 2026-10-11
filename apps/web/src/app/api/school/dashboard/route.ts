@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, {
       scope: 'SCHOOL',
-      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'STAFF'],
+      roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'FEE_MANAGER', 'STAFF'],
     });
 
     if (!auth.authorized) {

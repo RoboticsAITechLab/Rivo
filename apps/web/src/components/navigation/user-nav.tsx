@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogOut, Settings, User as UserIcon, Building2 } from 'lucide-react';
+import { LogOut, Settings, User as UserIcon, Building2, ShieldCheck } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -101,6 +101,12 @@ export function UserNav() {
                 <Link href="/school/settings/fees" className="flex items-center gap-2 cursor-pointer">
                   <Settings className="h-4 w-4 text-muted-foreground" />
                   <span>Fee Settings</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/school/settings/security/mfa" className="flex items-center gap-2 cursor-pointer">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Security &amp; 2FA Setup</span>
                 </Link>
               </DropdownMenuItem>
             </>

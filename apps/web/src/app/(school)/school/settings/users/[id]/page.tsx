@@ -74,6 +74,7 @@ export default function UserDetailPage() {
               setPhone(found.phone || '');
               setRole(found.role || '');
               setStatus(found.status || 'ACTIVE');
+              setMfaEnabled(!!found.mfaEnabled);
             }
           }
         }
@@ -145,6 +146,7 @@ export default function UserDetailPage() {
           phone: phone.trim(),
           role,
           status,
+          mfaEnabled,
         }),
       });
 
@@ -160,6 +162,7 @@ export default function UserDetailPage() {
         phone: phone.trim() || undefined,
         role,
         status,
+        mfaEnabled,
       });
     } catch (err: any) {
       toast.error(err.message || 'Failed to update user profile');
@@ -326,8 +329,10 @@ export default function UserDetailPage() {
                   <span className="font-mono text-foreground">{new Date(user.createdAt).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Account ID:</span>
-                  <span className="font-mono text-foreground text-[11px]">{user.id}</span>
+                  <span>Staff ID:</span>
+                  <span className="font-mono text-foreground font-semibold text-xs">
+                    {user.staffId || user.employeeId || `STF-${user.id.slice(0, 8).toUpperCase()}`}
+                  </span>
                 </div>
               </div>
             </CardContent>

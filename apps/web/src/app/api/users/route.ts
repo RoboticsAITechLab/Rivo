@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 import { logSecurityAudit } from '@/lib/auth/audit';
+import { generateTotpSecret, encryptMfaSecret } from '@/lib/auth/mfa';
 
 // GET /api/users - List institutional users with membership roles and statuses
 export async function GET(req: NextRequest) {
@@ -32,22 +33,42 @@ export async function GET(req: NextRequest) {
             status: true,
             lastLoginAt: true,
             createdAt: true,
+            mfa: {
+              select: {
+                enabled: true,
+                verifiedAt: true,
+              },
+            },
+            teachers: {
+              where: { schoolId: auth.schoolId },
+              select: {
+                employeeId: true,
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const formatted = memberships.map((m) => ({
-      id: m.user.id,
-      name: `${m.user.firstName} ${m.user.lastName}`.trim(),
-      email: m.user.email || '',
-      phone: m.user.phone || '',
-      role: m.role,
-      status: m.status, // ACTIVE or SUSPENDED
-      lastLogin: m.user.lastLoginAt ? m.user.lastLoginAt.toISOString() : null,
-      createdAt: m.createdAt.toISOString(),
-    }));
+    const formatted = memberships.map((m) => {
+      const teacherEmpId = m.user.teachers?.[0]?.employeeId;
+      const staffId = teacherEmpId || `STF-${m.user.id.slice(0, 8).toUpperCase()}`;
+
+      return {
+        id: m.user.id,
+        name: `${m.user.firstName} ${m.user.lastName}`.trim(),
+        email: m.user.email || '',
+        phone: m.user.phone || '',
+        role: m.role,
+        status: m.status, // ACTIVE or SUSPENDED
+        lastLogin: m.user.lastLoginAt ? m.user.lastLoginAt.toISOString() : null,
+        createdAt: m.createdAt.toISOString(),
+        mfaEnabled: !!m.user.mfa?.enabled,
+        staffId,
+        employeeId: teacherEmpId || null,
+      };
+    });
 
     return NextResponse.json({ success: true, users: formatted });
   } catch (error: any) {
@@ -71,7 +92,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { userId, status, role, name, phone } = body;
+    const { userId, status, role, name, phone, mfaEnabled } = body;
 
     if (!userId) {
       return NextResponse.json({ message: 'userId is required' }, { status: 400 });
@@ -117,6 +138,44 @@ export async function PATCH(req: NextRequest) {
       await prisma.user.update({
         where: { id: userId },
         data: userUpdate,
+      });
+    }
+
+    if (typeof mfaEnabled === 'boolean') {
+      const existingMfa = await prisma.userMfa.findUnique({
+        where: { userId },
+      });
+
+      if (existingMfa) {
+        await prisma.userMfa.update({
+          where: { userId },
+          data: {
+            enabled: mfaEnabled,
+            ...(mfaEnabled && !existingMfa.verifiedAt ? { verifiedAt: new Date() } : {}),
+          },
+        });
+      } else if (mfaEnabled) {
+        const targetUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true },
+        });
+        const { secret } = generateTotpSecret(targetUser?.email || 'user@rivo.school');
+        const secretEncrypted = encryptMfaSecret(secret);
+        await prisma.userMfa.create({
+          data: {
+            userId,
+            secretEncrypted,
+            enabled: true,
+            verifiedAt: new Date(),
+          },
+        });
+      }
+
+      await logSecurityAudit({
+        event: mfaEnabled ? 'MFA_ENABLED' : 'MFA_DISABLED',
+        schoolId: auth.schoolId,
+        userId: auth.userId,
+        details: { targetUserId: userId, enforcedByAdmin: true },
       });
     }
 

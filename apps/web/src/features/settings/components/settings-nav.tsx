@@ -22,9 +22,9 @@ export function SettingsNav() {
   // Role-filtered groups based on Rivo Role Hierarchy
   const filteredGroups = React.useMemo(() => {
     return SETTINGS_NAVIGATION_GROUPS.map((group) => {
-      // Fee Manager role gets only General overview/profile/branding, Fees & Finance, and Print settings
+      // Fee Manager role gets General overview/profile/branding, Fees & Finance, Security/MFA, and Print settings
       if (roleType === 'FEE_MANAGER') {
-        const allowedIds = ['overview', 'school-profile', 'branding', 'fees', 'print-settings'];
+        const allowedIds = ['overview', 'school-profile', 'branding', 'fees', 'print-settings', 'mfa', 'sessions', 'password-policy', 'recovery'];
         const items = group.items.filter((item) => allowedIds.includes(item.id));
         if (items.length === 0) return null;
         return { ...group, items };

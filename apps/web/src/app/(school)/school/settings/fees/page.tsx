@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { AccountMfaCard } from '@/components/auth/account-mfa-card';
 
 export default function FeeSettingsPage() {
   const [loading, setLoading] = React.useState(true);
@@ -254,6 +255,14 @@ export default function FeeSettingsPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Section D: Account Security & Multi-Factor Auth (MFA / 2FA) */}
+        <div className="space-y-2">
+          <AccountMfaCard
+            title="Fee Manager Account Security & Two-Factor Auth (MFA)"
+            description="Protect fee collection, concession approvals, and receipt issuing by requiring an authenticator code (Google Authenticator, Microsoft Authenticator) upon login."
+          />
         </div>
 
         {/* Financial Immutability Notice */}

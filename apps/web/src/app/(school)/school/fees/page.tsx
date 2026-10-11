@@ -22,6 +22,7 @@ import {
   Wallet,
   BadgePercent,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
@@ -156,6 +157,12 @@ export default function FeeDashboardPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
+            <Link href="/school/settings/security/mfa">
+              <Button variant="outline" size="sm" className="h-8.5 text-xs gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                2FA Security
+              </Button>
+            </Link>
             <Link href="/school/fees/plans/new">
               <Button variant="outline" size="sm" className="h-8.5 text-xs gap-1.5">
                 <Plus className="h-3.5 w-3.5" />

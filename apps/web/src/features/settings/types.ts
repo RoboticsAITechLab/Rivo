@@ -107,6 +107,8 @@ export interface UserAccount {
   campusId?: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'INVITED';
   mfaEnabled: boolean;
+  staffId?: string;
+  employeeId?: string | null;
   createdAt: string;
 }
 

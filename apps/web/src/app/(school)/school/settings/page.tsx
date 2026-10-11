@@ -154,7 +154,7 @@ export default function SettingsOverviewPage() {
       category: 'Security',
       status: 'CONFIGURED',
       statusText: 'Database & MFA Active',
-      href: '/school/settings/security/authentication',
+      href: '/school/settings/security/mfa',
       icon: Lock,
       description: 'Session timeout, credential complexity, and multi-factor auth',
     },
