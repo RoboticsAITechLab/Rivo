@@ -18,15 +18,21 @@ export async function GET(req: NextRequest) {
 
     const mfa = await prisma.userMfa.findUnique({
       where: { userId: auth.userId },
-      select: { enabled: true, verifiedAt: true },
+      select: { type: true, enabled: true, verifiedAt: true },
     });
 
     const remainingCodesCount = await prisma.mfaRecoveryCode.count({
       where: { userId: auth.userId, usedAt: null },
     });
 
+    const isEnforced = mfa?.type === 'ENFORCED';
+    const isVerified = !!mfa?.verifiedAt;
+    const isEnabled = !!mfa?.enabled && isVerified;
+
     return NextResponse.json({
-      enabled: !!mfa?.enabled,
+      enabled: isEnabled,
+      verified: isVerified,
+      enforced: isEnforced,
       verifiedAt: mfa?.verifiedAt || null,
       remainingCodesCount,
     });

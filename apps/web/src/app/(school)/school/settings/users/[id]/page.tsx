@@ -311,9 +311,20 @@ export default function UserDetailPage() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/20">
                 <div className="space-y-0.5 pr-2">
-                  <Label htmlFor="mfaSwitch" className="text-sm font-medium">Require 2FA / MFA</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="mfaSwitch" className="text-sm font-medium">Require 2FA / MFA</Label>
+                    {user.mfaEnforced && !user.mfaVerified ? (
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                        Enforced (Pending User Setup)
+                      </Badge>
+                    ) : user.mfaVerified ? (
+                      <Badge className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                        Enforced &amp; Active
+                      </Badge>
+                    ) : null}
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Enforce authenticator app verification upon login.
+                    Enforces MFA for this staff account. The user will be notified to scan their QR code and connect an authenticator app.
                   </p>
                 </div>
                 <Switch 

@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
             createdAt: true,
             mfa: {
               select: {
+                type: true,
                 enabled: true,
                 verifiedAt: true,
               },
@@ -54,6 +55,9 @@ export async function GET(req: NextRequest) {
     const formatted = memberships.map((m) => {
       const teacherEmpId = m.user.teachers?.[0]?.employeeId;
       const staffId = teacherEmpId || `STF-${m.user.id.slice(0, 8).toUpperCase()}`;
+      const isMfaEnforced = m.user.mfa?.type === 'ENFORCED';
+      const isMfaVerified = !!m.user.mfa?.verifiedAt;
+      const isMfaActive = !!m.user.mfa?.enabled;
 
       return {
         id: m.user.id,
@@ -64,7 +68,9 @@ export async function GET(req: NextRequest) {
         status: m.status, // ACTIVE or SUSPENDED
         lastLogin: m.user.lastLoginAt ? m.user.lastLoginAt.toISOString() : null,
         createdAt: m.createdAt.toISOString(),
-        mfaEnabled: !!m.user.mfa?.enabled,
+        mfaEnabled: isMfaEnforced || isMfaActive,
+        mfaEnforced: isMfaEnforced,
+        mfaVerified: isMfaVerified,
         staffId,
         employeeId: teacherEmpId || null,
       };
@@ -146,36 +152,58 @@ export async function PATCH(req: NextRequest) {
         where: { userId },
       });
 
-      if (existingMfa) {
-        await prisma.userMfa.update({
-          where: { userId },
-          data: {
-            enabled: mfaEnabled,
-            ...(mfaEnabled && !existingMfa.verifiedAt ? { verifiedAt: new Date() } : {}),
-          },
-        });
-      } else if (mfaEnabled) {
-        const targetUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { email: true },
-        });
-        const { secret } = generateTotpSecret(targetUser?.email || 'user@rivo.school');
-        const secretEncrypted = encryptMfaSecret(secret);
-        await prisma.userMfa.create({
-          data: {
-            userId,
-            secretEncrypted,
-            enabled: true,
-            verifiedAt: new Date(),
-          },
-        });
+      if (mfaEnabled) {
+        // Director enforces MFA:
+        // DO NOT auto-setup or mark verified! The user must scan the QR code and verify themselves!
+        if (existingMfa) {
+          await prisma.userMfa.update({
+            where: { userId },
+            data: {
+              type: 'ENFORCED',
+              // If already verified by the user in the past, keep enabled. Otherwise keep disabled pending setup!
+              enabled: !!existingMfa.verifiedAt,
+            },
+          });
+        } else {
+          const targetUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true },
+          });
+          const { secret } = generateTotpSecret(targetUser?.email || 'user@rivo.school');
+          const secretEncrypted = encryptMfaSecret(secret);
+          await prisma.userMfa.create({
+            data: {
+              userId,
+              secretEncrypted,
+              type: 'ENFORCED',
+              enabled: false, // NOT auto-setup! Must be completed by user!
+              verifiedAt: null, // NOT verified yet!
+            },
+          });
+        }
+      } else {
+        // Director removes enforcement:
+        if (existingMfa) {
+          if (existingMfa.verifiedAt) {
+            await prisma.userMfa.update({
+              where: { userId },
+              data: {
+                type: 'TOTP',
+              },
+            });
+          } else {
+            await prisma.userMfa.delete({
+              where: { userId },
+            });
+          }
+        }
       }
 
       await logSecurityAudit({
         event: mfaEnabled ? 'MFA_ENABLED' : 'MFA_DISABLED',
         schoolId: auth.schoolId,
         userId: auth.userId,
-        details: { targetUserId: userId, enforcedByAdmin: true },
+        details: { targetUserId: userId, enforced: mfaEnabled },
       });
     }
 

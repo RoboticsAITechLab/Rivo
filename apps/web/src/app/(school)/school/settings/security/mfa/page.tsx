@@ -52,6 +52,7 @@ interface EnrollmentData {
 export default function MFASettingsPage() {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [isMfaActive, setIsMfaActive] = useState(false);
+  const [isEnforced, setIsEnforced] = useState(false);
   const [recoveryCodesCount, setRecoveryCodesCount] = useState<number>(0);
   const [isAuthenticated, setIsAuthenticated] = useState(true);
 
@@ -99,13 +100,16 @@ export default function MFASettingsPage() {
       setIsAuthenticated(true);
       if (res.ok) {
         const data = await res.json();
-        setIsMfaActive(!!data.enabled);
+        setIsMfaActive(!!data.enabled && !!data.verified);
+        setIsEnforced(!!data.enforced && !data.verified);
         setRecoveryCodesCount(data.remainingCodesCount ?? 0);
       } else {
         setIsMfaActive(false);
+        setIsEnforced(false);
       }
     } catch {
       setIsMfaActive(false);
+      setIsEnforced(false);
     } finally {
       setLoadingStatus(false);
     }
@@ -307,6 +311,30 @@ export default function MFASettingsPage() {
         </div>
       )}
 
+      {/* Notice Banner when Director enforces MFA */}
+      {isEnforced && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-semibold text-sm text-amber-900">MFA Setup Notice: Enforced by School Director</p>
+              <p className="text-xs text-amber-800">
+                Your School Director has required Two-Factor Authentication on your account. MFA is <strong>not yet active</strong>. Please click "Enable Authenticator 2FA" below to scan your QR code.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleStartSetup}
+            disabled={isEnrolling}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-xs gap-1.5 shrink-0"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Setup Authenticator Now
+          </Button>
+        </div>
+      )}
+
       {/* 1. CURRENT USER 2FA STATUS CARD */}
       <Card className="border-slate-200 shadow-sm overflow-hidden">
         <div className={`h-1.5 w-full ${isMfaActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
@@ -320,9 +348,13 @@ export default function MFASettingsPage() {
                 <CardTitle className="text-base font-semibold">Your Account Security</CardTitle>
                 {loadingStatus ? (
                   <Badge variant="outline" className="text-slate-400 animate-pulse">Checking...</Badge>
+                ) : isEnforced ? (
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100 font-medium">
+                    MFA Enforced (Setup Required)
+                  </Badge>
                 ) : isMfaActive ? (
                   <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100 font-medium">
-                    2FA Enabled
+                    2FA Enabled &amp; Verified
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">
@@ -331,7 +363,9 @@ export default function MFASettingsPage() {
                 )}
               </div>
               <CardDescription className="text-xs text-slate-500 mt-1">
-                {isMfaActive
+                {isEnforced
+                  ? 'Your School Director has required Two-Factor Authentication on this account. Complete setup below to activate protection.'
+                  : isMfaActive
                   ? 'Your account is protected by an authenticator application. Verification is required at every login.'
                   : 'Add an extra layer of protection to your school account with Google Authenticator, Microsoft Authenticator, or 1Password.'}
               </CardDescription>

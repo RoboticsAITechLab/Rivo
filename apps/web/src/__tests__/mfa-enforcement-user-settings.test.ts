@@ -117,7 +117,9 @@ async function runTests() {
 
   // Verify in Prisma DB directly
   const dbMfa1 = await prisma.userMfa.findUnique({ where: { userId: targetUser.id } });
-  assert(dbMfa1 !== null && dbMfa1.enabled === true, 'UserMfa record created and enabled in database');
+  assert(dbMfa1 !== null && dbMfa1.type === 'ENFORCED', 'UserMfa record created with type ENFORCED in database');
+  assert(dbMfa1.verifiedAt === null, 'verifiedAt is null (NOT auto-verified or auto-setup!)');
+  assert(dbMfa1.enabled === false, 'enabled is false (Pending user QR scan and code verification)');
 
   // -------------------------------------------------------------
   // TEST 3: Subsequent GET /api/users reflects mfaEnabled = true (No toggle off on refresh!)
@@ -131,6 +133,8 @@ async function runTests() {
   const getData2 = await getRes2.json();
   const foundUser2 = getData2.users?.find((u: any) => u.id === targetUser.id);
   assert(foundUser2.mfaEnabled === true, 'Subsequent GET /api/users retains mfaEnabled = true after refresh');
+  assert(foundUser2.mfaEnforced === true, 'mfaEnforced is true');
+  assert(foundUser2.mfaVerified === false, 'mfaVerified is false (pending setup by user)');
 
   // -------------------------------------------------------------
   // TEST 4: PATCH /api/users with mfaEnabled = false persists disablement
@@ -152,7 +156,7 @@ async function runTests() {
   assert(patchRes2.status === 200, 'Director successfully disables MFA (HTTP 200)');
 
   const dbMfa2 = await prisma.userMfa.findUnique({ where: { userId: targetUser.id } });
-  assert(dbMfa2 !== null && dbMfa2.enabled === false, 'UserMfa record disabled in database');
+  assert(dbMfa2 === null || dbMfa2.type !== 'ENFORCED', 'UserMfa record un-enforced or removed in database');
 
   const getReq3 = new NextRequest('http://localhost:3000/api/users', {
     headers: { cookie: cookieHeader },

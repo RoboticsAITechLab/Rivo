@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,8 @@ interface EnrollmentData {
 export function AccountMfaCard({ title, description }: { title?: string; description?: string }) {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [isMfaActive, setIsMfaActive] = useState(false);
-  const [isVerified, setIsVerified] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isEnforced, setIsEnforced] = useState(false);
   const [recoveryCodesCount, setRecoveryCodesCount] = useState<number>(0);
 
   // Setup Wizard State
@@ -69,14 +71,19 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
       const res = await fetch('/api/auth/mfa/enroll');
       if (res.ok) {
         const data = await res.json();
-        setIsMfaActive(!!data.enabled);
-        setIsVerified(!!data.verifiedAt);
+        setIsMfaActive(!!data.enabled && !!data.verified);
+        setIsVerified(!!data.verified);
+        setIsEnforced(!!data.enforced);
         setRecoveryCodesCount(data.remainingCodesCount ?? 0);
       } else {
         setIsMfaActive(false);
+        setIsVerified(false);
+        setIsEnforced(false);
       }
     } catch {
       setIsMfaActive(false);
+      setIsVerified(false);
+      setIsEnforced(false);
     } finally {
       setLoadingStatus(false);
     }
@@ -145,8 +152,9 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
         setRecoveryCodes(data.recoveryCodes || []);
         setSetupStep('recovery');
         setIsMfaActive(true);
+        setIsVerified(true);
         setRecoveryCodesCount(data.recoveryCodes?.length || 8);
-        toast.success('Two-factor authentication enabled successfully on your account!');
+        toast.success('Two-factor authentication verified and enabled successfully!');
       } else {
         setVerifyError(data.message || 'Invalid verification code. Please check your authenticator clock.');
       }
@@ -178,6 +186,7 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
       const data = await res.json();
       if (res.ok && data.success) {
         setIsMfaActive(false);
+        setIsVerified(false);
         setIsDisableOpen(false);
         setDisablePassword('');
         toast.success('Two-factor authentication has been disabled.');
@@ -209,6 +218,31 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
 
   return (
     <>
+      {/* NOTICE BANNER: Displayed when Director has enforced MFA but user has not verified yet */}
+      {isEnforced && !isVerified && (
+        <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 font-bold text-sm text-amber-900 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              Notice: Two-Factor Authentication Enforced by School Director
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed max-w-xl">
+              Your School Director has required Multi-Factor Authentication (MFA) on your account. 
+              MFA is <strong>not yet set up</strong>. Please scan your QR code and connect your authenticator app now.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleStartSetup}
+            disabled={isEnrolling}
+            className="shrink-0 h-8.5 text-xs font-semibold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Setup Authenticator Now
+          </Button>
+        </div>
+      )}
+
       <Card className="border-border/80 shadow-2xs bg-card/60 overflow-hidden">
         <CardHeader className="pb-3 border-b border-border/40">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -228,15 +262,15 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                   Checking status...
                 </div>
-              ) : isMfaActive && !isVerified ? (
+              ) : isEnforced && !isVerified ? (
                 <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 gap-1.5 px-2.5 py-0.5 text-xs font-semibold">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  Enforced by Director (Pending QR Scan)
+                  MFA Enforced (Setup Required)
                 </Badge>
-              ) : isMfaActive ? (
+              ) : isMfaActive && isVerified ? (
                 <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 gap-1.5 px-2.5 py-0.5 text-xs font-semibold">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  2FA Active (Protected)
+                  2FA Active &amp; Verified (Protected)
                 </Badge>
               ) : (
                 <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 gap-1.5 px-2.5 py-0.5 text-xs font-semibold">
@@ -255,27 +289,27 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
                 TOTP Authenticator Verification (RFC 6238)
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xl">
-                {isMfaActive && !isVerified
-                  ? 'Your School Director has enforced Two-Factor Authentication on your account. Please click "Setup Authenticator" to scan your QR code into your phone.'
-                  : isMfaActive
+                {isEnforced && !isVerified
+                  ? 'Your School Director has required 2FA on this account. It is currently unverified. Click "Setup Authenticator" to scan your QR code.'
+                  : isMfaActive && isVerified
                   ? `Your financial account is secured with time-based 6-digit codes. ${recoveryCodesCount} backup recovery codes remaining.`
                   : 'Multi-factor authentication adds an essential layer of security for fee ledger and receipt issuing accounts.'}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {isMfaActive ? (
+              {isMfaActive && isVerified ? (
                 <>
                   <Button
                     size="sm"
                     type="button"
-                    variant={isVerified ? 'outline' : 'default'}
+                    variant="outline"
                     onClick={handleStartSetup}
                     disabled={isEnrolling}
                     className="text-xs h-8 gap-1.5 font-semibold"
                   >
                     <QrCode className="h-3.5 w-3.5" />
-                    {isVerified ? 'Reconfigure 2FA' : 'Scan QR Code Now'}
+                    Reconfigure 2FA
                   </Button>
                   <Link href="/school/settings/security/mfa">
                     <Button variant="outline" size="sm" type="button" className="text-xs h-8 gap-1.5">
@@ -283,19 +317,32 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
                       <ArrowUpRight className="h-3 w-3" />
                     </Button>
                   </Link>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    onClick={() => {
-                      setDisablePassword('');
-                      setDisableError(null);
-                      setIsDisableOpen(true);
-                    }}
-                    className="text-xs h-8 text-destructive hover:bg-destructive/10"
-                  >
-                    Disable 2FA
-                  </Button>
+                  {isEnforced ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      disabled
+                      title="MFA is enforced by the School Director and cannot be disabled."
+                      className="text-xs h-8 opacity-60 cursor-not-allowed"
+                    >
+                      Enforced by Director
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={() => {
+                        setDisablePassword('');
+                        setDisableError(null);
+                        setIsDisableOpen(true);
+                      }}
+                      className="text-xs h-8 text-destructive hover:bg-destructive/10"
+                    >
+                      Disable 2FA
+                    </Button>
+                  )}
                 </>
               ) : (
                 <Button
@@ -313,7 +360,7 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
                   ) : (
                     <>
                       <QrCode className="h-3.5 w-3.5" />
-                      Setup Authenticator (2FA)
+                      {isEnforced ? 'Setup Authenticator (Required)' : 'Setup Authenticator (2FA)'}
                     </>
                   )}
                 </Button>
