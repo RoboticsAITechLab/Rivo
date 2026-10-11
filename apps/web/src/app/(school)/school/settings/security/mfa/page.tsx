@@ -79,6 +79,7 @@ export default function MFASettingsPage() {
   // Disable MFA Modal State
   const [isDisableOpen, setIsDisableOpen] = useState(false);
   const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
   const [showDisablePassword, setShowDisablePassword] = useState(false);
   const [isDisabling, setIsDisabling] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
@@ -201,6 +202,10 @@ export default function MFASettingsPage() {
       setDisableError('Account password is required to disable 2FA.');
       return;
     }
+    if (!disableCode || disableCode.trim().length === 0) {
+      setDisableError('Authenticator 6-digit code or emergency backup code is required.');
+      return;
+    }
 
     setIsDisabling(true);
     setDisableError(null);
@@ -209,7 +214,10 @@ export default function MFASettingsPage() {
       const res = await fetch('/api/auth/mfa/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: disablePassword }),
+        body: JSON.stringify({
+          password: disablePassword,
+          code: disableCode.trim(),
+        }),
       });
 
       const data = await res.json();
@@ -217,9 +225,10 @@ export default function MFASettingsPage() {
         setIsMfaActive(false);
         setIsDisableOpen(false);
         setDisablePassword('');
+        setDisableCode('');
         toast.success('Two-factor authentication has been disabled.');
       } else {
-        setDisableError(data.message || 'Failed to disable 2FA. Incorrect password.');
+        setDisableError(data.message || 'Failed to disable 2FA. Incorrect password or code.');
       }
     } catch {
       setDisableError('Connection failed. Please try again.');
@@ -800,6 +809,27 @@ export default function MFASettingsPage() {
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <Label htmlFor="disableCode" className="text-xs font-semibold text-slate-700">
+                Verification Code <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  id="disableCode"
+                  type="text"
+                  value={disableCode}
+                  onChange={(e) => setDisableCode(e.target.value.replace(/\s+/g, ''))}
+                  placeholder="6-digit OTP code or backup code"
+                  className="pl-9 text-xs font-mono tracking-wider"
+                  maxLength={12}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Enter current code from your Authenticator app (e.g. 123456) or an 8-character emergency backup code.
+              </p>
+            </div>
+
             <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => setIsDisableOpen(false)}>
                 Cancel
@@ -807,7 +837,7 @@ export default function MFASettingsPage() {
               <Button
                 type="submit"
                 size="sm"
-                disabled={!disablePassword || isDisabling}
+                disabled={!disablePassword || !disableCode || isDisabling}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
                 {isDisabling ? (

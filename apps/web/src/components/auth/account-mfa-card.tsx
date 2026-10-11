@@ -60,6 +60,7 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
   // Disable Modal State
   const [isDisableOpen, setIsDisableOpen] = useState(false);
   const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
   const [showDisablePassword, setShowDisablePassword] = useState(false);
   const [isDisabling, setIsDisabling] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
@@ -172,6 +173,10 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
       setDisableError('Account password is required to disable 2FA.');
       return;
     }
+    if (!disableCode || disableCode.trim().length === 0) {
+      setDisableError('Authenticator 6-digit code or emergency backup code is required.');
+      return;
+    }
 
     setIsDisabling(true);
     setDisableError(null);
@@ -180,7 +185,10 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
       const res = await fetch('/api/auth/mfa/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: disablePassword }),
+        body: JSON.stringify({
+          password: disablePassword,
+          code: disableCode.trim(),
+        }),
       });
 
       const data = await res.json();
@@ -189,9 +197,10 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
         setIsVerified(false);
         setIsDisableOpen(false);
         setDisablePassword('');
+        setDisableCode('');
         toast.success('Two-factor authentication has been disabled.');
       } else {
-        setDisableError(data.message || 'Failed to disable 2FA. Incorrect password.');
+        setDisableError(data.message || 'Failed to disable 2FA. Incorrect password or code.');
       }
     } catch {
       setDisableError('Connection failed. Please try again.');
@@ -524,7 +533,7 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
           <form onSubmit={handleDisableMfa} className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="disablePasswordInput" className="text-xs font-medium">
-                Current Password
+                Current Password <span className="text-destructive">*</span>
               </Label>
               <div className="relative">
                 <Input
@@ -544,6 +553,26 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
                   {showDisablePassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="disableCodeInput" className="text-xs font-medium">
+                Verification Code <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="disableCodeInput"
+                  type="text"
+                  placeholder="6-digit OTP or backup code"
+                  value={disableCode}
+                  onChange={(e) => setDisableCode(e.target.value.replace(/\s+/g, ''))}
+                  className="text-xs font-mono tracking-wider"
+                  maxLength={12}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Enter the current code from your authenticator app (e.g. 123456) or an 8-character emergency backup code.
+              </p>
               {disableError && (
                 <p className="text-[11px] text-destructive font-medium">{disableError}</p>
               )}
@@ -561,7 +590,7 @@ export function AccountMfaCard({ title, description }: { title?: string; descrip
               <Button
                 type="submit"
                 variant="destructive"
-                disabled={!disablePassword || isDisabling}
+                disabled={!disablePassword || !disableCode || isDisabling}
                 className="text-xs font-semibold"
               >
                 {isDisabling ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
