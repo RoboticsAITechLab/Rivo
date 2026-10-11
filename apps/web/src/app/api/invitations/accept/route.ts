@@ -43,14 +43,30 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (
-      !invitation ||
-      invitation.revokedAt !== null ||
-      invitation.acceptedAt !== null ||
-      invitation.expiresAt < new Date()
-    ) {
+    if (!invitation) {
       return NextResponse.json(
-        { message: 'This invitation link is invalid, expired, or has already been accepted.' },
+        { message: 'This invitation link is invalid or does not exist.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.revokedAt !== null) {
+      return NextResponse.json(
+        { message: 'This invitation has been revoked by the school administrator.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.acceptedAt !== null) {
+      return NextResponse.json(
+        { message: 'This invitation has already been accepted. Please sign in with your email and password.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      return NextResponse.json(
+        { message: 'This invitation link has expired. Please contact your school administrator.' },
         { status: 400 }
       );
     }
@@ -102,11 +118,20 @@ export async function POST(req: NextRequest) {
 
     // Atomic transaction for account activation and membership creation
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Mark invitation accepted
-      await tx.staffInvitation.update({
-        where: { id: invitation.id },
+      // 1. Mark invitation accepted atomically with concurrency protection
+      const updateResult = await tx.staffInvitation.updateMany({
+        where: {
+          id: invitation.id,
+          acceptedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
         data: { acceptedAt: new Date() },
       });
+
+      if (updateResult.count === 0) {
+        throw new Error('This invitation has already been accepted or is no longer valid.');
+      }
 
       // 2. Create or update User account
       let user = await tx.user.findUnique({
@@ -205,7 +230,7 @@ export async function POST(req: NextRequest) {
       }
 
       return { user, membership, teacherProfile };
-    });
+    }, { timeout: 20000, maxWait: 10000 });
 
     // Create session in database
     const { rawToken } = await createSession({

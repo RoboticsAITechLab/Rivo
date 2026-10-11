@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { GraduationCap, ShieldCheck, Lock, User, AlertCircle, Loader2 } from 'lucide-react';
+import { GraduationCap, ShieldCheck, Lock, User, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ function InviteAcceptContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [invitation, setInvitation] = useState<VerifiedInvitation | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +42,8 @@ function InviteAcceptContent() {
   useEffect(() => {
     if (!token) {
       setIsLoading(false);
-      setErrorMessage('Missing invitation security token in link.');
+      setErrorCode('MISSING_TOKEN');
+      setErrorMessage('Missing invitation security token in link. Please use the full onboarding link provided in your invitation email or by your school administrator.');
       return;
     }
 
@@ -51,11 +53,13 @@ function InviteAcceptContent() {
         if (res.ok && data.valid && data.invitation) {
           setInvitation(data.invitation);
         } else {
+          setErrorCode(data.code || 'INVALID_TOKEN');
           setErrorMessage(data.message || 'This invitation link is invalid, expired, or has already been used.');
         }
       })
       .catch(() => {
-        setErrorMessage('Unable to connect to verification server. Please try again.');
+        setErrorCode('NETWORK_ERROR');
+        setErrorMessage('Unable to connect to verification server. Please check your internet connection and try again.');
       })
       .finally(() => {
         setIsLoading(false);
@@ -132,18 +136,32 @@ function InviteAcceptContent() {
   }
 
   if (errorMessage || !invitation) {
+    const isAlreadyAccepted = errorCode === 'ALREADY_ACCEPTED';
+    const isExpired = errorCode === 'EXPIRED';
+    const isRevoked = errorCode === 'REVOKED';
+
     return (
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-muted/20 p-4 sm:p-8">
         <Card className="w-full max-w-md shadow-md border-border/80 bg-card p-6 text-center space-y-4">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-            <AlertCircle className="h-6 w-6" />
+          <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl ${
+            isAlreadyAccepted ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'
+          }`}>
+            {isAlreadyAccepted ? <CheckCircle2 className="h-6 w-6" /> : <AlertCircle className="h-6 w-6" />}
           </div>
           <div className="space-y-1">
-            <h2 className="text-lg font-bold text-foreground">Invalid Invitation Link</h2>
-            <p className="text-xs text-muted-foreground">{errorMessage || 'Invitation not found.'}</p>
+            <h2 className="text-lg font-bold text-foreground">
+              {isAlreadyAccepted
+                ? 'Account Already Activated'
+                : isExpired
+                ? 'Invitation Link Expired'
+                : isRevoked
+                ? 'Invitation Revoked'
+                : 'Invalid Invitation Link'}
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">{errorMessage}</p>
           </div>
           <Button asChild className="w-full">
-            <Link href="/login">Go to Login</Link>
+            <Link href="/login">{isAlreadyAccepted ? 'Sign In to Portal' : 'Return to Login'}</Link>
           </Button>
         </Card>
       </div>

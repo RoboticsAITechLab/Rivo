@@ -5,6 +5,7 @@ import { generateSecureToken, hashToken } from '@/lib/auth/crypto';
 import { invitationRateLimiter } from '@/lib/auth/rate-limiter';
 import { logSecurityAudit } from '@/lib/auth/audit';
 import { sendStaffInvitationEmail } from '@/lib/email/email-service';
+import { getCanonicalAppUrl } from '@/lib/email/resend';
 import { isRoleActive, getAuthorizedAssignableRoles } from '@/lib/roles/role-service';
 import { Role } from '@prisma/client';
 
@@ -152,7 +153,7 @@ async function processInvitation(
   });
 
   // 8. Deliver Email Notification
-  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://rivo-web-sand.vercel.app';
+  const appUrl = getCanonicalAppUrl();
   const inviteUrl = `${appUrl}/invite/accept?token=${rawToken}`;
 
   const emailResult = await sendStaffInvitationEmail({
@@ -177,6 +178,7 @@ async function processInvitation(
     },
     inviteToken: rawToken,
     inviteUrl: `/invite/accept?token=${rawToken}`,
+    fullInviteUrl: inviteUrl,
     emailDelivered: emailResult.success,
     emailError: emailResult.error || null,
   };

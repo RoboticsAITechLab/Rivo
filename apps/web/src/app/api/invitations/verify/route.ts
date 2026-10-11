@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { valid: false, message: 'Invitation token is missing.' },
+        { valid: false, code: 'MISSING_TOKEN', message: 'Missing invitation security token in link.' },
         { status: 400 }
       );
     }
@@ -29,14 +29,30 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    if (
-      !invitation ||
-      invitation.revokedAt !== null ||
-      invitation.acceptedAt !== null ||
-      invitation.expiresAt < new Date()
-    ) {
+    if (!invitation) {
       return NextResponse.json(
-        { valid: false, message: 'This invitation link is invalid, expired, or has already been used.' },
+        { valid: false, code: 'INVALID_TOKEN', message: 'This invitation link is invalid or does not exist.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.revokedAt !== null) {
+      return NextResponse.json(
+        { valid: false, code: 'REVOKED', message: 'This invitation has been revoked by the school administrator.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.acceptedAt !== null) {
+      return NextResponse.json(
+        { valid: false, code: 'ALREADY_ACCEPTED', message: 'This invitation has already been accepted. Please sign in with your email and password.' },
+        { status: 400 }
+      );
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      return NextResponse.json(
+        { valid: false, code: 'EXPIRED', message: 'This invitation link has expired. Please contact your administrator for a new invitation.' },
         { status: 400 }
       );
     }

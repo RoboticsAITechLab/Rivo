@@ -4,8 +4,9 @@ import { requireAuth } from '@/lib/auth/authorize';
 import { generateSecureToken, hashToken } from '@/lib/auth/crypto';
 import { logSecurityAudit } from '@/lib/auth/audit';
 import { sendStaffInvitationEmail } from '@/lib/email/email-service';
+import { getCanonicalAppUrl } from '@/lib/email/resend';
 
-// POST /api/invitations/[id]/resend - Refresh security token and resend invitation email
+// POST /api/invitations/[id]/resend - Refresh security token and optionally resend invitation email
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -15,6 +16,16 @@ export async function POST(
       roles: ['DIRECTOR', 'PRINCIPAL', 'ADMIN', 'SCHOOL_ADMIN', 'OWNER'],
     });
     if (!auth.authorized) return auth.response;
+
+    let sendEmail = true;
+    try {
+      const body = await req.json();
+      if (typeof body?.sendEmail === 'boolean') {
+        sendEmail = body.sendEmail;
+      }
+    } catch {
+      // Body is optional
+    }
 
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown-ip';
     const userAgent = req.headers.get('user-agent') || 'unknown-ua';
@@ -34,7 +45,7 @@ export async function POST(
 
     if (invitation.acceptedAt) {
       return NextResponse.json(
-        { message: 'Cannot resend an invitation that has already been accepted.' },
+        { message: 'Cannot resend or refresh an invitation that has already been accepted.' },
         { status: 400 }
       );
     }
@@ -53,6 +64,36 @@ export async function POST(
       },
     });
 
+    const appUrl = getCanonicalAppUrl();
+    const inviteUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+
+    if (!sendEmail) {
+      await logSecurityAudit({
+        event: 'INVITATION_RESENT',
+        userId: auth.userId,
+        schoolId: auth.schoolId,
+        ipAddress: ip,
+        userAgent,
+        details: { invitationId: id, email: invitation.email, role: invitation.role, tokenRotatedOnly: true },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Invitation link refreshed for ${invitation.email}. Token active.`,
+        emailDelivered: false,
+        emailSkipped: true,
+        inviteToken: rawToken,
+        inviteUrl: `/invite/accept?token=${rawToken}`,
+        fullInviteUrl: inviteUrl,
+        invitation: {
+          id: updated.id,
+          email: updated.email,
+          role: updated.role,
+          expiresAt: updated.expiresAt.toISOString(),
+        },
+      });
+    }
+
     await logSecurityAudit({
       event: 'INVITATION_RESENT',
       userId: auth.userId,
@@ -61,9 +102,6 @@ export async function POST(
       userAgent,
       details: { invitationId: id, email: invitation.email, role: invitation.role },
     });
-
-    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://rivo-web-sand.vercel.app';
-    const inviteUrl = `${appUrl}/invite/accept?token=${rawToken}`;
 
     const emailResult = await sendStaffInvitationEmail({
       to: invitation.email,
@@ -82,8 +120,10 @@ export async function POST(
         ? `Invitation re-dispatched to ${invitation.email}.`
         : `Invitation refreshed. Token active.`,
       emailDelivered: emailResult.success,
+      emailError: emailResult.error || null,
       inviteToken: rawToken,
       inviteUrl: `/invite/accept?token=${rawToken}`,
+      fullInviteUrl: inviteUrl,
       invitation: {
         id: updated.id,
         email: updated.email,

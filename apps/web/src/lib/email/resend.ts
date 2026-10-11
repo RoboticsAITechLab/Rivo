@@ -21,6 +21,26 @@ export function getEmailSender(): { email: string; name: string } {
   return { email, name };
 }
 
-export function getAppUrl(): string {
-  return process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+export function getCanonicalAppUrl(): string {
+  const rawUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const isProd = process.env.NODE_ENV === 'production' && process.env.AUTH_INFRA_MODE !== 'local';
+
+  if (rawUrl && rawUrl.trim() !== '') {
+    const cleanUrl = rawUrl.trim().replace(/\/+$/, '');
+    if (isProd && !cleanUrl.startsWith('https://')) {
+      throw new Error('[SECURITY_ERROR] Production APP_URL must use HTTPS protocol.');
+    }
+    return cleanUrl;
+  }
+
+  if (isProd) {
+    throw new Error('[SECURITY_ERROR] Production APP_URL is missing. Cannot construct secure invitation link.');
+  }
+
+  return 'http://localhost:3000';
 }
+
+export function getAppUrl(): string {
+  return getCanonicalAppUrl();
+}
+

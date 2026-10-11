@@ -103,8 +103,23 @@ export default function InvitationsManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Copied Link State
+  // Copied Link & Row Action Loading State
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Created / Refreshed Invitation Link Dialog State
+  interface CreatedInvitationResult {
+    email: string;
+    role: string;
+    customRoleName?: string | null;
+    expiresAt?: string;
+    emailDelivered: boolean;
+    emailError?: string | null;
+    inviteUrl: string;
+    fullInviteUrl: string;
+  }
+  const [createdResult, setCreatedResult] = useState<CreatedInvitationResult | null>(null);
+  const [resultCopied, setResultCopied] = useState(false);
 
   // Load assignable roles dynamically from authoritative API
   const fetchRoles = useCallback(async () => {
@@ -217,15 +232,22 @@ export default function InvitationsManagementPage() {
 
       if (isBulkMode) {
         toast.success(data.message);
+        setIsDialogOpen(false);
       } else {
-        if (data.emailDelivered) {
-          toast.success(`Invitation dispatched to ${payload.email} via email.`);
-        } else {
-          toast.info(`Invitation created for ${payload.email}. Activation token ready.`);
-        }
+        const fullUrl = data.fullInviteUrl || `${window.location.origin}${data.inviteUrl}`;
+        setCreatedResult({
+          email: payload.email,
+          role: targetRoleObj.name,
+          customRoleName: data.invitation?.customRoleName,
+          expiresAt: data.invitation?.expiresAt,
+          emailDelivered: !!data.emailDelivered,
+          emailError: data.emailError,
+          inviteUrl: data.inviteUrl,
+          fullInviteUrl: fullUrl,
+        });
+        setIsDialogOpen(false);
       }
 
-      setIsDialogOpen(false);
       setEmailInput('');
       setBulkEmailsInput('');
       setDepartment('');
@@ -259,26 +281,82 @@ export default function InvitationsManagementPage() {
   };
 
   const handleResend = async (invitationId: string, email: string) => {
+    setActionLoadingId(invitationId);
     try {
       const res = await fetch(`/api/invitations/${invitationId}/resend`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sendEmail: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to resend invitation');
 
-      toast.success(`Invitation re-dispatched to ${email}. Token refreshed.`);
+      const fullUrl = data.fullInviteUrl || `${window.location.origin}${data.inviteUrl}`;
+      if (data.emailDelivered) {
+        toast.success(`Invitation re-dispatched to ${email}. Token refreshed.`);
+      } else {
+        toast.info(`Token refreshed. Onboarding link ready.`);
+      }
+
+      setCreatedResult({
+        email,
+        role: 'Staff Member',
+        expiresAt: data.invitation?.expiresAt,
+        emailDelivered: !!data.emailDelivered,
+        emailError: data.emailError,
+        inviteUrl: data.inviteUrl,
+        fullInviteUrl: fullUrl,
+      });
+
       await fetchInvitations();
     } catch (err: any) {
       toast.error(err.message || 'Failed to resend');
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
-  const handleCopyLink = (inv: LiveInvitation) => {
-    const fullUrl = `${window.location.origin}/invite/accept`;
-    navigator.clipboard.writeText(fullUrl);
-    setCopiedId(inv.id);
-    toast.success('Onboarding link copied. Invitees can activate using their email.');
-    setTimeout(() => setCopiedId(null), 2500);
+  const handleCopyLink = async (inv: LiveInvitation) => {
+    if (inv.status !== 'PENDING') {
+      toast.info(`Invitation is already ${inv.status.toLowerCase()}.`);
+      return;
+    }
+
+    setActionLoadingId(inv.id);
+    try {
+      const res = await fetch(`/api/invitations/${inv.id}/resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sendEmail: false }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to generate invitation link');
+      }
+
+      const fullUrl = data.fullInviteUrl || `${window.location.origin}${data.inviteUrl}`;
+      try {
+        await navigator.clipboard.writeText(fullUrl);
+        setCopiedId(inv.id);
+        toast.success('Fresh invitation link copied to clipboard!');
+        setTimeout(() => setCopiedId(null), 2500);
+      } catch {
+        // Fallback: If clipboard write fails, show modal with selectable text
+        setCreatedResult({
+          email: inv.email,
+          role: inv.displayRole,
+          expiresAt: data.invitation?.expiresAt,
+          emailDelivered: false,
+          inviteUrl: data.inviteUrl,
+          fullInviteUrl: fullUrl,
+        });
+      }
+      await fetchInvitations();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to copy link');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   return (
@@ -442,27 +520,36 @@ export default function InvitationsManagementPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={actionLoadingId === inv.id}
                         onClick={() => handleCopyLink(inv)}
                         className="text-xs h-8 gap-1.5"
                       >
-                        {copiedId === inv.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                        {copiedId === inv.id ? 'Copied' : 'Copy Link'}
+                        {actionLoadingId === inv.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : copiedId === inv.id ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                        {actionLoadingId === inv.id ? 'Refreshing...' : copiedId === inv.id ? 'Copied' : 'Copy Link'}
                       </Button>
 
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={actionLoadingId === inv.id}
                         onClick={() => handleResend(inv.id, inv.email)}
                         className="text-xs h-8 gap-1"
                         title="Resend invitation email"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
+                        <RotateCcw className={`h-3.5 w-3.5 ${actionLoadingId === inv.id ? 'animate-spin' : ''}`} />
                         Resend
                       </Button>
 
                       <Button
                         variant="ghost"
                         size="sm"
+                        disabled={actionLoadingId === inv.id}
                         onClick={() => handleRevoke(inv.id, inv.email)}
                         className="text-xs h-8 gap-1 text-destructive hover:text-destructive"
                         title="Revoke invitation"
@@ -635,6 +722,113 @@ export default function InvitationsManagementPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Persistent Success / Link Sharing Dialog */}
+      <Dialog open={!!createdResult} onOpenChange={(open) => !open && setCreatedResult(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Invitation Ready &amp; Dispatched
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Secure onboarding credentials have been generated for this staff member.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdResult && (
+            <div className="space-y-4 py-2 text-xs">
+              {/* Recipient Summary */}
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Recipient Email:</span>
+                  <span className="font-semibold text-foreground">{createdResult.email}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Assigned Role:</span>
+                  <Badge variant="secondary" className="text-[11px] font-medium">
+                    {createdResult.customRoleName ? `${createdResult.customRoleName} (${createdResult.role})` : createdResult.role}
+                  </Badge>
+                </div>
+                {createdResult.expiresAt && (
+                  <div className="flex justify-between items-center text-[11px] text-muted-foreground">
+                    <span>Valid Through:</span>
+                    <span>{new Date(createdResult.expiresAt).toLocaleDateString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Delivery Status Banner */}
+              {createdResult.emailDelivered ? (
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2.5 text-emerald-800 dark:text-emerald-300 space-y-1">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <span>Invitation Email Dispatched</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700/90 dark:text-emerald-400 pl-5">
+                    An email was sent via Resend. If not visible in Inbox within a few minutes, advise the recipient to check their <strong>Spam / Junk</strong> or <strong>Promotions</strong> folder.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-amber-800 dark:text-amber-300 space-y-1">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                    <span>Direct Link Sharing Required</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-400 pl-5">
+                    {createdResult.emailError
+                      ? `Email could not be delivered: ${createdResult.emailError}. You can copy and share the direct link below.`
+                      : 'Please copy and send the link below directly via SMS, WhatsApp, or chat.'}
+                  </p>
+                </div>
+              )}
+
+              {/* Direct Onboarding Link */}
+              <div className="space-y-1.5">
+                <Label htmlFor="onboardingLink" className="text-xs font-medium text-foreground">
+                  Direct Onboarding Link (Contains Security Token)
+                </Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="onboardingLink"
+                    readOnly
+                    value={createdResult.fullInviteUrl}
+                    className="font-mono text-[11px] h-9 select-all bg-background"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdResult.fullInviteUrl);
+                      setResultCopied(true);
+                      toast.success('Onboarding link copied to clipboard!');
+                      setTimeout(() => setResultCopied(false), 2500);
+                    }}
+                    className="shrink-0 gap-1.5 h-9 text-xs"
+                  >
+                    {resultCopied ? <Check className="h-3.5 w-3.5 text-emerald-200" /> : <Copy className="h-3.5 w-3.5" />}
+                    {resultCopied ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  This secure link allows the recipient to establish their password and activate their institutional account.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setCreatedResult(null)}
+              className="w-full sm:w-auto text-xs"
+            >
+              Done
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
