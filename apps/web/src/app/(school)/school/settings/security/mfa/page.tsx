@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth/auth-context';
 
 interface EnrollmentData {
   secret: string;
@@ -50,6 +51,9 @@ interface EnrollmentData {
 }
 
 export default function MFASettingsPage() {
+  const { user } = useAuth();
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
+
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [isMfaActive, setIsMfaActive] = useState(false);
   const [isEnforced, setIsEnforced] = useState(false);
@@ -282,10 +286,14 @@ export default function MFASettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-emerald-600" />
-            Two-Factor Authentication (2FA / MFA)
+            {isDirector
+              ? 'Two-Factor Authentication (2FA / MFA)'
+              : 'My Account Security & 2FA'}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            RFC 6238 TOTP Multi-Factor Verification & School-Wide Access Security.
+            {isDirector
+              ? 'RFC 6238 TOTP Multi-Factor Verification & School-Wide Access Security Policy.'
+              : 'Protect your financial ledger and fee management access with Google Authenticator or Microsoft Authenticator.'}
           </p>
         </div>
       </div>
@@ -389,19 +397,32 @@ export default function MFASettingsPage() {
                   <RefreshCw className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
                   Backup Codes ({recoveryCodesCount})
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setDisableError(null);
-                    setDisablePassword('');
-                    setIsDisableOpen(true);
-                  }}
-                  className="text-xs h-9 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                  Disable 2FA
-                </Button>
+                {isEnforced && !isDirector ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    title="Two-Factor Authentication is enforced on your account by the School Director and cannot be disabled."
+                    className="text-xs h-9 text-slate-400 border-slate-200 cursor-not-allowed bg-slate-50 gap-1.5"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Enforced by Director
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setDisableError(null);
+                      setDisablePassword('');
+                      setIsDisableOpen(true);
+                    }}
+                    className="text-xs h-9 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    Disable 2FA
+                  </Button>
+                )}
               </>
             ) : (
               <Button
@@ -426,63 +447,103 @@ export default function MFASettingsPage() {
         </CardHeader>
       </Card>
 
-      {/* 2. INSTITUTIONAL POLICY & ENFORCEMENT CARD */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-slate-700" />
-              Institutional Enforcement Policy
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Determine which user roles must complete two-factor authentication to access the portal.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="enforcePolicy" className="text-xs font-semibold text-slate-700">
-                Enforcement Tier
-              </Label>
-              <Select 
-                value={enforcement} 
-                onValueChange={(val: any) => {
-                  setEnforcement(val);
-                  setPolicySaved(false);
+      {/* 2. CHANNELS & INSTITUTIONAL POLICY */}
+      {isDirector ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Institutional Enforcement Policy - STRICTLY FOR SCHOOL DIRECTOR */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-slate-700" />
+                Institutional Enforcement Policy
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Determine which user roles must complete two-factor authentication to access the school portal.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="enforcePolicy" className="text-xs font-semibold text-slate-700">
+                  Enforcement Tier
+                </Label>
+                <Select 
+                  value={enforcement} 
+                  onValueChange={(val: any) => {
+                    setEnforcement(val);
+                    setPolicySaved(false);
+                  }}
+                >
+                  <SelectTrigger id="enforcePolicy" className="text-xs">
+                    <SelectValue placeholder="Select enforcement tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OPTIONAL">Optional (Faculty & staff opt-in independently)</SelectItem>
+                    <SelectItem value="REQUIRED_FOR_ADMINS">Mandatory for School Administrators Only</SelectItem>
+                    <SelectItem value="REQUIRED_FOR_ALL">Mandatory for All Faculty, Teachers & Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-500">
+                  When mandatory, accounts without 2FA configured are securely prompted to enroll upon their next login.
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="pt-0">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPolicySaved(true);
+                  toast.success('Institutional 2FA policy updated successfully.');
                 }}
+                className="text-xs bg-slate-900 hover:bg-slate-800 text-white"
               >
-                <SelectTrigger id="enforcePolicy" className="text-xs">
-                  <SelectValue placeholder="Select enforcement tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OPTIONAL">Optional (Faculty & staff opt-in independently)</SelectItem>
-                  <SelectItem value="REQUIRED_FOR_ADMINS">Mandatory for School Administrators Only</SelectItem>
-                  <SelectItem value="REQUIRED_FOR_ALL">Mandatory for All Faculty, Teachers & Staff</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-slate-500">
-                When mandatory, accounts without 2FA configured are securely prompted to enroll upon their next login.
-              </p>
-            </div>
-          </CardContent>
-          <CardFooter className="pt-0">
-            <Button
-              size="sm"
-              onClick={() => {
-                setPolicySaved(true);
-                toast.success('Institutional 2FA policy updated successfully.');
-              }}
-              className="text-xs bg-slate-900 hover:bg-slate-800 text-white"
-            >
-              Update Policy
-            </Button>
-            {policySaved && (
-              <span className="text-xs text-emerald-600 font-medium ml-3 flex items-center gap-1">
-                <Check className="h-3.5 w-3.5" /> Saved
-              </span>
-            )}
-          </CardFooter>
-        </Card>
+                Update Policy
+              </Button>
+              {policySaved && (
+                <span className="text-xs text-emerald-600 font-medium ml-3 flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5" /> Saved
+                </span>
+              )}
+            </CardFooter>
+          </Card>
 
+          {/* Supported Authentication Channels */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-slate-700" />
+                Supported Authentication Channels
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Verified multi-factor delivery mechanisms supported by the institution.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <QrCode className="h-3.5 w-3.5 text-emerald-600" />
+                    Time-Based One-Time Password (TOTP)
+                  </div>
+                  <div className="text-[11px] text-slate-500">RFC 6238 compliant app (Google Authenticator, Microsoft, 1Password)</div>
+                </div>
+                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5 text-emerald-600" />
+                    Emergency Single-Use Recovery Codes
+                  </div>
+                  <div className="text-[11px] text-slate-500">SHA-256 hashed 8-character offline emergency codes</div>
+                </div>
+                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">Active</Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        /* Fee Manager / Staff View - STRICTLY PERSONAL ACCOUNT SECURITY */
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -490,7 +551,7 @@ export default function MFASettingsPage() {
               Supported Authentication Channels
             </CardTitle>
             <CardDescription className="text-xs">
-              Verified multi-factor delivery mechanisms supported by the institution.
+              Verified multi-factor delivery mechanisms supported for your account.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -517,7 +578,7 @@ export default function MFASettingsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
       {/* SETUP WIZARD DIALOG */}
       <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>

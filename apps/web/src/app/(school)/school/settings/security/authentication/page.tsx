@@ -24,6 +24,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const defaultAuthSettings: AuthSettings = {
   passwordLoginEnabled: true,
@@ -38,6 +40,16 @@ const defaultAuthSettings: AuthSettings = {
 };
 
 export default function AuthenticationSettingsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
+
+  useEffect(() => {
+    if (user && !isDirector) {
+      router.replace('/school/settings/security/mfa');
+    }
+  }, [user, isDirector, router]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 

@@ -140,23 +140,29 @@ export default function SettingsOverviewPage() {
       icon: CreditCard,
       description: 'Currency standard, receipt numbering, and late-fee grace periods',
     },
+    ...(isDirector
+      ? [
+          {
+            title: 'Users & Staff',
+            category: 'People & Access',
+            status: usersCount > 0 ? 'CONFIGURED' : 'NOT_CONFIGURED',
+            statusText: usersCount > 0 ? `${usersCount} user(s)` : 'No users found',
+            href: '/school/settings/users',
+            icon: Users,
+            description: 'Administrative accounts, faculty roster access and roles',
+          },
+        ]
+      : []),
     {
-      title: 'Users & Staff',
-      category: 'People & Access',
-      status: usersCount > 0 ? 'CONFIGURED' : 'NOT_CONFIGURED',
-      statusText: usersCount > 0 ? `${usersCount} user(s)` : 'No users found',
-      href: '/school/settings/users',
-      icon: Users,
-      description: 'Administrative accounts, faculty roster access and roles',
-    },
-    {
-      title: 'Authentication & Security',
+      title: isDirector ? 'Authentication & Security' : 'My Security & 2FA',
       category: 'Security',
       status: 'CONFIGURED',
       statusText: 'Database & MFA Active',
       href: '/school/settings/security/mfa',
       icon: Lock,
-      description: 'Session timeout, credential complexity, and multi-factor auth',
+      description: isDirector
+        ? 'Session timeout, credential complexity, and institutional multi-factor auth'
+        : 'Personal authenticator setup, 2FA verification & active device sessions',
     },
   ];
 

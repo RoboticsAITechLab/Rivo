@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const defaultRecoverySettings: AccountRecoverySettings = {
   allowSelfServiceReset: true,
@@ -36,6 +38,16 @@ const defaultRecoverySettings: AccountRecoverySettings = {
 };
 
 export default function AccountRecoverySettingsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
+
+  useEffect(() => {
+    if (user && !isDirector) {
+      router.replace('/school/settings/security/mfa');
+    }
+  }, [user, isDirector, router]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 

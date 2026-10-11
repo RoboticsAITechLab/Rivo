@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const defaultPolicy: PasswordPolicy = {
   minLength: 8,
@@ -40,6 +42,16 @@ const defaultPolicy: PasswordPolicy = {
 };
 
 export default function PasswordPolicySettingsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const isDirector = user?.roleType === 'DIRECTOR' || user?.roleType === 'OWNER' || user?.roleType === 'PLATFORM_ADMIN';
+
+  useEffect(() => {
+    if (user && !isDirector) {
+      router.replace('/school/settings/security/mfa');
+    }
+  }, [user, isDirector, router]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState(1440);

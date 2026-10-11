@@ -22,10 +22,28 @@ export function SettingsNav() {
   // Role-filtered groups based on Rivo Role Hierarchy
   const filteredGroups = React.useMemo(() => {
     return SETTINGS_NAVIGATION_GROUPS.map((group) => {
-      // Fee Manager role gets General overview/profile/branding, Fees & Finance, Security/MFA, and Print settings
+      // Fee Manager role gets General overview/profile/branding, Fees & Finance, Personal Security/MFA, and Print settings
       if (roleType === 'FEE_MANAGER') {
-        const allowedIds = ['overview', 'school-profile', 'branding', 'fees', 'print-settings', 'mfa', 'sessions', 'password-policy', 'recovery'];
-        const items = group.items.filter((item) => allowedIds.includes(item.id));
+        const allowedIds = ['overview', 'school-profile', 'branding', 'fees', 'print-settings', 'mfa', 'sessions'];
+        const items = group.items
+          .filter((item) => allowedIds.includes(item.id))
+          .map((item) => {
+            if (item.id === 'mfa') {
+              return {
+                ...item,
+                title: 'My Security & 2FA',
+                description: 'Authenticator setup, 2FA protection, and emergency backup codes',
+              };
+            }
+            if (item.id === 'sessions') {
+              return {
+                ...item,
+                title: 'My Active Sessions',
+                description: 'View and revoke active device logins for your personal account',
+              };
+            }
+            return item;
+          });
         if (items.length === 0) return null;
         return { ...group, items };
       }
