@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RIVO — Complete System Architecture & Topology Diagrams</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #131b2e;
+      --card-border: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --border: #334155;
+      --btn-bg: #1e293b;
+      --btn-hover: #334155;
+      --btn-active: #0284c7;
+      --success: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem 1.5rem;
+      line-height: 1.6;
+    }
+    .container { max-width: 1300px; margin: 0 auto; }
+    
+    /* Top Header */
+    header {
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    h1 {
+      font-size: 2.3rem;
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+    }
+    p.subtitle { color: var(--muted); font-size: 1.1rem; max-width: 750px; }
+
+    /* Global Action Bar */
+    .global-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      justify-content: center;
+      margin-top: 0.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.1rem;
+      background: var(--btn-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+    .btn:hover {
+      background: var(--btn-hover);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+    .btn-primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #0369a1;
+      border-color: #7dd3fc;
+    }
+    .btn-icon {
+      padding: 0.45rem 0.75rem;
+      font-size: 0.82rem;
+    }
+
+    /* Diagram Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      margin-bottom: 2.5rem;
+      box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+      transition: border-color 0.2s;
+    }
+    .card:hover {
+      border-color: #334155;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 1rem;
+    }
+    .card-title-group {
+      flex: 1;
+      min-width: 280px;
+    }
+    .card h2 {
+      font-size: 1.35rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .card h2 .num {
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+    .card p.desc {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-top: 0.35rem;
+      line-height: 1.5;
+    }
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    /* Diagram Render Area */
+    .diagram-viewport {
+      position: relative;
+      background: #060911;
+      border: 1px solid #1a2234;
+      border-radius: 10px;
+      padding: 1.75rem 1rem;
+      overflow-x: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 250px;
+    }
+    .mermaid {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    .mermaid svg {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+
+    /* Toast Notification */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 0.85rem 1.4rem;
+      border-radius: 10px;
+      border: 1px solid var(--accent);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      font-size: 0.9rem;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    #toast.toast-success { border-color: var(--success); }
+    #toast.toast-error { border-color: #ef4444; }
+
+    /* Modal / Fullscreen Viewer */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(4, 7, 13, 0.92);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-content {
+      background: #0d1322;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 95vw;
+      height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    }
+    .modal-header {
+      padding: 1rem 1.5rem;
+      background: #131b2e;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h3 { font-size: 1.15rem; color: #fff; }
+    .modal-body {
+      flex: 1;
+      overflow: auto;
+      padding: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #060911;
+    }
+    .modal-body svg {
+      max-width: none !important;
+      transform-origin: center center;
+      transition: transform 0.2s ease;
+    }
+    .close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+    }
+    .close-btn:hover { color: #fff; background: #1e293b; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Print Stylesheet */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        padding: 0 !important;
+      }
+      header, .global-toolbar, .card-actions, .footer { display: none !important; }
+      .card {
+        background: #ffffff !important;
+        border: 1px solid #cccccc !important;
+        box-shadow: none !important;
+        page-break-after: always;
+        margin-bottom: 2rem !important;
+        padding: 1rem !important;
+      }
+      .card h2 { color: #000000 !important; }
+      .card p.desc { color: #555555 !important; }
+      .diagram-viewport {
+        background: #ffffff !important;
+        border: 1px solid #eeeeee !important;
+      }
+      .mermaid svg {
+        filter: invert(1) hue-rotate(180deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Production Architecture Reference</span>
+      <h1>RIVO Architecture & Topology Visualizer</h1>
+      <p class="subtitle">Complete Interactive System Architecture Diagrams with High-Resolution SVG & PNG Export</p>
+      
+      <div class="global-toolbar">
+        <button class="btn btn-primary" onclick="downloadAllSvg()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export All as SVG
+        </button>
+        <button class="btn" onclick="downloadAllPng()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Export All as PNG (HD)
+        </button>
+        <button class="btn" onclick="window.print()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print / Save as PDF
+        </button>
+      </div>
+    </header>
+
+    <!-- DIAGRAM 1 -->
+    <div class="card" id="card-diag-1">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2><span class="num">01.</span> Cloud Infrastructure & System Topology</h2>
+          <p class="desc">Client request path via Vercel Edge, Next.js 16 Full-Stack Monolith, and cloud datastores (Neon PostgreSQL, Upstash Redis, Azure Blob Storage).</p>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-icon" onclick="copySvg('diag-1')" title="Copy SVG code to clipboard">
+            📋 Copy SVG
+          </button>
+          <button class="btn btn-icon" onclick="downloadSvg('diag-1', 'rivo-topology-architecture.svg')" title="Download standalone SVG vector">
+            📥 Download SVG
+          </button>
+          <button class="btn btn-icon btn-primary" onclick="downloadPng('diag-1', 'rivo-topology-architecture.png')" title="Download high-resolution PNG">
+            🖼️ Download PNG
+          </button>
+          <button class="btn btn-icon" onclick="openModal('diag-1', '01. Cloud Infrastructure & System Topology')" title="Zoom & view fullscreen">
+            🔍 Fullscreen
+          </button>
+        </div>
+      </div>
+      <div class="diagram-viewport">
+        <div class="mermaid" id="diag-1">
+flowchart TD
+    Client["Client Devices\n(Admin Browser, Teacher Web, Mobile Parent Flutter)"] --> VercelEdge["Vercel Global Edge Network"]
+
+    subgraph Edge_Security ["Edge Layer (apps/web/src/middleware.ts)"]
+        VercelEdge --> EdgeGuard["Edge Middleware Guard\n- Session Cookie Verification\n- Route Protection (/school, /teacher, /parent)\n- Security Headers (DENY, nosniff)"]
+    end
+
+    subgraph Web_Monolith ["Full-Stack Monolith (apps/web)"]
+        EdgeGuard --> AppRouter["Next.js 16 App Router Engine"]
+        AppRouter --> ReactTree["React 19 Server/Client Components\n- /(school) Admin Cockpit\n- /(teacher) Faculty Portal\n- /(parent) Parent Self-Service\n- /testing-center Observability"]
+        AppRouter --> RouteHandlers["API Route Handlers (/api/*)\n- 30+ Domain Routes\n- 74+ Production Endpoints"]
+        RouteHandlers --> DomainServices["Domain Service Layer (src/lib)\n- fee-payment-service.ts\n- roll-number-service.ts\n- conflict-engine.ts\n- azure-blob.ts\n- resend.ts"]
+    end
+
+    subgraph Data_Tier ["Cloud Data & Storage Layer"]
+        DomainServices -->|"DATABASE_URL (Port 6543 / PgBouncer)"| NeonPooler["Neon PostgreSQL (Pooled)"]
+        NeonPooler --> NeonDB[("Neon Primary PostgreSQL Database\n(67 Models, 30 Enums)")]
+        DomainServices -->|"REDIS_URL (TLS rediss://)"| UpstashRedis[("Upstash Redis\n- Session Cache\n- Sliding-Window Rate Limiter")]
+        DomainServices -->|"Direct Upload SAS (15m)"| AzureStorage[("Azure Blob Storage\n- rivo-public (Logos)\n- rivo-private (KYC, Documents)")]
+        DomainServices -->|"RESEND_API_KEY"| ResendAPI["Resend Email API"]
+    end
+
+    subgraph CI_CD ["CI/CD & DDL Runner"]
+        GitHubActions[".github/workflows/ci.yml"] -->|"DIRECT_URL (Port 5432)"| NeonDirect["Neon Direct Host (DDL & Migrations)"]
+        NeonDirect --> NeonDB
+    end
+        </div>
+      </div>
+    </div>
+
+    <!-- DIAGRAM 2 -->
+    <div class="card" id="card-diag-2">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2><span class="num">02.</span> Authentication & Session Resolution Flow</h2>
+          <p class="desc">Cookie authentication, Scrypt password hashing, Redis two-tier session cache, and multi-tenant scoping.</p>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-icon" onclick="copySvg('diag-2')" title="Copy SVG code to clipboard">
+            📋 Copy SVG
+          </button>
+          <button class="btn btn-icon" onclick="downloadSvg('diag-2', 'rivo-auth-session-flow.svg')" title="Download standalone SVG vector">
+            📥 Download SVG
+          </button>
+          <button class="btn btn-icon btn-primary" onclick="downloadPng('diag-2', 'rivo-auth-session-flow.png')" title="Download high-resolution PNG">
+            🖼️ Download PNG
+          </button>
+          <button class="btn btn-icon" onclick="openModal('diag-2', '02. Authentication & Session Resolution Flow')" title="Zoom & view fullscreen">
+            🔍 Fullscreen
+          </button>
+        </div>
+      </div>
+      <div class="diagram-viewport">
+        <div class="mermaid" id="diag-2">
+sequenceDiagram
+    autonumber
+    actor User as User Browser / Client
+    participant Edge as Edge Middleware (apps/web/src/middleware.ts)
+    participant Route as Auth Route (/api/auth/login)
+    participant Scrypt as Crypto Engine (lib/auth/crypto.ts)
+    participant DB as Neon PostgreSQL (Prisma)
+    participant Redis as Upstash Redis (rivo:session:*)
+
+    User->>Route: POST /api/auth/login { email, password, rememberMe }
+    Route->>DB: Query User by email with memberships & MFA
+    DB-->>Route: User Record (passwordHash, status, mfa)
+    Route->>Scrypt: verifyPassword(password, user.passwordHash)
+    Scrypt-->>Route: Valid Boolean
+    alt Invalid Password
+        Route-->>User: HTTP 401 { message: 'Invalid email or password.' }
+    else Valid Password
+        alt MFA Enabled
+            Route->>DB: Generate MfaChallenge token
+            Route-->>User: HTTP 200 { requireMfa: true, challengeToken }
+        else MFA Disabled / Verified
+            Route->>Route: generateSecureToken(32) -> rawToken
+            Route->>Route: hashToken(rawToken) -> tokenHash
+            Route->>DB: Create Session row (tokenHash, userId, schoolId, expiresAt)
+            Route->>Redis: Cache Session (rivo:session:tokenHash)
+            Route-->>User: HTTP 200 (Set-Cookie: rivo_session=rawToken)
+        end
+    end
+        </div>
+      </div>
+    </div>
+
+    <!-- DIAGRAM 3 -->
+    <div class="card" id="card-diag-3">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2><span class="num">03.</span> Fee Payment Collection & Instant PDF Receipt Flow</h2>
+          <p class="desc">Atomic double-entry payment allocation in PostgreSQL transactions, non-overpayment verification, and vector PDF rendering via pdf-lib.</p>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-icon" onclick="copySvg('diag-3')" title="Copy SVG code to clipboard">
+            📋 Copy SVG
+          </button>
+          <button class="btn btn-icon" onclick="downloadSvg('diag-3', 'rivo-fee-collection-flow.svg')" title="Download standalone SVG vector">
+            📥 Download SVG
+          </button>
+          <button class="btn btn-icon btn-primary" onclick="downloadPng('diag-3', 'rivo-fee-collection-flow.png')" title="Download high-resolution PNG">
+            🖼️ Download PNG
+          </button>
+          <button class="btn btn-icon" onclick="openModal('diag-3', '03. Fee Payment Collection & Instant PDF Receipt Flow')" title="Zoom & view fullscreen">
+            🔍 Fullscreen
+          </button>
+        </div>
+      </div>
+      <div class="diagram-viewport">
+        <div class="mermaid" id="diag-3">
+sequenceDiagram
+    autonumber
+    actor Admin as School Cashier / Admin
+    participant UI as /school/fees/payments/new
+    participant API as POST /api/fees/payments
+    participant FeeSvc as FeePaymentService (lib/fees)
+    participant DB as Neon PostgreSQL ($transaction)
+    participant PDFSvc as FeePdfService (lib/fees/fee-pdf-service.ts)
+
+    Admin->>UI: Select Student, Input Amount ($500), Mode (UPI/Cash)
+    UI->>API: POST /api/fees/payments { studentId, amount, paymentMode }
+    API->>FeeSvc: recordFeePayment(schoolId, userId, payload)
+    FeeSvc->>DB: prisma.$transaction(...)
+    Note over DB: 1. Fetch pending FeeObligations<br>2. Validate non-overpayment<br>3. Insert FeePayment record<br>4. Increment receipt counter in IdSequence<br>5. Generate FeePaymentAllocation rows<br>6. Update FeeObligation balances<br>7. Create immutable FeeReceipt<br>8. Write FeeAuditLog
+    DB-->>FeeSvc: Committed { payment, receipt }
+    FeeSvc-->>API: Payment Result
+    API-->>UI: HTTP 201 { success: true, receiptId: receipt.id }
+    
+    UI->>API: GET /api/fees/receipts/[id]/pdf
+    API->>PDFSvc: generateReceiptPdfBuffer(schoolId, receiptId)
+    PDFSvc->>DB: Fetch receipt with branding and snapshot
+    PDFSvc->>PDFSvc: Render vector A4 PDF in memory via pdf-lib
+    PDFSvc-->>API: Uint8Array PDF Buffer
+    API-->>Admin: HTTP 200 (application/pdf binary)
+        </div>
+      </div>
+    </div>
+
+    <!-- DIAGRAM 4 -->
+    <div class="card" id="card-diag-4">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2><span class="num">04.</span> Direct-to-Cloud Azure Blob SAS Upload Flow</h2>
+          <p class="desc">How file uploads bypass Vercel serverless execution limits through 15-minute write-only SAS tokens and magic-byte checks.</p>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-icon" onclick="copySvg('diag-4')" title="Copy SVG code to clipboard">
+            📋 Copy SVG
+          </button>
+          <button class="btn btn-icon" onclick="downloadSvg('diag-4', 'rivo-azure-sas-upload-flow.svg')" title="Download standalone SVG vector">
+            📥 Download SVG
+          </button>
+          <button class="btn btn-icon btn-primary" onclick="downloadPng('diag-4', 'rivo-azure-sas-upload-flow.png')" title="Download high-resolution PNG">
+            🖼️ Download PNG
+          </button>
+          <button class="btn btn-icon" onclick="openModal('diag-4', '04. Direct-to-Cloud Azure Blob SAS Upload Flow')" title="Zoom & view fullscreen">
+            🔍 Fullscreen
+          </button>
+        </div>
+      </div>
+      <div class="diagram-viewport">
+        <div class="mermaid" id="diag-4">
+sequenceDiagram
+    autonumber
+    actor User as User Browser (Avatar / Document Upload)
+    participant SAS_API as POST /api/media/sas/upload
+    participant Azure as Azure Blob Storage (rivo-private)
+    participant EntityAPI as Entity Route (e.g. /api/students/[id]/photo)
+    participant DB as Neon PostgreSQL
+
+    User->>SAS_API: POST /api/media/sas/upload { category: 'AVATAR', mimeType: 'image/jpeg', size: 1048576 }
+    SAS_API->>SAS_API: Verify user authenticated & tenant active
+    SAS_API->>SAS_API: Check quota (max 2MB for avatar) & MIME type
+    SAS_API->>SAS_API: Generate write-only SAS URL (cw permissions, 15m TTL)
+    SAS_API-->>User: { uploadUrl, blobKey: "schools/SCH-1/avatars/STU-1/hash.jpg" }
+    
+    User->>Azure: PUT uploadUrl (Binary payload direct from browser)
+    Azure-->>User: HTTP 201 Created (ETag response)
+    
+    User->>EntityAPI: POST /api/students/[id]/photo { blobKey }
+    EntityAPI->>DB: Update student photoUrl = blobKey
+    DB-->>EntityAPI: Record Updated
+    EntityAPI-->>User: HTTP 200 { success: true, photoUrl }
+        </div>
+      </div>
+    </div>
+
+    <!-- FULLSCREEN MODAL -->
+    <div class="modal-overlay" id="fullscreenModal" onclick="closeModalOnOverlay(event)">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">Diagram Fullscreen View</h3>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-icon" onclick="zoomModal(1.2)" title="Zoom In">➕</button>
+            <button class="btn btn-icon" onclick="zoomModal(0.8)" title="Zoom Out">➖</button>
+            <button class="btn btn-icon" onclick="resetModalZoom()" title="Reset Zoom">🔄 Reset</button>
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast">
+      <span id="toastMsg">✓ Action completed</span>
+    </div>
+
+    <div class="footer">
+      RIVO Engineering &copy; 2026. Generated by Antigravity Multi-Agent Audit System.
+    </div>
+  </div>
+
+  <script>
+    // Initialize Mermaid with Dark Theme
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      themeVariables: {
+        darkMode: true,
+        background: '#060911',
+        primaryColor: '#0284c7',
+        primaryTextColor: '#f8fafc',
+        primaryBorderColor: '#0369a1',
+        lineColor: '#38bdf8',
+        secondaryColor: '#334155',
+        tertiaryColor: '#1e293b'
+      }
+    });
+
+    // Helper: Show Feedback Toast
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.textContent = message;
+      toast.className = 'show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      setTimeout(() => {
+        toast.className = '';
+      }, 3000);
+    }
+
+    // Helper: Get Clean SVG string from Diagram Container
+    function getSvgMarkup(elementId) {
+      const container = document.getElementById(elementId);
+      if (!container) return null;
+      const svg = container.querySelector('svg');
+      if (!svg) return null;
+
+      // Clone SVG so we can normalize attributes for export
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      
+      // Ensure viewBox and dimensions exist
+      const bBox = svg.getBoundingClientRect();
+      const width = Math.max(svg.viewBox?.baseVal?.width || bBox.width || 1200, 400);
+      const height = Math.max(svg.viewBox?.baseVal?.height || bBox.height || 800, 300);
+      
+      if (!clone.getAttribute('viewBox')) {
+        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      }
+      clone.setAttribute('width', width);
+      clone.setAttribute('height', height);
+
+      // Inline styles for stand-alone rendering
+      const styleTag = document.createElement('style');
+      styleTag.textContent = `
+        svg { background-color: #060911; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .node rect, .node circle, .node polygon { stroke-width: 2px; }
+      `;
+      clone.insertBefore(styleTag, clone.firstChild);
+
+      return new XMLSerializer().serializeToString(clone);
+    }
+
+    // Feature 1: Download Single Diagram as SVG
+    function downloadSvg(elementId, filename) {
+      const svgMarkup = getSvgMarkup(elementId);
+      if (!svgMarkup) {
+        showToast('Diagram is still rendering. Please wait a moment.', 'error');
+        return;
+      }
+      const blob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `${elementId}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(`✓ Downloaded ${link.download}`);
+    }
+
+    // Feature 2: Download Single Diagram as High-Resolution PNG (Canvas 2.5x Render)
+    function downloadPng(elementId, filename, scale = 2.5) {
+      const svgMarkup = getSvgMarkup(elementId);
+      if (!svgMarkup) {
+        showToast('Diagram is still rendering. Please wait a moment.', 'error');
+        return;
+      }
+
+      const blob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+
+      img.onload = function() {
+        const width = img.naturalWidth || 1200;
+        const height = img.naturalHeight || 800;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const ctx = canvas.getContext('2d');
+
+        // Draw crisp background
+        ctx.fillStyle = '#060911';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw diagram
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        canvas.toBlob(function(pngBlob) {
+          if (!pngBlob) {
+            showToast('PNG generation failed', 'error');
+            return;
+          }
+          const pngUrl = URL.createObjectURL(pngBlob);
+          const link = document.createElement('a');
+          link.href = pngUrl;
+          link.download = filename || `${elementId}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(pngUrl);
+          showToast(`✓ Downloaded HD ${link.download}`);
+        }, 'image/png');
+      };
+
+      img.onerror = function() {
+        URL.revokeObjectURL(url);
+        showToast('Failed to convert diagram to image', 'error');
+      };
+
+      img.src = url;
+    }
+
+    // Feature 3: Copy SVG Markup to Clipboard
+    function copySvg(elementId) {
+      const svgMarkup = getSvgMarkup(elementId);
+      if (!svgMarkup) {
+        showToast('Diagram not ready yet', 'error');
+        return;
+      }
+      navigator.clipboard.writeText(svgMarkup).then(() => {
+        showToast('✓ Raw SVG markup copied to clipboard!');
+      }).catch(err => {
+        showToast('Could not copy to clipboard: ' + err, 'error');
+      });
+    }
+
+    // Feature 4: Batch Export All as SVG
+    function downloadAllSvg() {
+      const diagrams = [
+        { id: 'diag-1', name: '01-rivo-system-topology.svg' },
+        { id: 'diag-2', name: '02-rivo-auth-session-flow.svg' },
+        { id: 'diag-3', name: '03-rivo-fee-collection-flow.svg' },
+        { id: 'diag-4', name: '04-rivo-azure-sas-upload.svg' }
+      ];
+      diagrams.forEach((diag, index) => {
+        setTimeout(() => {
+          downloadSvg(diag.id, diag.name);
+        }, index * 400);
+      });
+      showToast('Exporting all 4 SVG diagrams...');
+    }
+
+    // Feature 5: Batch Export All as High-Res PNG
+    function downloadAllPng() {
+      const diagrams = [
+        { id: 'diag-1', name: '01-rivo-system-topology.png' },
+        { id: 'diag-2', name: '02-rivo-auth-session-flow.png' },
+        { id: 'diag-3', name: '03-rivo-fee-collection-flow.png' },
+        { id: 'diag-4', name: '04-rivo-azure-sas-upload.png' }
+      ];
+      diagrams.forEach((diag, index) => {
+        setTimeout(() => {
+          downloadPng(diag.id, diag.name);
+        }, index * 600);
+      });
+      showToast('Exporting all 4 high-resolution PNG diagrams...');
+    }
+
+    // Feature 6: Fullscreen & Interactive Zoom Modal
+    let currentZoom = 1;
+    function openModal(elementId, title) {
+      const container = document.getElementById(elementId);
+      const svg = container ? container.querySelector('svg') : null;
+      if (!svg) {
+        showToast('Diagram not loaded yet', 'error');
+        return;
+      }
+      document.getElementById('modalTitle').textContent = title;
+      const modalBody = document.getElementById('modalBody');
+      modalBody.innerHTML = '';
+      const clone = svg.cloneNode(true);
+      clone.id = 'modalSvg';
+      currentZoom = 1;
+      clone.style.transform = `scale(1)`;
+      modalBody.appendChild(clone);
+      document.getElementById('fullscreenModal').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('fullscreenModal').classList.remove('open');
+    }
+
+    function closeModalOnOverlay(e) {
+      if (e.target.id === 'fullscreenModal') closeModal();
+    }
+
+    function zoomModal(factor) {
+      currentZoom *= factor;
+      const svg = document.getElementById('modalSvg');
+      if (svg) svg.style.transform = `scale(${currentZoom})`;
+    }
+
+    function resetModalZoom() {
+      currentZoom = 1;
+      const svg = document.getElementById('modalSvg');
+      if (svg) svg.style.transform = `scale(1)`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+  </script>
+</body>
+</html>
