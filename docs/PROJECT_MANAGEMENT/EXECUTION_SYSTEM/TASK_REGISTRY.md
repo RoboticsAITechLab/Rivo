@@ -30,20 +30,20 @@ Total Registered Tasks: **45**
 #### `RIVO-SEC-001`
 - **Title:** Rotate Neon Database Secrets & Sanitize Environment Example Templates
 - **Parent Phase:** Phase 0 | **Related Module:** `MODULE_02_AUTH_SECURITY_MFA.md`
-- **Priority:** **P0 (Critical)** | **Current Status:** `READY` (Awaiting Owner Decision)
+- **Priority:** **P0 (Critical)** | **Current Status:** `COMPLETED` (Templates sanitized; Owner credential rotation pending)
 - **Dependencies:** None
 - **Assigned Agent:** Security Architect
 - **Target Files:** `apps/api/.env.example`, `apps/web/.env.example`, `.env.example`, Neon Console
 - **Required Inputs:** Owner rotated password in Neon Console; placeholder template strings.
 - **Expected Output:** `.env.example` files contain only `postgresql://user:password@localhost:5432/dbname`. Zero plaintext secrets in repo.
-- **Verification Method:** Grep repository for `npg_8qBxHNXL2htz`; test connection with rotated password.
+- **Verification Method:** Grep repository for legacy password token; test connection with rotated password.
 - **Acceptance Criteria:** `git diff` shows only dummy placeholders; live cloud credentials purged.
 - **Rollback Strategy:** Revert commit if local developer environments cannot resolve mock examples.
 
 #### `RIVO-SEC-002`
 - **Title:** Implement Concurrency Locks & In-Transaction Sequence Generation in Fee Payment Allocation
 - **Parent Phase:** Phase 0 | **Related Module:** `MODULE_05_FEE_MANAGEMENT_FINANCIAL_INTEGRITY.md`
-- **Priority:** **P0 (Critical)** | **Current Status:** `READY`
+- **Priority:** **P0 (Critical)** | **Current Status:** `BLOCKED` (Awaiting Owner Confirmation of Neon Credential Rotation)
 - **Dependencies:** `RIVO-SEC-001` (Policy/Hygiene prerequisite; target files are physically disjoint)
 - **Assigned Agent:** Database Architect & Backend Engineer
 - **Target Files:** `apps/web/src/lib/fees/fee-payment-service.ts`
@@ -56,8 +56,28 @@ Total Registered Tasks: **45**
 #### `RIVO-SEC-003`
 - **Title:** Enforce Object-Level Authorization on Student Profile Route (`/api/students/[id]`)
 - **Parent Phase:** Phase 0 | **Related Module:** `MODULE_04_STUDENT_MANAGEMENT_ROLL_BALANCING.md`
-- **Priority:** **P1 (High)** | **Current Status:** `READY`
-- **Dependencies:** None (Can run in parallel with `RIVO-SEC-002`)
+- **Priority:** **P1 (High)** | **Current Status:** `COMPLETED`
+- **Dependencies:** None
+- **Assigned Agent:** Backend Engineer & Security Architect
+- **Target Files:** `apps/web/src/app/api/students/[id]/route.ts`, `apps/web/src/__tests__/student-object-authorization.test.ts`
+- **Required Inputs:** Session context; `TeacherAssignment` table relationships.
+- **Expected Output:** If user role is `TEACHER` or scope is `ASSIGNED`, query verifies teacher is assigned to student's class/section. Non-privileged roles have financial balances (`feeObligations`, `feePayments`, `feesSummary`) and sensitive KYC documents stripped from response.
+- **Verification Method:** Test request with Teacher A session for Student B in Class 10 returns HTTP 403; cross-tenant request returns 404.
+- **Acceptance Criteria:** Zero IDOR leakage across unassigned classes. 5/5 automated test suite assertions pass.
+- **Rollback Strategy:** Revert route handler to previous revision.
+
+#### `RIVO-SEC-004`
+- **Title:** Enforce Fail-Closed Policy on Production Redis Rate Limiters
+- **Parent Phase:** Phase 0 | **Related Module:** `MODULE_02_AUTH_SECURITY_MFA.md`
+- **Priority:** **P1 (High)** | **Current Status:** `COMPLETED`
+- **Dependencies:** None
+- **Assigned Agent:** Security Architect & Backend Engineer
+- **Target Files:** `apps/web/src/lib/auth/rate-limiter.ts`
+- **Required Inputs:** `RateLimiter.consume()` method; `isProductionMode()` check.
+- **Expected Output:** In production mode (`AUTH_INFRA_MODE=production` or `NODE_ENV=production`), rate limiter strictly returns `allowed: false` if Redis is unreachable. In local development, in-memory fallback remains active.
+- **Verification Method:** Unit test asserting `allowed === false` when Redis URL is absent in production mode.
+- **Acceptance Criteria:** Zero authentication requests permitted without active rate limiting in production.
+- **Rollback Strategy:** Revert `rate-limiter.ts` changes.
 - **Assigned Agent:** Backend Engineer & Security Architect
 - **Target Files:** `apps/web/src/app/api/students/[id]/route.ts`
 - **Required Inputs:** Session context; `TeacherAssignment` table relationships.

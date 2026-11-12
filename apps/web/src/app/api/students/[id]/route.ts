@@ -16,43 +16,29 @@ export async function GET(
       return auth.response;
     }
 
-    const [student, feeObligations, feePayments, attendanceRecords] = await Promise.all([
-      prisma.student.findFirst({
-        where: {
-          id,
-          schoolId: auth.schoolId,
+    const student = await prisma.student.findFirst({
+      where: {
+        id,
+        schoolId: auth.schoolId,
+      },
+      include: {
+        campus: true,
+        documents: {
+          orderBy: { uploadedAt: 'desc' },
         },
-        include: {
-          campus: true,
-          documents: {
-            orderBy: { uploadedAt: 'desc' },
+        enrollments: {
+          include: {
+            class: true,
+            section: true,
+            academicSession: true,
           },
-          enrollments: {
-            include: {
-              class: true,
-              section: true,
-              academicSession: true,
-            },
-            orderBy: { createdAt: 'desc' },
-          },
-          parentStudents: {
-            include: { parent: true },
-          },
+          orderBy: { createdAt: 'desc' },
         },
-      }),
-      prisma.feeObligation.findMany({
-        where: { studentId: id, schoolId: auth.schoolId },
-      }),
-      prisma.feePayment.findMany({
-        where: { studentId: id, schoolId: auth.schoolId, status: 'COLLECTED' },
-      }),
-      prisma.attendanceRecord.findMany({
-        where: { studentId: id },
-        include: { register: true },
-        orderBy: { markedAt: 'desc' },
-        take: 100,
-      }),
-    ]);
+        parentStudents: {
+          include: { parent: true },
+        },
+      },
+    });
 
     if (!student) {
       return NextResponse.json({ message: 'Student not found' }, { status: 404 });
@@ -60,10 +46,88 @@ export async function GET(
 
     const activeEnrollment = student.enrollments.find((e) => e.status === 'ACTIVE') || student.enrollments[0];
 
-    // Compute live signed URLs for documents
+    const isLeadership = [
+      'OWNER',
+      'ADMIN',
+      'SCHOOL_ADMIN',
+      'DIRECTOR',
+      'PRINCIPAL',
+    ].includes(auth.role);
+
+    const canViewFinancials = isLeadership || auth.role === 'FEE_MANAGER';
+
+    // RIVO-SEC-003: Enforce Object-Level Authorization for Teachers & Assigned Scopes
+    if (!isLeadership && (auth.role === 'TEACHER' || auth.scope === 'ASSIGNED')) {
+      const teacher = await prisma.teacher.findFirst({
+        where: { userId: auth.userId, schoolId: auth.schoolId },
+        select: { id: true },
+      });
+
+      if (!teacher) {
+        return NextResponse.json(
+          { message: 'Forbidden: No active teacher profile found for your account.' },
+          { status: 403 }
+        );
+      }
+
+      if (activeEnrollment?.classId || activeEnrollment?.sectionId) {
+        const assignment = await prisma.teacherAssignment.findFirst({
+          where: {
+            schoolId: auth.schoolId,
+            teacherId: teacher.id,
+            OR: [
+              ...(activeEnrollment.classId ? [{ classId: activeEnrollment.classId }] : []),
+              ...(activeEnrollment.sectionId ? [{ sectionId: activeEnrollment.sectionId }] : []),
+            ],
+          },
+        });
+
+        if (!assignment) {
+          return NextResponse.json(
+            { message: "Forbidden: You are not assigned to this student's class or section." },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    // Only query sensitive financial obligations if caller holds financial permissions
+    const [feeObligations, feePayments, attendanceRecords] = await Promise.all([
+      canViewFinancials
+        ? prisma.feeObligation.findMany({
+            where: { studentId: id, schoolId: auth.schoolId },
+          })
+        : Promise.resolve([]),
+      canViewFinancials
+        ? prisma.feePayment.findMany({
+            where: { studentId: id, schoolId: auth.schoolId, status: 'COLLECTED' },
+          })
+        : Promise.resolve([]),
+      prisma.attendanceRecord.findMany({
+        where: {
+          studentId: id,
+          register: { schoolId: auth.schoolId },
+        },
+        include: { register: true },
+        orderBy: { markedAt: 'desc' },
+        take: 100,
+      }),
+    ]);
+
+    // Compute live signed URLs for documents (strip sensitive KYC documents for non-finance/non-leadership staff)
+    const isPrivilegedStaff = isLeadership || auth.role === 'FEE_MANAGER';
+    const accessibleDocuments = isPrivilegedStaff
+      ? student.documents
+      : student.documents.filter(
+          (doc) =>
+            doc.documentType !== 'AADHAAR' &&
+            doc.documentType !== 'PAN' &&
+            doc.documentType !== 'BIRTH_CERTIFICATE'
+        );
+
     const storageService = getMediaStorageService();
     const documentsWithUrls = await Promise.all(
-      student.documents.map(async (doc) => {
+      accessibleDocuments.map(async (doc) => {
         let accessUrl = doc.fileUrl;
         if (doc.fileUrl && doc.fileUrl.startsWith('schools/')) {
           try {
@@ -175,12 +239,14 @@ export async function GET(
             reason: r.reason,
           })),
         },
-        feesSummary: {
-          totalObligations,
-          totalPaid,
-          outstandingBalance,
-          currency: 'INR',
-        },
+        feesSummary: canViewFinancials
+          ? {
+              totalObligations,
+              totalPaid,
+              outstandingBalance,
+              currency: 'INR',
+            }
+          : null,
         createdAt: student.createdAt.toISOString(),
       },
     });
@@ -210,6 +276,51 @@ export async function PATCH(
 
     if (!existing) {
       return NextResponse.json({ message: 'Student not found' }, { status: 404 });
+    }
+
+    const isLeadership = [
+      'OWNER',
+      'ADMIN',
+      'SCHOOL_ADMIN',
+      'DIRECTOR',
+      'PRINCIPAL',
+    ].includes(auth.role);
+
+    // RIVO-SEC-003: Object-level authorization for PATCH operations
+    if (!isLeadership && (auth.role === 'TEACHER' || auth.scope === 'ASSIGNED')) {
+      const activeEnrollment =
+        existing.enrollments.find((e) => e.status === 'ACTIVE') || existing.enrollments[0];
+      const teacher = await prisma.teacher.findFirst({
+        where: { userId: auth.userId, schoolId: auth.schoolId },
+        select: { id: true },
+      });
+
+      if (!teacher) {
+        return NextResponse.json(
+          { message: 'Forbidden: No active teacher profile found for your account.' },
+          { status: 403 }
+        );
+      }
+
+      if (activeEnrollment?.classId || activeEnrollment?.sectionId) {
+        const assignment = await prisma.teacherAssignment.findFirst({
+          where: {
+            schoolId: auth.schoolId,
+            teacherId: teacher.id,
+            OR: [
+              ...(activeEnrollment.classId ? [{ classId: activeEnrollment.classId }] : []),
+              ...(activeEnrollment.sectionId ? [{ sectionId: activeEnrollment.sectionId }] : []),
+            ],
+          },
+        });
+
+        if (!assignment) {
+          return NextResponse.json(
+            { message: "Forbidden: You are not assigned to modify this student's records." },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     const body = await req.json();

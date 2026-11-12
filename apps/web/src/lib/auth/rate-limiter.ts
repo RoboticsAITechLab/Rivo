@@ -75,11 +75,21 @@ export class RateLimiter {
           resetAt,
         };
       } catch (redisError) {
-        console.warn('[REDIS_RATE_LIMIT_ERROR] Failed Redis rate limit check, using in-memory fallback:', redisError);
+        console.warn('[REDIS_RATE_LIMIT_ERROR] Failed Redis rate limit check:', redisError);
       }
     }
 
-    // Graceful in-memory fallback: ensures rate limiting is always enforced per instance
+    // In production mode, if Redis is missing, unreachable, or unhealthy, fail closed for security
+    if (isProductionMode()) {
+      console.error('[SECURITY_ALERT] RateLimiter in production mode: Redis is unavailable. Failing closed.');
+      return {
+        allowed: false,
+        remaining: 0,
+        resetAt: Date.now() + this.windowMs,
+      };
+    }
+
+    // Graceful in-memory fallback: ensures rate limiting is enforced locally per instance in dev
     return this.consumeInMemory(key);
   }
 
