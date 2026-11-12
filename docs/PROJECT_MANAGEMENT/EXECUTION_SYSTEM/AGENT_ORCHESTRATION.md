@@ -85,3 +85,4 @@ Every agent must report its progress back to the Lead Orchestrator using this ex
 ```
 
 The Lead Orchestrator reviews the report, verifies test evidence, updates [`TASK_REGISTRY.md`](file:///d:/Rivo/docs/PROJECT_MANAGEMENT/EXECUTION_SYSTEM/TASK_REGISTRY.md) and [`PROGRESS_TRACKER.md`](file:///d:/Rivo/docs/PROJECT_MANAGEMENT/EXECUTION_SYSTEM/PROGRESS_TRACKER.md), and transitions the task to `COMPLETED`.
+

@@ -101,3 +101,4 @@ All documents in this directory are interconnected and constitute the single sou
   ```text
   "Begin Rivo Phase 0 implementation. Execute task RIVO-SEC-001 (Rotate Neon secrets and sanitize .env.example) and RIVO-SEC-002 (Pessimistic FOR UPDATE locks on fee payment allocations) following docs/PROJECT_MANAGEMENT/EXECUTION_SYSTEM/FUTURE_EXECUTION_PROTOCOL.md."
   ```
+

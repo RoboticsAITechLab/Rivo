@@ -132,3 +132,4 @@ Deliver an internal SaaS operations console (`/platform`) for Rivo executive and
 
 ## 17. Known Risks and Unresolved Decisions
 - Automated payment billing for school SaaS subscriptions (Stripe/Razorpay Subscriptions) is scheduled for Post-Launch Phase 6.
+

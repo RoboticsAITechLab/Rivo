@@ -69,3 +69,4 @@ The agent then outputs a concise message to the project owner stating:
 - Verified test evidence.
 - Any new blockers or checkpoints reached.
 - The exact recommended next instruction.
+

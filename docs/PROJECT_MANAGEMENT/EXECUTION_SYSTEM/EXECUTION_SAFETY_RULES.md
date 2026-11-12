@@ -36,3 +36,4 @@
 3. **No Unapproved Third-Party Dependencies:** Agents must not install new npm packages or Flutter dependencies without documenting the business justification and obtaining Lead Orchestrator sign-off.
 4. **Preserve Existing Architecture:** Agents must strictly respect the approved architecture (Next.js 16 modular monolith + Flutter mobile). Do not attempt microservices extractions, framework migrations, or state management replacements.
 5. **Atomic Reversibility:** Every code change must be atomic and reversible via `git revert`. Never combine multiple unrelated domain changes in a single commit.
+

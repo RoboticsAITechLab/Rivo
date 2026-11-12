@@ -108,3 +108,4 @@ Deliver complete administrative cockpits for school leadership (`apps/web/(schoo
 
 ## 17. Known Risks and Unresolved Decisions
 - Migrating 27 frontend components away from `school-store.ts` requires careful regression verification on student and class listing pages.
+

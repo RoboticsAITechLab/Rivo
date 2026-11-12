@@ -51,3 +51,4 @@ flowchart TD
    - If changes compile and pass tests: complete the verification checklist and commit.
    - If changes are broken or half-written: revert the specific file to pre-task state (`git restore <file>`) and reset task to `READY`.
 4. **Log the Recovery:** Record a `[SESSION RECOVERY]` entry in [`EXECUTION_LOG.md`](file:///d:/Rivo/docs/PROJECT_MANAGEMENT/EXECUTION_SYSTEM/EXECUTION_LOG.md).
+

@@ -56,3 +56,4 @@
 - **Context:** Managing communication costs across SMS, WhatsApp, and Push notifications.
 - **Decision:** Tier 1 (Free In-App & Firebase FCM Push) -> Tier 2 (Meta WhatsApp Cloud API for urgent fees/absences) -> Tier 3 (Transactional SMS fallback for OTPs only).
 - **Reasoning:** SMS is cost-prohibitive for routine notices. WhatsApp provides high engagement at reasonable unit cost. Free push notifications serve as the default high-frequency channel.
+

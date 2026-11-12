@@ -110,3 +110,4 @@ Establish a high-integrity, double-entry financial accounting and fee collection
 
 ## 17. Known Risks and Unresolved Decisions
 - Highly concurrent cashier operations during morning school rush require database connection pool tuning in PgBouncer (addressed in Module 14).
+

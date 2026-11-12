@@ -110,3 +110,4 @@ Deliver enterprise-grade authentication, multi-tenant session management, Scrypt
 
 ## 17. Known Risks and Unresolved Decisions
 - If Redis fails, authentication routes fail closed, preventing new logins until Redis recovers (intentional security trade-off). Existing sessions with valid cookies remain cached.
+

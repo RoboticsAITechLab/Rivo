@@ -108,3 +108,4 @@ Deliver resilient daily student attendance recording for teachers and school adm
 
 ## 17. Known Risks and Unresolved Decisions
 - Conflicting submissions if two teachers attempt to mark attendance for the same section simultaneously (resolved by `AttendanceRegister` unique date constraint).
+

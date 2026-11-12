@@ -136,3 +136,4 @@ Deliver an age-appropriate, privacy-preserving academic experience for students 
 
 ## 17. Known Risks and Unresolved Decisions
 - Anti-plagiarism or AI content scanning on student homework is deferred to Post-Launch Phase 5.
+

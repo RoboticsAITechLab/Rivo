@@ -139,3 +139,4 @@ Deliver auto-generated, mobile-responsive public school landing pages (`/schools
 
 ## 17. Known Risks and Unresolved Decisions
 - Online admission fee processing (e.g. ₹500 registration fee) is optional and configurable in school settings.
+

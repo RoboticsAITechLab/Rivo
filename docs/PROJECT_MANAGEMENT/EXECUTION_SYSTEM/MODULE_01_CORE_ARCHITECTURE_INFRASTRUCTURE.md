@@ -114,3 +114,4 @@ Establish a clean, strictly-typed, scalable, and resilient foundation across the
 
 ## 17. Known Risks and Unresolved Decisions
 - Resolving strict TypeScript errors may surface hidden type mismatches in legacy mock components requiring surgical typing.
+

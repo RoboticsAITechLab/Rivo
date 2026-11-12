@@ -75,3 +75,4 @@ Every task execution report must attach this completed checklist to [`EXECUTION_
 - [ ] Gate 4: Executed test suite and pasted terminal output evidence.
 - [ ] Gate 5: Verified rollback procedure (`git revert <hash>`).
 ```
+

@@ -9,7 +9,7 @@
 
 ## 1. Task Registry Overview & Summary Metrics
 
-Total Registered Tasks: **52**  
+Total Registered Tasks: **45**  
 - **Phase 0 (Security & Concurrency):** 4 Tasks (`RIVO-SEC-001` to `004`)
 - **Phase 1 (Platform Foundation & Build):** 6 Tasks (`RIVO-ARCH-001`, `002`, `RIVO-BLD-001`, `RIVO-UI-001`, `002`, `RIVO-QA-001`)
 - **Phase 2 (School Admin MVP):** 4 Tasks (`RIVO-ADM-001` to `003`, `RIVO-DB-001`)
@@ -33,7 +33,7 @@ Total Registered Tasks: **52**
 - **Priority:** **P0 (Critical)** | **Current Status:** `READY` (Awaiting Owner Decision)
 - **Dependencies:** None
 - **Assigned Agent:** Security Architect
-- **Target Files:** `apps/web/.env.example`, `apps/api/.env.example`, Neon Console
+- **Target Files:** `apps/api/.env.example`, `apps/web/.env.example`, `.env.example`, Neon Console
 - **Required Inputs:** Owner rotated password in Neon Console; placeholder template strings.
 - **Expected Output:** `.env.example` files contain only `postgresql://user:password@localhost:5432/dbname`. Zero plaintext secrets in repo.
 - **Verification Method:** Grep repository for `npg_8qBxHNXL2htz`; test connection with rotated password.
@@ -41,14 +41,14 @@ Total Registered Tasks: **52**
 - **Rollback Strategy:** Revert commit if local developer environments cannot resolve mock examples.
 
 #### `RIVO-SEC-002`
-- **Title:** Implement Pessimistic `FOR UPDATE` Row Locks in Fee Payment Allocation
+- **Title:** Implement Concurrency Locks & In-Transaction Sequence Generation in Fee Payment Allocation
 - **Parent Phase:** Phase 0 | **Related Module:** `MODULE_05_FEE_MANAGEMENT_FINANCIAL_INTEGRITY.md`
 - **Priority:** **P0 (Critical)** | **Current Status:** `READY`
-- **Dependencies:** `RIVO-SEC-001`
+- **Dependencies:** `RIVO-SEC-001` (Policy/Hygiene prerequisite; target files are physically disjoint)
 - **Assigned Agent:** Database Architect & Backend Engineer
 - **Target Files:** `apps/web/src/lib/fees/fee-payment-service.ts`
 - **Required Inputs:** `fee-payment-service.ts` source code; Prisma client transaction API.
-- **Expected Output:** Obligation queries wrapped in raw SQL or Prisma interactive transaction with `FOR UPDATE` lock. Sequential payment and receipt numbers generated strictly *inside* the transaction.
+- **Expected Output:** Obligation queries protected by PostgreSQL advisory lock (`pg_advisory_xact_lock`) or pessimistic row lock. Sequential payment and receipt numbers generated strictly *inside* the transaction using `tx` client.
 - **Verification Method:** Execute simulated parallel payment script with 2 concurrent $500 requests against single $500 obligation.
 - **Acceptance Criteria:** Exactly one payment commits; second request rejects with "Balance already paid"; zero duplicate allocation rows.
 - **Rollback Strategy:** Restore pre-lock version from git; rerun fee foundation test suite.
@@ -483,3 +483,4 @@ Total Registered Tasks: **52**
 - **Assigned Agent:** CTO & Engineering Director
 - **Target Files:** `docs/PROJECT_MANAGEMENT/EXECUTION_SYSTEM/PROGRESS_TRACKER.md`
 - **Expected Output:** Formal sign-off declaring all 7 launch gates GREEN; general commercial availability announced.
+

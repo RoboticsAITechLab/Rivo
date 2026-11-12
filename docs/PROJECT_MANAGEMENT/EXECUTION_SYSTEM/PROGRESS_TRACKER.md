@@ -13,7 +13,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                       OVERALL PROJECT COMPLETION: 0.0%                      │
 │                          [░░░░░░░░░░░░░░░░░░░░]                             │
-│                     0 / 52 Tasks Verified & Completed                       │
+│                     0 / 45 Tasks Verified & Completed                       │
 ├──────────────────────────────┬──────────────────────────────┬───────────────┤
 │ Active Phase: Phase 0        │ Active Workstreams: 0        │ Blockers: 3   │
 │ Target Launch: 90 Days       │ Verified Milestones: 0 / 10  │ Approvals: 2  │
@@ -36,7 +36,7 @@
 | **Phase 7** | Public School & Admission | 4 | 0 | 0 | 4 | **0.0%** | `NOT_STARTED` |
 | **Phase 8** | Testing, SRE & Observability | 5 | 0 | 0 | 5 | **0.0%** | `NOT_STARTED` |
 | **Phase 9** | Commercial Launch & Rollout | 5 | 0 | 0 | 5 | **0.0%** | `NOT_STARTED` |
-| **TOTAL** | **All 10 Ecosystem Phases** | **52** | **0** | **0** | **52** | **0.0%** | **BASELINE READY** |
+| **TOTAL** | **All 10 Ecosystem Phases** | **45** | **0** | **0** | **45** | **0.0%** | **BASELINE READY** |
 
 ---
 
@@ -68,3 +68,4 @@
 | **BLK-001** | `RIVO-SEC-001` | **P0 (Critical)** | Database credentials committed in `.env.example` | Owner rotate Neon password & confirm |
 | **BLK-002** | `RIVO-SEC-002` | **P0 (Critical)** | Concurrency race condition in fee payment service | Owner authorize Phase 0 execution prompt |
 | **BLK-003** | `RIVO-BLD-001` | **P1 (High)** | `ignoreBuildErrors: true` masking type compilation errors | Scheduled for Phase 1 execution |
+

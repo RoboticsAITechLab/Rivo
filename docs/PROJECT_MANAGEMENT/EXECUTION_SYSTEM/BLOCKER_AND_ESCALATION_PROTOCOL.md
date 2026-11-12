@@ -80,3 +80,4 @@ graph TD
 ```
 
 - **Rule of Thumb:** If an action is reversible, non-destructive, and stays within local file boundaries, execute autonomously. If an action affects production data, incurs external financial cost, or alters security boundaries, require human owner sign-off.
+

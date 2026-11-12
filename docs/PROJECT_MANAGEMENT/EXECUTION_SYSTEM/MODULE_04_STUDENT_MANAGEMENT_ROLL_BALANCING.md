@@ -111,3 +111,4 @@ Manage the complete student lifecycle—admission, enrollment in classes and sec
 
 ## 17. Known Risks and Unresolved Decisions
 - Middle names and non-ASCII characters in student names must sort deterministically using Unicode collation (`localeCompare('en-IN')`).
+

@@ -114,3 +114,4 @@ Deliver a fast, mobile-first Responsive Web Portal and Progressive Web App (PWA)
 
 ## 17. Known Risks and Unresolved Decisions
 - iOS Safari PWA service worker lifecycle requires explicit cache management to prevent stale JavaScript assets.
+
