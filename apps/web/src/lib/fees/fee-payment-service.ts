@@ -78,14 +78,14 @@ export async function recordFeePayment(
   }
 
   const feeSettings = await getFeeSettings(schoolId);
-
-  // Generate sequential Payment ID and Receipt ID before entering the atomic settlement transaction
   const year = new Date().getFullYear();
-  const paymentNumber = await generateNextPaymentNumber(schoolId, { year });
-  const receiptNumber = await generateNextReceiptNumber(schoolId, { year });
 
   return prisma.$transaction(async (tx) => {
-    // 2. Resolve outstanding obligations
+    // RIVO-SEC-002: Acquire transaction-scoped PostgreSQL advisory lock for this student's fee ledger.
+    // Serializes concurrent payment allocations per student enrollment, auto-releasing on commit or rollback.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('fee:' || ${schoolId}), hashtext(${enrollment.id}))`;
+
+    // 2. Resolve outstanding obligations under lock
     const pendingObligations = await tx.feeObligation.findMany({
       where: {
         schoolId,
@@ -155,6 +155,10 @@ export async function recordFeePayment(
         unallocated = unallocated.minus(payableToThis);
       }
     }
+
+    // Generate sequential Payment ID and Receipt ID strictly inside transaction using tx client
+    const paymentNumber = await generateNextPaymentNumber(schoolId, { year, tx });
+    const receiptNumber = await generateNextReceiptNumber(schoolId, { year, tx });
 
     // 4. Create FeePayment record
     const payment = await tx.feePayment.create({
@@ -318,6 +322,9 @@ export async function reverseFeePayment(
   }
 
   return prisma.$transaction(async (tx) => {
+    // RIVO-SEC-002: Acquire transaction-scoped advisory lock for the student enrollment
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('fee:' || ${schoolId}), hashtext(${payment.studentEnrollmentId}))`;
+
     // 1. Mark payment as REVERSED
     const updatedPayment = await tx.feePayment.update({
       where: { id: payment.id },
@@ -579,6 +586,9 @@ export async function applyAdHocConcession(
   }
 
   return prisma.$transaction(async (tx) => {
+    // RIVO-SEC-002: Acquire transaction-scoped advisory lock for the student enrollment
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('fee:' || ${schoolId}), hashtext(${studentEnrollmentId}))`;
+
     // 1. Fetch eligible obligations (with balanceAmount > 0 and not CANCELLED)
     const whereClause: any = {
       schoolId,
@@ -799,6 +809,9 @@ export async function reverseAdHocConcession(
     if (!ob) {
       throw new Error('Fee obligation record not found for this school.');
     }
+
+    // RIVO-SEC-002: Acquire transaction-scoped advisory lock for the student enrollment
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('fee:' || ${schoolId}), hashtext(${ob.studentEnrollmentId}))`;
 
     if (ob.concessionAmount.lessThanOrEqualTo(0)) {
       throw new Error('This obligation has no active concession to reverse.');

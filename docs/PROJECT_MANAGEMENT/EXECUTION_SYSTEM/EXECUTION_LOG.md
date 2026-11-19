@@ -79,3 +79,26 @@
 - **Remaining Blocker:** `RIVO-SEC-002` remains strictly BLOCKED until project owner confirms Neon database password rotation in Neon Console.
 - **Next Recommended Action:** Project owner resets password in Neon console, then authorizes Workstream D (`RIVO-SEC-002`).
 
+---
+
+### [2026-11-19T12:25:00+05:30] — CHECKPOINT-003: Neon Credential Rotation & Phase 0 100% Completion
+- **Action Type:** Credential Rotation, Database Concurrency Hardening & Phase 0 Sign-Off
+- **Executing Agent:** Lead AI Orchestrator / Database Architect & Security Engineer
+- **Assigned Tasks:**
+  - `RIVO-SEC-001`: Neon DB Credential Rotation & Verification (COMPLETED)
+  - `RIVO-SEC-002`: Fee Payment Advisory Locking & In-Transaction Sequence Generation (COMPLETED)
+- **Status:** `COMPLETED (100% Phase 0 Sign-Off)`
+- **Actions Executed:**
+  1. Updated local `.env`, `apps/web/.env`, `apps/web/.env.local`, and `apps/api/.env` with rotated Neon database password (`npg_DL6HvnrGz5YE`).
+  2. Permanently verified old password `npg_8qBxHNXL2htz` is purged across all `.env` files.
+  3. Verified live Neon DB connectivity: `npm run test:id` passed 22/22 integration tests against live Neon database.
+  4. Implemented transaction-scoped PostgreSQL advisory locks (`pg_advisory_xact_lock`) via `tx.$executeRaw` across `recordFeePayment`, `reverseFeePayment`, `applyAdHocConcession`, and `reverseAdHocConcession` in `apps/web/src/lib/fees/fee-payment-service.ts`.
+  5. Moved payment and receipt sequence number generation strictly *inside* the interactive database transaction using the `tx` client.
+  6. Executed comprehensive fee foundation test suite (`npm run test:fee`).
+- **Verification Evidence:**
+  1. `npm run test:fee` exited with code 0: **ALL 60/60 FEE MANAGEMENT TESTS PASSED**.
+  2. Double payment prevention, concession settlement, spillover payments, and ledger calculations verified under PostgreSQL advisory locks.
+  3. `apps/web` TypeScript validation (`npx tsc --noEmit`) passes with zero errors.
+- **Phase 0 Status:** **100% COMPLETED (4/4 Tasks Done)**
+- **Next Recommended Action:** Proceed to **Phase 1: Shared Foundation & Build Safety** (`RIVO-BLD-001`: remove `ignoreBuildErrors: true` from `next.config.ts`, verify full monorepo build).
+

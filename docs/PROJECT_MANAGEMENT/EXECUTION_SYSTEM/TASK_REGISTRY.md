@@ -43,7 +43,7 @@ Total Registered Tasks: **45**
 #### `RIVO-SEC-002`
 - **Title:** Implement Concurrency Locks & In-Transaction Sequence Generation in Fee Payment Allocation
 - **Parent Phase:** Phase 0 | **Related Module:** `MODULE_05_FEE_MANAGEMENT_FINANCIAL_INTEGRITY.md`
-- **Priority:** **P0 (Critical)** | **Current Status:** `BLOCKED` (Awaiting Owner Confirmation of Neon Credential Rotation)
+- **Priority:** **P0 (Critical)** | **Current Status:** `COMPLETED` (pg_advisory_xact_lock & in-transaction sequence generation verified by 60/60 tests)
 - **Dependencies:** `RIVO-SEC-001` (Policy/Hygiene prerequisite; target files are physically disjoint)
 - **Assigned Agent:** Database Architect & Backend Engineer
 - **Target Files:** `apps/web/src/lib/fees/fee-payment-service.ts`
