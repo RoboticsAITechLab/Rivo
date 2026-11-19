@@ -104,13 +104,13 @@ Total Registered Tasks: **45**
 ### Phase 1: Shared Platform Foundation & Build Safety
 
 #### `RIVO-ARCH-001`
-- **Title:** Activate `packages/types` and Export Core Shared Domain Models
+- **Title:** Implement Unified Multi-Tenant Session & Scope Hydration Utility (`session-context.ts`)
 - **Parent Phase:** Phase 1 | **Related Module:** `MODULE_01_CORE_ARCHITECTURE_INFRASTRUCTURE.md`
-- **Priority:** **P1 (High)** | **Current Status:** `NOT_STARTED`
+- **Priority:** **P1 (High)** | **Current Status:** `COMPLETED` (`apps/web/src/lib/auth/session-context.ts` implemented with React request-scoped caching, verified by 37/37 dedicated tests and 95/95 auth regression tests)
 - **Dependencies:** Phase 0
-- **Assigned Agent:** Principal Architect
-- **Target Files:** `packages/types/src/index.ts`, `packages/types/package.json`
-- **Expected Output:** Monorepo package exporting TypeScript interfaces for `Student`, `FeeObligation`, `AttendanceRoster`, `Notice`.
+- **Assigned Agent:** Principal Platform Architect & Backend Engineer
+- **Target Files:** `apps/web/src/lib/auth/session-context.ts`, `apps/web/src/__tests__/session-context.test.ts`
+- **Expected Output:** Unified, type-safe session and scope hydration utility eliminating duplicate queries across layouts and components with strict tenant isolation.
 
 #### `RIVO-ARCH-002`
 - **Title:** Activate `packages/validation` and Export Shared Zod Request Schemas

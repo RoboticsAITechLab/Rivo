@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth/authorize';
 import { recordFeePayment } from '@/lib/fees/fee-payment-service';
-import { getRedisClient, isRedisHealthy } from '@/lib/redis/client';
+import { getRedisClient, isRedisHealthy, isProductionMode } from '@/lib/redis/client';
 import { RedisKeys } from '@/lib/redis/keys';
 
 const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 Hours
-const inMemoryIdempotencyCache = new Map<string, { payload: any; status: number; expiresAt: number }>();
+// In-memory cache is strictly reserved for local development and unit tests.
+// Production multi-instance environments must never use in-memory idempotency.
+const devInMemoryIdempotencyCache = new Map<string, { payload: any; status: number; expiresAt: number }>();
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,7 +56,16 @@ export async function POST(req: NextRequest) {
       redisKey = RedisKeys.feePaymentIdempotency(auth.schoolId, idempotencyKey);
       const redis = getRedisClient();
 
-      if (redis && isRedisHealthy()) {
+      if (isProductionMode()) {
+        // Strict production policy: fail closed if Redis is unavailable for payment idempotency
+        if (!redis || !isRedisHealthy()) {
+          console.error('[SECURITY_ALERT] Fee payment in production mode: Redis is unavailable for payment idempotency. Failing closed.');
+          return NextResponse.json(
+            { message: 'Payment idempotency service is temporarily unavailable. Please retry shortly.' },
+            { status: 503 }
+          );
+        }
+
         try {
           const cached = await redis.get(redisKey);
           if (cached) {
@@ -68,20 +79,43 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (cacheErr) {
-          console.warn('[IDEMPOTENCY_REDIS_ERROR] Could not read from Redis cache:', cacheErr);
+          console.error('[SECURITY_ALERT] Redis read failure in production payment idempotency. Failing closed:', cacheErr);
+          return NextResponse.json(
+            { message: 'Payment idempotency check failed. Please retry shortly.' },
+            { status: 503 }
+          );
         }
-      }
+      } else {
+        // Non-production (dev/test) mode: check Redis if available, else check dev in-memory fallback
+        if (redis && isRedisHealthy()) {
+          try {
+            const cached = await redis.get(redisKey);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              return NextResponse.json(parsed, {
+                status: 200,
+                headers: {
+                  'x-idempotent-replayed': 'true',
+                  'x-idempotency-key': idempotencyKey,
+                },
+              });
+            }
+          } catch (cacheErr) {
+            console.warn('[IDEMPOTENCY_REDIS_ERROR] Could not read from Redis cache:', cacheErr);
+          }
+        }
 
-      // In-memory fallback check
-      const memCached = inMemoryIdempotencyCache.get(redisKey);
-      if (memCached && memCached.expiresAt > Date.now()) {
-        return NextResponse.json(memCached.payload, {
-          status: memCached.status,
-          headers: {
-            'x-idempotent-replayed': 'true',
-            'x-idempotency-key': idempotencyKey,
-          },
-        });
+        // Local development in-memory cache lookup
+        const memCached = devInMemoryIdempotencyCache.get(redisKey);
+        if (memCached && memCached.expiresAt > Date.now()) {
+          return NextResponse.json(memCached.payload, {
+            status: memCached.status,
+            headers: {
+              'x-idempotent-replayed': 'true',
+              'x-idempotency-key': idempotencyKey,
+            },
+          });
+        }
       }
     }
 
@@ -123,11 +157,14 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      inMemoryIdempotencyCache.set(redisKey, {
-        payload: result,
-        status: 201,
-        expiresAt: Date.now() + IDEMPOTENCY_TTL_SECONDS * 1000,
-      });
+      // Only cache in local memory in non-production environments
+      if (!isProductionMode()) {
+        devInMemoryIdempotencyCache.set(redisKey, {
+          payload: result,
+          status: 201,
+          expiresAt: Date.now() + IDEMPOTENCY_TTL_SECONDS * 1000,
+        });
+      }
     }
 
     return NextResponse.json(result, {

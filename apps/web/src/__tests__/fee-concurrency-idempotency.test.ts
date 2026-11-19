@@ -6,6 +6,8 @@ import {
   assignFeePlanToEnrollments,
 } from '@/lib/fees/fee-plan-service';
 import { recordFeePayment } from '@/lib/fees/fee-payment-service';
+import { POST as feePaymentRoute } from '@/app/api/fees/payments/route';
+import { NextRequest } from 'next/server';
 import { FeePaymentMode, FeeObligationStatus } from '@prisma/client';
 
 let testSchoolId: string;
@@ -220,16 +222,36 @@ async function runConcurrencyAndIdempotencyTests() {
       'Obligation status cleanly transitioned to PAID'
     );
 
+    // Verify rejected transaction allocated ZERO payment or receipt records in the database
+    const paymentCountAfterRace = await prisma.feePayment.count({
+      where: { schoolId: testSchoolId },
+    });
+    assert(
+      paymentCountAfterRace === 1,
+      8,
+      `Rejected transaction allocated ZERO payment records (Expected 1, got ${paymentCountAfterRace})`
+    );
+
+    const receiptCountAfterRace = await prisma.feeReceipt.count({
+      where: { schoolId: testSchoolId },
+    });
+    assert(
+      receiptCountAfterRace === 1,
+      9,
+      `Rejected transaction allocated ZERO receipt records (Expected 1, got ${receiptCountAfterRace})`
+    );
+
     // -------------------------------------------------------------
-    // TEST 2: In-Transaction Sequential Numbering & Collision Check
-    // Create Student 2 and verify sequential numbering under concurrency
+    // TEST 2: School-Wide Payment-Number Concurrency Across Multiple Students
+    // Two DIFFERENT students in the same school pay SIMULTANEOUSLY.
+    // In-transaction atomic sequence lock must serialize sequence increments without gaps or collisions.
     // -------------------------------------------------------------
     const student2 = await prisma.student.create({
       data: {
         schoolId: testSchoolId,
         firstName: 'Ananya',
         lastName: 'Verma',
-        admissionNumber: `ADM-IDEMP-${Date.now()}`,
+        admissionNumber: `ADM-PARALLEL-A-${Date.now()}`,
         dateOfBirth: new Date('2011-08-20'),
         gender: 'FEMALE',
       },
@@ -247,52 +269,93 @@ async function runConcurrencyAndIdempotencyTests() {
       },
     });
 
+    const student3 = await prisma.student.create({
+      data: {
+        schoolId: testSchoolId,
+        firstName: 'Kabir',
+        lastName: 'Mehta',
+        admissionNumber: `ADM-PARALLEL-B-${Date.now()}`,
+        dateOfBirth: new Date('2011-09-12'),
+        gender: 'MALE',
+      },
+    });
+
+    const enrollment3 = await prisma.studentEnrollment.create({
+      data: {
+        schoolId: testSchoolId,
+        studentId: student3.id,
+        academicSessionId: testSessionId,
+        classId: testClassId,
+        sectionId: testSectionId,
+        rollNumber: '03',
+        status: 'ACTIVE',
+      },
+    });
+
     await assignFeePlanToEnrollments(
       testSchoolId,
       {
         academicSessionId: testSessionId,
         feePlanVersionId: publishedVersion.id,
-        studentEnrollmentIds: [enrollment2.id],
+        studentEnrollmentIds: [enrollment2.id, enrollment3.id],
       },
       testUserId
     );
 
-    const paymentResult2 = await recordFeePayment(
-      testSchoolId,
-      {
-        academicSessionId: testSessionId,
-        studentId: student2.id,
-        studentEnrollmentId: enrollment2.id,
-        amount: 15000,
-        paymentMode: FeePaymentMode.CASH,
-        paymentDate: new Date(),
-        remarks: 'Student 2 payment for sequential verification',
-      },
-      testUserId
-    );
+    console.log('⚡ Firing simultaneous payments for 2 DIFFERENT students in same school...');
+    const [parallelResA, parallelResB] = await Promise.all([
+      recordFeePayment(
+        testSchoolId,
+        {
+          academicSessionId: testSessionId,
+          studentId: student2.id,
+          studentEnrollmentId: enrollment2.id,
+          amount: 15000,
+          paymentMode: FeePaymentMode.CASH,
+          paymentDate: new Date(),
+          remarks: 'Simultaneous Payment Student 2',
+        },
+        testUserId
+      ),
+      recordFeePayment(
+        testSchoolId,
+        {
+          academicSessionId: testSessionId,
+          studentId: student3.id,
+          studentEnrollmentId: enrollment3.id,
+          amount: 15000,
+          paymentMode: FeePaymentMode.UPI,
+          paymentDate: new Date(),
+          remarks: 'Simultaneous Payment Student 3',
+        },
+        testUserId
+      ),
+    ]);
 
     assert(
-      Boolean(paymentResult2.payment.paymentNumber),
-      8,
-      'Payment 2 generates sequential payment number'
-    );
-    assert(
-      Boolean(paymentResult2.receipt.receiptNumber),
-      9,
-      'Payment 2 generates sequential receipt number'
-    );
-
-    // Verify payment numbers are strictly distinct
-    const successfulPayment1 = (successes[0] as PromiseFulfilledResult<any>).value.payment;
-    assert(
-      successfulPayment1.paymentNumber !== paymentResult2.payment.paymentNumber,
+      Boolean(parallelResA.payment.paymentNumber && parallelResB.payment.paymentNumber),
       10,
-      'Concurrent and sequential payments receive distinct, collision-free payment numbers'
+      'Both simultaneous student payments successfully generated authoritative payment numbers'
     );
     assert(
-      (successes[0] as PromiseFulfilledResult<any>).value.receipt.receiptNumber !== paymentResult2.receipt.receiptNumber,
+      parallelResA.payment.paymentNumber !== parallelResB.payment.paymentNumber,
       11,
-      'Receipt numbers are distinct and collision-free across transactions'
+      'Simultaneous student payments received strictly distinct, collision-free payment numbers'
+    );
+    assert(
+      parallelResA.receipt.receiptNumber !== parallelResB.receipt.receiptNumber,
+      12,
+      'Simultaneous student receipts received strictly distinct, collision-free receipt numbers'
+    );
+
+    // Total payments in school must now equal exactly 3
+    const totalPaymentsSchool = await prisma.feePayment.count({
+      where: { schoolId: testSchoolId },
+    });
+    assert(
+      totalPaymentsSchool === 3,
+      13,
+      `School-wide payment sequence count is strictly 3 (Got ${totalPaymentsSchool})`
     );
 
     console.log('\n================================================================');

@@ -16,6 +16,7 @@
   - `RIVO-SEC-004`: Enforced production fail-closed behavior for Redis rate limiter with local dev in-memory fallback. Verified by 2/2 tests in `rate-limiter-failclosed.test.ts`.
 - **Phase 1 Platform Foundation & Build Safety:**
   - `RIVO-BLD-001`: Removed `typescript.ignoreBuildErrors: true` from `apps/web/next.config.ts`. Verified zero compilation errors via `npx tsc --noEmit` and successfully executed full production Next.js build with strict TypeScript type-checking across all 187 pages and API routes.
+  - `RIVO-ARCH-001`: Implemented unified, type-safe multi-tenant session and scope hydration utility `apps/web/src/lib/auth/session-context.ts` using React request-scoped caching (`cache()`). Verified by 37/37 tests in `session-context.test.ts` and 95/95 regression tests in `auth-matrix.test.ts`. Hardened production payment idempotency to fail closed with no in-memory fallback. Verified simultaneous multi-student payment sequence concurrency (13/13 tests in `fee-concurrency-idempotency.test.ts`).
 
 ---
 
