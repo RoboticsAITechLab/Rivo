@@ -6,6 +6,19 @@
 
 ---
 
+## [1.1.0-EXEC] — 2026-11-19
+
+### Completed
+- **Phase 0 Security & Concurrency Sign-Off (PASS):**
+  - `RIVO-SEC-001`: Neon credential rotation completed and verified; templates sanitized; repository confirmed zero plaintext secrets.
+  - `RIVO-SEC-002`: Implemented `pg_advisory_xact_lock` for atomic ledger serialization and moved payment/receipt sequence generation strictly inside interactive transactions. Added `X-Idempotency-Key` header with 24-hour Redis caching on `POST /api/fees/payments`. Verified by 60/60 tests in `fee-management-foundation.test.ts` and 11/11 tests in `fee-concurrency-idempotency.test.ts`.
+  - `RIVO-SEC-003`: Enforced object-level authorization and BOLA/IDOR protection on `GET` and `PATCH /api/students/[id]`. Verified by 5/5 tests in `student-object-authorization.test.ts`.
+  - `RIVO-SEC-004`: Enforced production fail-closed behavior for Redis rate limiter with local dev in-memory fallback. Verified by 2/2 tests in `rate-limiter-failclosed.test.ts`.
+- **Phase 1 Platform Foundation & Build Safety:**
+  - `RIVO-BLD-001`: Removed `typescript.ignoreBuildErrors: true` from `apps/web/next.config.ts`. Verified zero compilation errors via `npx tsc --noEmit` and successfully executed full production Next.js build with strict TypeScript type-checking across all 187 pages and API routes.
+
+---
+
 ## [1.0.0-EXEC] — 2026-11-12
 
 ### Initialized

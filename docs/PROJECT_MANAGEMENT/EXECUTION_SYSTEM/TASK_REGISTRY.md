@@ -122,13 +122,13 @@ Total Registered Tasks: **45**
 - **Expected Output:** Shared Zod validation schemas for admissions, payments, and homework.
 
 #### `RIVO-BLD-001`
-- **Title:** Resolve TypeScript Compilation Errors and Set `ignoreBuildErrors: false`
+- **Title:** Resolve TypeScript Compilation Errors and Remove `ignoreBuildErrors: true`
 - **Parent Phase:** Phase 1 | **Related Module:** `MODULE_01_CORE_ARCHITECTURE_INFRASTRUCTURE.md`
-- **Priority:** **P1 (High)** | **Current Status:** `NOT_STARTED`
+- **Priority:** **P1 (High)** | **Current Status:** `COMPLETED` (`ignoreBuildErrors: true` removed from `next.config.ts`; strict Next.js TypeScript check & full production `npm run build` verified with 0 errors)
 - **Dependencies:** `RIVO-ARCH-001`
 - **Assigned Agent:** Frontend Engineer & QA Engineer
 - **Target Files:** `apps/web/next.config.ts`, `apps/web/src/**/*.ts*`
-- **Expected Output:** `npx tsc --noEmit` exits with 0; `ignoreBuildErrors: false` active in `next.config.ts`.
+- **Expected Output:** `npx tsc --noEmit` exits with 0; `ignoreBuildErrors: true` removed from `next.config.ts`. Full Next.js production build passes with strict TypeScript check.
 
 #### `RIVO-UI-001`
 - **Title:** Mount Sonner `<Toaster />` in Root Layout

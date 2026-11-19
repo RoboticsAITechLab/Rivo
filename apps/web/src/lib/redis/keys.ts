@@ -44,4 +44,12 @@ export const RedisKeys = {
     const env = process.env.NODE_ENV === 'production' ? 'prod' : 'dev';
     return `rivo:${env}:${schoolId}:config:id_format`;
   },
+
+  /**
+   * Fee Payment Idempotency key (24h TTL): rivo:idempotency:fees:payment:{schoolId}:{hashedKey}
+   */
+  feePaymentIdempotency(schoolId: string, idempotencyKey: string): string {
+    const hashed = hashIdentifier(idempotencyKey);
+    return `rivo:idempotency:fees:payment:${schoolId}:${hashed}`;
+  },
 };
